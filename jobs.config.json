@@ -1,0 +1,27 @@
+{
+  "_comment": "Where to look for jobs. Edit feeds/searches freely.",
+
+  "_minScoreComment": "Cold applications must clear a HIGH bar (much stricter than inbound replies) so you only apply to strong automation matches, not spray-and-pray. Raise to be pickier, lower for more results.",
+  "minScore": 25,
+  "requireRole": true,
+
+  "dou": {
+    "enabled": true,
+    "feeds": [
+      "https://jobs.dou.ua/vacancies/feeds/?category=QA",
+      "https://jobs.dou.ua/vacancies/feeds/?search=automation",
+      "https://jobs.dou.ua/vacancies/feeds/?search=SDET",
+      "https://jobs.dou.ua/vacancies/feeds/?search=playwright"
+    ]
+  },
+
+  "linkedin": {
+    "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
+    "enabled": true,
+    "maxResults": 8,
+    "searches": [
+      { "keywords": "SDET", "location": "Ukraine", "remote": true },
+      { "keywords": "QA Automation TypeScript", "location": "Ukraine", "remote": true }
+    ]
+  }
+}

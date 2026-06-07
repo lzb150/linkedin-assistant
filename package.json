@@ -1,0 +1,14 @@
+{
+  "name": "linkedin-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Draft-only LinkedIn message assistant: reads your own inbox, scores job messages against your resume, writes draft replies. Never sends.",
+  "scripts": {
+    "login": "node login.mjs",
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

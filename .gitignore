@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# LinkedIn browser session (contains your logged-in cookies — never commit)
+.browser-profile/
+
+# Generated output
+logs/
+drafts/
+applications/*.md
+applications/index.html
+
+# Tracked job state (machine-local)
+jobs-seen.json
+seen.json
+
+# macOS
+.DS_Store
