@@ -143,7 +143,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ├── jobs.config.json   що і де шукати
 ├── drafts/            чернетки відповідей
 ├── applications/      пакети відгуків + index.html
-└── Вакансии.app       ярлик у Dock 💼
+└── Jobs.app           ярлик у Dock 💼
 ```
 
 ## Що де

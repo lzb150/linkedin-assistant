@@ -142,7 +142,7 @@ Session expired? Re-run `node login.mjs`.
 ├── jobs.config.json   what and where to search
 ├── drafts/            reply drafts
 ├── applications/      application packages + index.html
-└── Вакансии.app       Dock shortcut 💼
+└── Jobs.app           Dock shortcut 💼
 ```
 
 ## What's where
