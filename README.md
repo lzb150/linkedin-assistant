@@ -171,3 +171,6 @@ Session expired? Re-run `node login.mjs`.
 ## Technologies
 JavaScript (Node.js) · Playwright · DOU RSS · launchd · Swift/AppKit (icon) ·
 no external dependencies beyond Playwright.
+
+## License
+[MIT](LICENSE)
