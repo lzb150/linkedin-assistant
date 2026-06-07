@@ -7,6 +7,8 @@ finds vacancies on DOU and LinkedIn, scores them against your resume, and prepar
 ready-to-review reply/application drafts. **It never sends anything** — the final
 click is always yours.
 
+![Dashboard — matched jobs sorted by relevance, with per-card status tracking](docs/dashboard.png)
+
 > ⚠️ LinkedIn's User Agreement restricts automated access. This tool only *reads*
 > your own inbox and *drafts* replies for you — it does not auto-message or scrape
 > others. Run it modestly. Use at your own discretion; LinkedIn can still flag
