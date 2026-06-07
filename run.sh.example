@@ -10,6 +10,8 @@ cd "$(dirname "$0")"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 # Keep your resume path in one place for the draft attach hint.
 export RESUME_PATH="$HOME/Downloads/your-resume.docx"
+# Your name for the cover-note / reply signature.
+export CANDIDATE_NAME="Your Name"
 
 node check.mjs >> "logs/run_${STAMP}.log" 2>&1
 echo "log: logs/run_${STAMP}.log"

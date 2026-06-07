@@ -6,6 +6,7 @@ set -euo pipefail
 export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 cd "$(dirname "$0")"
 export RESUME_PATH="$HOME/Downloads/your-resume.docx"
+export CANDIDATE_NAME="Your Name"
 
 MODE="${1:-full}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
