@@ -59,24 +59,28 @@ const cards = items
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span></div>
     </div>
     <div class="actions">
-      <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener">Открыть вакансию ↗</a>
-      <button class="seen-btn" onclick="toggleSeen(this)">Просмотрено</button>
+      <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener">Open job ↗</a>
+      <div class="status-seg" role="group" aria-label="Status">
+        <button data-status="new" onclick="setStatus(this,'new')">New</button>
+        <button data-status="viewed" onclick="setStatus(this,'viewed')">Viewed</button>
+        <button data-status="applied" onclick="setStatus(this,'applied')">Applied</button>
+      </div>
     </div>
   </div>
   <div class="skills">${skills}</div>
   <details>
-    <summary>Сопроводительное письмо</summary>
+    <summary>Cover letter</summary>
     <pre id="cover${idx}">${esc(it.cover)}</pre>
-    <button class="copy" onclick="copyCover(${idx})">Копировать письмо</button>
-    <span class="resume">📎 резюме: ${esc(f.resume || "")}</span>
+    <button class="copy" onclick="copyCover(${idx})">Copy letter</button>
+    <span class="resume">📎 resume: ${esc(f.resume || "")}</span>
   </details>
 </article>`;
   })
   .join("\n");
 
 const html = `<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Вакансии — ${items.length}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jobs — ${items.length}</title>
 <style>
   :root { font-family: -apple-system, system-ui, sans-serif; }
   body { margin: 0; background: #f6f8fa; color: #1f2328; }
@@ -95,12 +99,26 @@ const html = `<!doctype html>
   .actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
   .apply { white-space: nowrap; text-align: center; background: #1f883d; color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
   .apply:hover { background: #1a7f37; }
-  .seen-btn { white-space: nowrap; background: #fff; color: #57606a; border: 1px solid #d0d7de; padding: 6px 12px; border-radius: 7px; font-size: 13px; cursor: pointer; }
-  .seen-btn:hover { background: #f3f4f6; }
-  .card.seen { opacity: .5; }
-  .card.seen .seen-btn { background: #1f883d; color: #fff; border-color: #1f883d; }
-  .filter { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; margin-top: 6px; }
-  .filter input { cursor: pointer; }
+  .status-seg { display: inline-flex; border: 1px solid #d0d7de; border-radius: 7px; overflow: hidden; }
+  .status-seg button { flex: 1; background: #fff; color: #57606a; border: 0; border-left: 1px solid #d0d7de; padding: 6px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .status-seg button:first-child { border-left: 0; }
+  .status-seg button:hover { background: #f3f4f6; }
+  .status-seg button.active[data-status="new"] { background: #6e7781; color: #fff; }
+  .status-seg button.active[data-status="viewed"] { background: #9a6700; color: #fff; }
+  .status-seg button.active[data-status="applied"] { background: #1f883d; color: #fff; }
+  .card.viewed { opacity: .55; }
+  .card.applied { border-left: 4px solid #1f883d; }
+  .card.applied .titles h2::after { content: " ✓"; color: #1f883d; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+  .filter-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
+  .filter-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .filter-seg button:first-child { border-left: 0; }
+  .filter-seg button:hover { background: #32383f; }
+  .filter-seg button.active { background: #0969da; color: #fff; }
+  .filter-seg .cnt { opacity: .7; font-size: 11px; }
+  .io { display: inline-flex; gap: 6px; }
+  .io button { background: #32383f; color: #cdd9e5; border: 1px solid #57606a; padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .io button:hover { background: #3c434b; }
   .skills { margin: 10px 0 4px; }
   .chip { display: inline-block; background: #eaf2ff; color: #0a66c2; font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
   details { margin-top: 6px; }
@@ -112,57 +130,125 @@ const html = `<!doctype html>
 </style></head>
 <body>
 <header>
-  <h1>🎯 Подходящие вакансии: ${items.length}</h1>
-  <div class="meta">Обновлено: ${new Date().toLocaleString("ru-RU")} · отсортировано по релевантности · ничего не отправляется автоматически</div>
-  <label class="filter"><input type="checkbox" id="hideSeen" onchange="applyFilter()"> Скрыть просмотренные (<span id="seenCount">0</span>)</label>
+  <h1>🎯 Matching jobs: ${items.length}</h1>
+  <div class="meta">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
+  <div class="toolbar">
+    <div class="filter-seg" role="group" aria-label="Filter by status">
+      <button data-filter="all" class="active" onclick="setFilter(this,'all')">All <span class="cnt" id="cnt-all">0</span></button>
+      <button data-filter="new" onclick="setFilter(this,'new')">New <span class="cnt" id="cnt-new">0</span></button>
+      <button data-filter="viewed" onclick="setFilter(this,'viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      <button data-filter="applied" onclick="setFilter(this,'applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
+    </div>
+    <div class="io">
+      <button onclick="exportStatus()">Export</button>
+      <button onclick="document.getElementById('importFile').click()">Import</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden onchange="importStatus(this.files[0]); this.value='';">
+    </div>
+  </div>
 </header>
 <main>
-${items.length ? cards : '<div class="empty">Пока нет подходящих вакансий. Запусти <code>node jobs.mjs</code>.</div>'}
+${items.length ? cards : '<div class="empty">No matching jobs yet. Run <code>node jobs.mjs</code>.</div>'}
 </main>
 <script>
 function copyCover(i){
   const t = document.getElementById('cover'+i).innerText;
   navigator.clipboard.writeText(t).then(()=>{
-    event.target.textContent='✓ Скопировано';
-    setTimeout(()=>event.target.textContent='Копировать письмо',1500);
+    event.target.textContent='✓ Copied';
+    setTimeout(()=>event.target.textContent='Copy letter',1500);
   });
 }
 
-// "Просмотрено" persists in localStorage keyed by job URL, so it survives
-// dashboard regeneration (jobs.mjs rewrites this file on every run).
-const SEEN_KEY = 'dashboardSeenJobs';
-function loadSeen(){ try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); } catch { return new Set(); } }
-function saveSeen(s){ localStorage.setItem(SEEN_KEY, JSON.stringify([...s])); }
-let seenSet = loadSeen();
+// Job status persists in localStorage keyed by job URL, so it survives dashboard
+// regeneration (jobs.mjs rewrites this file on every run). Map shape:
+// { "<url>": "viewed" | "applied" }. A missing entry means status "new".
+const STATUS_KEY = 'jobStatus';
+const LEGACY_SEEN_KEY = 'dashboardSeenJobs';
 
-function toggleSeen(btn){
+function loadStatus(){
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}'); } catch {}
+  if (typeof map !== 'object' || map === null || Array.isArray(map)) map = {};
+  // One-time migration from the old binary "seen" Set: each becomes "viewed".
+  const legacy = localStorage.getItem(LEGACY_SEEN_KEY);
+  if (legacy !== null) {
+    try { for (const url of JSON.parse(legacy)) { if (!map[url]) map[url] = 'viewed'; } } catch {}
+    localStorage.removeItem(LEGACY_SEEN_KEY);
+    localStorage.setItem(STATUS_KEY, JSON.stringify(map));
+  }
+  return map;
+}
+function saveStatus(){ localStorage.setItem(STATUS_KEY, JSON.stringify(statusMap)); }
+
+let statusMap = loadStatus();
+let activeFilter = 'all';
+
+const statusOf = (url) => statusMap[url] || 'new';
+
+function renderCard(card){
+  const st = statusOf(card.dataset.url);
+  card.classList.toggle('viewed', st === 'viewed');
+  card.classList.toggle('applied', st === 'applied');
+  card.querySelectorAll('.status-seg button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.status === st);
+  });
+}
+
+function setStatus(btn, status){
   const card = btn.closest('.card');
   const url = card.dataset.url;
-  if (seenSet.has(url)) { seenSet.delete(url); card.classList.remove('seen'); btn.textContent = 'Просмотрено'; }
-  else { seenSet.add(url); card.classList.add('seen'); btn.textContent = '✓ Просмотрено'; }
-  saveSeen(seenSet);
+  if (status === 'new') delete statusMap[url]; else statusMap[url] = status;
+  saveStatus();
+  renderCard(card);
   applyFilter();
 }
 
 function applyFilter(){
-  const hide = document.getElementById('hideSeen').checked;
-  let count = 0;
+  const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
   document.querySelectorAll('.card').forEach((card) => {
-    const isSeen = seenSet.has(card.dataset.url);
-    if (isSeen) count++;
-    card.style.display = (hide && isSeen) ? 'none' : '';
+    const st = statusOf(card.dataset.url);
+    counts.all++; counts[st]++;
+    card.style.display = (activeFilter === 'all' || activeFilter === st) ? '' : 'none';
   });
-  document.getElementById('seenCount').textContent = count;
+  for (const k of ['all', 'new', 'viewed', 'applied']) {
+    const el = document.getElementById('cnt-' + k);
+    if (el) el.textContent = counts[k];
+  }
+}
+
+function setFilter(btn, filter){
+  activeFilter = filter;
+  document.querySelectorAll('.filter-seg button').forEach((b) => b.classList.toggle('active', b === btn));
+  applyFilter();
+}
+
+function exportStatus(){
+  const blob = new Blob([JSON.stringify(statusMap, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'job-status.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importStatus(file){
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let incoming;
+    try { incoming = JSON.parse(reader.result); } catch { return; }
+    if (typeof incoming !== 'object' || incoming === null || Array.isArray(incoming)) return;
+    for (const [url, st] of Object.entries(incoming)) {
+      if (st === 'viewed' || st === 'applied') statusMap[url] = st;
+    }
+    saveStatus();
+    document.querySelectorAll('.card').forEach(renderCard);
+    applyFilter();
+  };
+  reader.readAsText(file);
 }
 
 // Restore saved state on load.
-document.querySelectorAll('.card').forEach((card) => {
-  if (seenSet.has(card.dataset.url)) {
-    card.classList.add('seen');
-    const btn = card.querySelector('.seen-btn');
-    if (btn) btn.textContent = '✓ Просмотрено';
-  }
-});
+document.querySelectorAll('.card').forEach(renderCard);
 applyFilter();
 </script>
 </body></html>`;
