@@ -1,0 +1,15 @@
+#!/bin/bash
+# Wrapper for scheduled runs (launchd/cron strip your PATH, so set it explicitly).
+# Copy to run.sh and fill in your own values (run.sh is gitignored).
+set -euo pipefail
+
+# Point this at the node that has playwright installed (adjust the version).
+export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+cd "$(dirname "$0")"
+STAMP="$(date +%Y%m%d_%H%M%S)"
+# Keep your resume path in one place for the draft attach hint.
+export RESUME_PATH="$HOME/Downloads/your-resume.docx"
+
+node check.mjs >> "logs/run_${STAMP}.log" 2>&1
+echo "log: logs/run_${STAMP}.log"

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Full job discovery incl. LinkedIn scraping — runs ONCE A DAY at 10:45
+  (kept rare to reduce LinkedIn anti-bot detection risk). Also re-checks DOU (deduped).
+  Copy to com.<you>.job-discovery-linkedin.plist, replace YOUR_USERNAME, then:
+    cp com.<you>.job-discovery-linkedin.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.<you>.job-discovery-linkedin.plist
+  Uninstall: launchctl unload ~/Library/LaunchAgents/com.<you>.job-discovery-linkedin.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.job-discovery-linkedin</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run-jobs.sh</string>
+    <string>full</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>45</integer></dict>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-linkedin.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-linkedin.err.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

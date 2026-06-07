@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  DOU job discovery via RSS — runs hourly at minute 15 (ToS-clean, safe to run often).
+  Copy to com.<you>.job-discovery-dou.plist, replace YOUR_USERNAME, then:
+    cp com.<you>.job-discovery-dou.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.<you>.job-discovery-dou.plist
+  Uninstall: launchctl unload ~/Library/LaunchAgents/com.<you>.job-discovery-dou.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.job-discovery-dou</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run-jobs.sh</string>
+    <string>dou</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Minute</key><integer>15</integer></dict>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-dou.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-dou.err.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

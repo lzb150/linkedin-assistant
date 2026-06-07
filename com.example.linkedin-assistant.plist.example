@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: runs the LinkedIn check once an hour, at the top of every hour.
+  Copy to com.<you>.linkedin-assistant.plist, replace YOUR_USERNAME, then:
+    cp com.<you>.linkedin-assistant.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.<you>.linkedin-assistant.plist
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.<you>.linkedin-assistant.plist
+  Note: launchd needs absolute paths, so $HOME cannot be used here — replace
+  YOUR_USERNAME with your macOS short username.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.linkedin-assistant</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run.sh</string>
+  </array>
+
+  <!-- Runs every hour at minute 0 (00:00, 01:00, 02:00 ... 23:00). -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Minute</key><integer>0</integer></dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/launchd.err.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

@@ -111,14 +111,20 @@ node dashboard.mjs --open   # перебудувати і відкрити
 
 ## Розклад (launchd)
 
+Скрипти-обгортки та агенти launchd машинно-специфічні (абсолютні шляхи, шлях до
+вашого резюме), тож постачаються як шаблони `*.example`. Скопіюйте кожен,
+підставте свої значення — справжні копії лишаються локально (у `.gitignore`):
+
 ```bash
-cp com.eugene.linkedin-assistant.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.eugene.linkedin-assistant.plist
+cp run.sh.example run.sh && cp run-jobs.sh.example run-jobs.sh   # потім впишіть версію node + RESUME_PATH
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # замініть YOUR_USERNAME усередині
+cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 ```
 
-Зупинити: `launchctl unload ~/Library/LaunchAgents/com.eugene.linkedin-assistant.plist`.
-Пошук має власні агенти: `com.eugene.job-discovery-dou.plist` і
-`com.eugene.job-discovery-linkedin.plist`.
+Зупинити: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assistant.plist`.
+Пошук має власні шаблони: `com.example.job-discovery-dou.plist.example` і
+`com.example.job-discovery-linkedin.plist.example`.
 
 ## Коли щось ламається
 

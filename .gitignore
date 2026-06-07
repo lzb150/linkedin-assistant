@@ -16,7 +16,14 @@ seen.json
 
 # macOS
 .DS_Store
-Jobs.app/Icon?
+
+# Built Dock app bundle (machine-specific paths baked in; rebuild locally)
+Jobs.app/
+
+# Machine-specific run wrappers & launchd agents — use the *.example templates
+run.sh
+run-jobs.sh
+com.*.plist
 
 # Personal resume — kept local only
 resume.txt

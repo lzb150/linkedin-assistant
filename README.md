@@ -111,14 +111,20 @@ lives in `jobs.config.json`.
 
 ## Schedule it (launchd)
 
+The run wrappers and launchd agents are machine-specific (absolute paths,
+your resume location), so they ship as `*.example` templates. Copy each, fill in
+your own values, and the real copies stay local (gitignored):
+
 ```bash
-cp com.eugene.linkedin-assistant.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.eugene.linkedin-assistant.plist
+cp run.sh.example run.sh && cp run-jobs.sh.example run-jobs.sh   # then edit node version + RESUME_PATH
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # replace YOUR_USERNAME inside
+cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 ```
 
-Unload to stop: `launchctl unload ~/Library/LaunchAgents/com.eugene.linkedin-assistant.plist`.
-Discovery has its own agents: `com.eugene.job-discovery-dou.plist` and
-`com.eugene.job-discovery-linkedin.plist`.
+Unload to stop: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assistant.plist`.
+Discovery has its own templates: `com.example.job-discovery-dou.plist.example`
+and `com.example.job-discovery-linkedin.plist.example`.
 
 ## When it breaks
 
