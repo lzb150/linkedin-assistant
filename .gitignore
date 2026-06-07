@@ -17,3 +17,6 @@ seen.json
 # macOS
 .DS_Store
 Jobs.app/Icon?
+
+# Personal resume — kept local only
+resume.txt
