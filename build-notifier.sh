@@ -28,7 +28,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <dict>
   <key>CFBundleName</key><string>Messages</string>
   <key>CFBundleDisplayName</key><string>Messages</string>
-  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.notify</string>
+  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.notify2</string>
   <key>CFBundleExecutable</key><string>notifier</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
