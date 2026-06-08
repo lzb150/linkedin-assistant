@@ -11,7 +11,7 @@
 
 import { chromium } from "playwright";
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
@@ -21,6 +21,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
 const SEEN_FILE = join(__dir, "seen.json");
+const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
 const HEADFUL = process.env.HEADFUL === "1";
 const MAX = parseInt(process.env.MAX || "12", 10);
 const SCAN_ALL = process.env.SCAN_ALL === "1";
@@ -64,13 +65,31 @@ function notify(title, message) {
 
 // iPhone-style "new message" banner: sender name as the bold title and the
 // message text as the body — the same shape as an incoming text on iPhone.
-// Uses macOS's modern UserNotifications path via osascript: terminal-notifier's
-// legacy NSUserNotification API no longer renders banners on macOS 26 (it only
-// logs silently to Notification Center), whereas the osascript path does.
-// Best-effort, never throws.
+// Prefers Notifier.app (built by build-notifier.sh), which posts via the modern
+// UserNotifications framework under the green Messages icon. It MUST be launched
+// via `open` so macOS treats it as a registered app — a bare exec is rejected
+// with "Notifications are not allowed". We spawn detached + unref'd so the
+// banner survives this process exiting. -n forces a fresh instance per message.
+// Note: notifications only present from a real GUI-session context (the launchd
+// LaunchAgent that schedules this script) — not from a non-Aqua parent shell.
+// Falls back to osascript (works, but shows the Script Editor icon) if the app
+// is missing. Best-effort, never throws.
 function notifyMessage(sender, text) {
   const body = (text || "").replace(/\s+/g, " ").trim().slice(0, 240) || "New message";
-  notify(sender || "LinkedIn", body);
+  const title = sender || "LinkedIn";
+  if (existsSync(NOTIFIER_APP)) {
+    try {
+      const p = spawn("open", ["-n", "-a", NOTIFIER_APP, "--args", title, body],
+        { detached: true, stdio: "ignore" });
+      p.on("error", (e) => { log("notify: Notifier.app failed, osascript fallback:", e?.message); notify(title, body); });
+      p.unref();
+      log("notify: via Notifier.app (green Messages icon)");
+      return;
+    } catch (e) { log("notify: spawn threw, osascript fallback:", e?.message); }
+  } else {
+    log("notify: Notifier.app missing at", NOTIFIER_APP, "— osascript fallback");
+  }
+  notify(title, body);
 }
 
 function loadSeen() {

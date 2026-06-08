@@ -20,6 +20,9 @@ seen.json
 # Built Dock app bundle (machine-specific paths baked in; rebuild locally)
 Jobs.app/
 
+# Built notification helper — rebuild with ./build-notifier.sh
+Notifier.app/
+
 # Machine-specific run wrappers & launchd agents — use the *.example templates
 run.sh
 run-jobs.sh
