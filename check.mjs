@@ -62,6 +62,17 @@ function notify(title, message) {
   execFile("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}`], () => {});
 }
 
+// iPhone-style "new message" banner: sender name as the bold title and the
+// message text as the body — the same shape as an incoming text on iPhone.
+// Uses macOS's modern UserNotifications path via osascript: terminal-notifier's
+// legacy NSUserNotification API no longer renders banners on macOS 26 (it only
+// logs silently to Notification Center), whereas the osascript path does.
+// Best-effort, never throws.
+function notifyMessage(sender, text) {
+  const body = (text || "").replace(/\s+/g, " ").trim().slice(0, 240) || "New message";
+  notify(sender || "LinkedIn", body);
+}
+
 function loadSeen() {
   try { return new Set(JSON.parse(readFileSync(SEEN_FILE, "utf8"))); }
   catch { return new Set(); }
@@ -140,6 +151,10 @@ try {
 
     if (seen.has(threadId)) { log(`· already processed: ${name}`); continue; }
 
+    // New unread message — fire an iPhone-style "new message" notification for
+    // ANY new message (job-relevant or not), before the job filter below.
+    notifyMessage(name, snippet);
+
     if (!fullText || !looksLikeJobMessage(fullText)) {
       log(`· not a job message, skipping: ${name}`);
       seen.add(threadId);
@@ -164,7 +179,4 @@ try {
 }
 
 log(`Done. Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
-if (drafted > 0) {
-  notify("LinkedIn assistant", `${drafted} new job message(s) drafted — review in ~/linkedin-assistant/drafts`);
-}
 process.exit(0);
