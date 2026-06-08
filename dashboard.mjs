@@ -63,7 +63,6 @@ const cards = items
       <div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
-        <button data-status="applied" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
       </div>
     </div>
   </div>
@@ -105,10 +104,7 @@ const html = `<!doctype html>
   .status-seg button:hover { background: #f3f4f6; }
   .status-seg button.active[data-status="new"] { background: #6e7781; color: #fff; }
   .status-seg button.active[data-status="viewed"] { background: #9a6700; color: #fff; }
-  .status-seg button.active[data-status="applied"] { background: #1f883d; color: #fff; }
   .card.viewed { opacity: .55; }
-  .card.applied { border-left: 4px solid #1f883d; }
-  .card.applied .titles h2::after { content: " ✓"; color: #1f883d; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
   .filter-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
   .filter-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
@@ -116,9 +112,6 @@ const html = `<!doctype html>
   .filter-seg button:hover { background: #32383f; }
   .filter-seg button.active { background: #0969da; color: #fff; }
   .filter-seg .cnt { opacity: .7; font-size: 11px; }
-  .io { display: inline-flex; gap: 6px; }
-  .io button { background: #32383f; color: #cdd9e5; border: 1px solid #57606a; padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
-  .io button:hover { background: #3c434b; }
   .skills { margin: 10px 0 4px; }
   .chip { display: inline-block; background: #eaf2ff; color: #0a66c2; font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
   details { margin-top: 6px; }
@@ -134,15 +127,9 @@ const html = `<!doctype html>
   <div class="meta">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
-      <button data-filter="all" class="active" onclick="setFilter(this,'all')">All <span class="cnt" id="cnt-all">0</span></button>
-      <button data-filter="new" onclick="setFilter(this,'new')">New <span class="cnt" id="cnt-new">0</span></button>
+      <button data-filter="all" onclick="setFilter(this,'all')">All <span class="cnt" id="cnt-all">0</span></button>
+      <button data-filter="new" class="active" onclick="setFilter(this,'new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" onclick="setFilter(this,'viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
-      <button data-filter="applied" onclick="setFilter(this,'applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
-    </div>
-    <div class="io">
-      <button onclick="exportStatus()">Export</button>
-      <button onclick="document.getElementById('importFile').click()">Import</button>
-      <input type="file" id="importFile" accept="application/json,.json" hidden onchange="importStatus(this.files[0]); this.value='';">
     </div>
   </div>
 </header>
@@ -168,6 +155,12 @@ function loadStatus(){
   let map = {};
   try { map = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}'); } catch {}
   if (typeof map !== 'object' || map === null || Array.isArray(map)) map = {};
+  // The "applied" status was removed; fold any previously-stored "applied" into "viewed".
+  let changed = false;
+  for (const url of Object.keys(map)) {
+    if (map[url] === 'applied') { map[url] = 'viewed'; changed = true; }
+  }
+  if (changed) localStorage.setItem(STATUS_KEY, JSON.stringify(map));
   // One-time migration from the old binary "seen" Set: each becomes "viewed".
   const legacy = localStorage.getItem(LEGACY_SEEN_KEY);
   if (legacy !== null) {
@@ -180,14 +173,13 @@ function loadStatus(){
 function saveStatus(){ localStorage.setItem(STATUS_KEY, JSON.stringify(statusMap)); }
 
 let statusMap = loadStatus();
-let activeFilter = 'all';
+let activeFilter = 'new';
 
 const statusOf = (url) => statusMap[url] || 'new';
 
 function renderCard(card){
   const st = statusOf(card.dataset.url);
   card.classList.toggle('viewed', st === 'viewed');
-  card.classList.toggle('applied', st === 'applied');
   card.querySelectorAll('.status-seg button').forEach((b) => {
     b.classList.toggle('active', b.dataset.status === st);
   });
@@ -209,13 +201,13 @@ function setStatus(card, status){
 function autoStatus(card, status){ setStatus(card, status); }
 
 function applyFilter(){
-  const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
+  const counts = { all: 0, new: 0, viewed: 0 };
   document.querySelectorAll('.card').forEach((card) => {
     const st = statusOf(card.dataset.url);
     counts.all++; counts[st]++;
     card.style.display = (activeFilter === 'all' || activeFilter === st) ? '' : 'none';
   });
-  for (const k of ['all', 'new', 'viewed', 'applied']) {
+  for (const k of ['all', 'new', 'viewed']) {
     const el = document.getElementById('cnt-' + k);
     if (el) el.textContent = counts[k];
   }
@@ -225,32 +217,6 @@ function setFilter(btn, filter){
   activeFilter = filter;
   document.querySelectorAll('.filter-seg button').forEach((b) => b.classList.toggle('active', b === btn));
   applyFilter();
-}
-
-function exportStatus(){
-  const blob = new Blob([JSON.stringify(statusMap, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'job-status.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-function importStatus(file){
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    let incoming;
-    try { incoming = JSON.parse(reader.result); } catch { return; }
-    if (typeof incoming !== 'object' || incoming === null || Array.isArray(incoming)) return;
-    for (const [url, st] of Object.entries(incoming)) {
-      if (st === 'viewed' || st === 'applied') statusMap[url] = st;
-    }
-    saveStatus();
-    document.querySelectorAll('.card').forEach(renderCard);
-    applyFilter();
-  };
-  reader.readAsText(file);
 }
 
 // Restore saved state on load.
