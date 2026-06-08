@@ -30,8 +30,8 @@ click is always yours.
 
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance, with per-card
-  status tracking (New → Viewed → Applied), a status filter with counters, JSON
-  export/import, and a copy-letter button
+  status tracking (New → Viewed), a status filter with counters, and a
+  copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
 **4. Automation (launchd)**
@@ -97,9 +97,10 @@ node dashboard.mjs --open   # rebuild and open it
 ```
 
 Renders every package in `applications/` as a card, sorted by score. Per-card
-status (New / Viewed / Applied) is stored in the browser's localStorage keyed by
-job URL, so it survives dashboard regeneration. Use the header filter to focus on
-a status, and Export/Import to back up or move statuses between browsers.
+status (New / Viewed) is stored in the browser's localStorage keyed by job URL,
+so it survives dashboard regeneration. Opening a job link or expanding its cover
+letter marks the card Viewed automatically. Use the header filter to focus on a
+status.
 
 ## Tuning relevance — `skills.json`
 
