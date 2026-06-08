@@ -59,16 +59,16 @@ const cards = items
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span></div>
     </div>
     <div class="actions">
-      <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener">Open job ↗</a>
+      <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
       <div class="status-seg" role="group" aria-label="Status">
-        <button data-status="new" onclick="setStatus(this,'new')">New</button>
-        <button data-status="viewed" onclick="setStatus(this,'viewed')">Viewed</button>
-        <button data-status="applied" onclick="setStatus(this,'applied')">Applied</button>
+        <button data-status="new" onclick="setStatus(this.closest('.card'),'new')">New</button>
+        <button data-status="viewed" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
+        <button data-status="applied" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
       </div>
     </div>
   </div>
   <div class="skills">${skills}</div>
-  <details>
+  <details ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')">
     <summary>Cover letter</summary>
     <pre id="cover${idx}">${esc(it.cover)}</pre>
     <button class="copy" onclick="copyCover(${idx})">Copy letter</button>
@@ -193,14 +193,20 @@ function renderCard(card){
   });
 }
 
-function setStatus(btn, status){
-  const card = btn.closest('.card');
+// Set a card's status and persist it. Used by both the manual status buttons
+// and the automatic triggers (opening the job link / expanding the cover letter).
+// Auto-triggers always overwrite the stored status (per user preference), so e.g.
+// re-opening a card's letter sets it back to "viewed" even if it was "applied".
+function setStatus(card, status){
   const url = card.dataset.url;
   if (status === 'new') delete statusMap[url]; else statusMap[url] = status;
   saveStatus();
   renderCard(card);
   applyFilter();
 }
+
+// Automatic status change fired by user interaction (always overwrites).
+function autoStatus(card, status){ setStatus(card, status); }
 
 function applyFilter(){
   const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
