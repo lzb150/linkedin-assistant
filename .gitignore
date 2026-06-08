@@ -30,3 +30,6 @@ com.*.plist
 
 # Personal resume — kept local only
 resume.txt
+
+# Local Claude Code settings (machine-specific)
+.claude/
