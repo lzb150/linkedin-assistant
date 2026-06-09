@@ -93,11 +93,28 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
 
 log(`Total jobs gathered: ${jobs.length}`);
 
+// Seniority terms we never apply to. Matched as whole words in the TITLE only,
+// so a senior role whose description mentions "junior" (e.g. "mentor junior
+// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
+const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => t.toLowerCase());
+function excludedByTitle(title) {
+  const t = (title || "").toLowerCase();
+  return EXCLUDE_TITLE.find((term) =>
+    new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(t)
+  );
+}
+
 // 4) Score + write application packages for RELEVANT, unseen jobs.
 let written = 0, considered = 0;
 for (const job of jobs) {
   if (seen.has(job.url)) continue;
   considered++;
+  const excluded = excludedByTitle(job.title);
+  if (excluded) {
+    log(`  · skip [excluded:${excluded}] ${job.source}: ${job.title}`);
+    seen.add(job.url);
+    continue;
+  }
   const scored = scoreMessage(job.text);
   // Cold applications: strict gate — high score AND an automation/SDET role match.
   const minScore = config.minScore ?? 25;

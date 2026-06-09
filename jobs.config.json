@@ -5,6 +5,9 @@
   "minScore": 25,
   "requireRole": true,
 
+  "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles. Matched in the title only, so senior roles that merely mention these words in the description are kept.",
+  "excludeTitle": ["junior", "intern", "internship", "trainee"],
+
   "dou": {
     "enabled": true,
     "feeds": [
