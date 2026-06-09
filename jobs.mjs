@@ -1,31 +1,55 @@
-// Job discovery + matching. Finds vacancies on DOU (RSS) and LinkedIn (scrape),
-// scores them against your resume, and writes an application package for each
-// RELEVANT match. IT NEVER SUBMITS ANYTHING — you review and apply manually.
+// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board),
+// and LinkedIn (scrape), scores them against your resume, and writes an
+// application package for each RELEVANT match. IT NEVER SUBMITS ANYTHING —
+// you review and apply manually.
 //
-// Run:  node jobs.mjs              (both sources per jobs.config.json)
+// Run:  node jobs.mjs              (all sources per jobs.config.json)
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
-//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping this run)
+//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication } from "./lib/application.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
+import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 const SEEN_FILE = join(__dir, "jobs-seen.json");
+const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
 const HEADFUL = process.env.HEADFUL === "1";
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
 const log = (...a) => console.log(new Date().toISOString(), ...a);
-const notify = (msg) =>
+
+// Prefer Notifier.app (the green Messages icon, same banner as check.mjs) and
+// fall back to osascript (shows the Script Editor icon) if the app is missing.
+// Notifier.app MUST be launched via `open` so macOS treats it as a registered
+// app, detached + unref'd so the banner survives this process exiting.
+const notifyOsascript = (msg) =>
   execFile("osascript", ["-e", `display notification ${JSON.stringify(msg)} with title "Job assistant"`], () => {});
+function notify(msg) {
+  const body = (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready";
+  if (existsSync(NOTIFIER_APP)) {
+    try {
+      const p = spawn("open", ["-n", "-a", NOTIFIER_APP, "--args", "Job assistant", body],
+        { detached: true, stdio: "ignore" });
+      p.on("error", (e) => { log("notify: Notifier.app failed, osascript fallback:", e?.message); notifyOsascript(body); });
+      p.unref();
+      log("notify: via Notifier.app (green Messages icon)");
+      return;
+    } catch (e) { log("notify: spawn threw, osascript fallback:", e?.message); }
+  } else {
+    log("notify: Notifier.app missing at", NOTIFIER_APP, "— osascript fallback");
+  }
+  notifyOsascript(body);
+}
 
 function loadSeen() { try { return new Set(JSON.parse(readFileSync(SEEN_FILE, "utf8"))); } catch { return new Set(); } }
 const seen = loadSeen();
@@ -36,7 +60,13 @@ let jobs = [];
 log("Gathering DOU (RSS)...");
 try { jobs.push(...(await fetchDou(config.dou, log))); } catch (e) { log("DOU error:", e.message); }
 
-// 2) LinkedIn via the logged-in browser (optional)
+// 2) Djinni via the public jobs board (plain fetch, no browser, no login)
+if (config.djinni?.enabled) {
+  log("Gathering Djinni (jobs board)...");
+  try { jobs.push(...(await fetchDjinni(config.djinni, log))); } catch (e) { log("Djinni error:", e.message); }
+}
+
+// 3) LinkedIn via the logged-in browser (optional)
 if (!DOU_ONLY && config.linkedin?.enabled) {
   const { chromium } = await import("playwright");
   const ctx = await chromium.launchPersistentContext(PROFILE, {
@@ -63,7 +93,7 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
 
 log(`Total jobs gathered: ${jobs.length}`);
 
-// 3) Score + write application packages for RELEVANT, unseen jobs.
+// 4) Score + write application packages for RELEVANT, unseen jobs.
 let written = 0, considered = 0;
 for (const job of jobs) {
   if (seen.has(job.url)) continue;

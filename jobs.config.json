@@ -15,6 +15,19 @@
     ]
   },
 
+  "djinni": {
+    "_comment": "Public Djinni jobs board, read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Use primary_keyword=QA+Automation or primary_keyword=QA (Manual) for categories, or all_keywords=TERM for free-text. fullDescription (default true) follows each job link for the complete text so scoring is accurate; set false to score on the listing snippet only.",
+    "enabled": true,
+    "fullDescription": true,
+    "maxResults": 15,
+    "searches": [
+      "https://djinni.co/jobs/?primary_keyword=QA+Automation",
+      "https://djinni.co/jobs/?primary_keyword=QA",
+      "https://djinni.co/jobs/?all_keywords=SDET",
+      "https://djinni.co/jobs/?all_keywords=playwright"
+    ]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,

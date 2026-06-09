@@ -24,6 +24,7 @@ click is always yours.
 
 **2. Job discovery — `jobs.mjs`**
 - **DOU** — via official RSS feeds (legal, no scraping)
+- **Djinni** — via the public jobs board (plain fetch, no login, no browser)
 - **LinkedIn Jobs** — search scraping (modest, once a day, toggleable)
 - Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
 - Builds an application package: cover letter + link + resume path
@@ -79,12 +80,13 @@ Finds *new* vacancies, scores them against your resume, and writes an
 each strong match into `applications/`. **It never submits anything.**
 
 ```bash
-node jobs.mjs              # both sources (per jobs.config.json)
-DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (RSS only — fully ToS-clean)
+node jobs.mjs              # all sources (per jobs.config.json)
+DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni still run — fully ToS-clean)
 HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 ```
 
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
+- **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
 - Cold applications use a **high bar**: `minScore` (default 25) + `requireRole`.
 - `jobs-seen.json` prevents re-preparing the same vacancy.
@@ -146,7 +148,7 @@ Session expired? Re-run `node login.mjs`.
 ├── jobs.mjs           job discovery → application packages
 ├── login.mjs          one-time LinkedIn login
 ├── dashboard.mjs      HTML dashboard generator
-├── lib/               logic (scoring, templates, DOU/LinkedIn sources)
+├── lib/               logic (scoring, templates, DOU/Djinni/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── drafts/            reply drafts
