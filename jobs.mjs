@@ -1,11 +1,11 @@
 // Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board),
-// and LinkedIn (scrape), scores them against your resume, and writes an
-// application package for each RELEVANT match. IT NEVER SUBMITS ANYTHING —
-// you review and apply manually.
+// Jooble (API), and LinkedIn (scrape), scores them against your resume, and
+// writes an application package for each RELEVANT match. IT NEVER SUBMITS
+// ANYTHING — you review and apply manually.
 //
 // Run:  node jobs.mjs              (all sources per jobs.config.json)
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
-//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
+//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFile, spawn } from "node:child_process";
@@ -15,6 +15,7 @@ import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication } from "./lib/application.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
+import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -66,7 +67,13 @@ if (config.djinni?.enabled) {
   try { jobs.push(...(await fetchDjinni(config.djinni, log))); } catch (e) { log("Djinni error:", e.message); }
 }
 
-// 3) LinkedIn via the logged-in browser (optional)
+// 3) Jooble via the official API (needs JOOBLE_API_KEY; no browser)
+if (config.jooble?.enabled) {
+  log("Gathering Jooble (API)...");
+  try { jobs.push(...(await fetchJooble(config.jooble, log))); } catch (e) { log("Jooble error:", e.message); }
+}
+
+// 4) LinkedIn via the logged-in browser (optional)
 if (!DOU_ONLY && config.linkedin?.enabled) {
   const { chromium } = await import("playwright");
   const ctx = await chromium.launchPersistentContext(PROFILE, {
@@ -104,7 +111,7 @@ function excludedByTitle(title) {
   );
 }
 
-// 4) Score + write application packages for RELEVANT, unseen jobs.
+// 5) Score + write application packages for RELEVANT, unseen jobs.
 let written = 0, considered = 0;
 for (const job of jobs) {
   if (seen.has(job.url)) continue;
@@ -117,7 +124,9 @@ for (const job of jobs) {
   }
   const scored = scoreMessage(job.text);
   // Cold applications: strict gate — high score AND an automation/SDET role match.
-  const minScore = config.minScore ?? 25;
+  // A source may set its own minScore (e.g. Jooble's API gives only short
+  // snippets, which score lower than full descriptions) — it overrides the global.
+  const minScore = config[job.source]?.minScore ?? config.minScore ?? 25;
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
     log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}`);

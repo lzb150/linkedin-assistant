@@ -25,6 +25,7 @@ LinkedIn-скриньці, шукає вакансії на DOU, Djinni та Lin
 **2. Пошук вакансій — `jobs.mjs`**
 - **DOU** — через офіційні RSS-стрічки (легально, без скрейпінгу)
 - **Djinni** — через публічну дошку вакансій (звичайний fetch, без входу, без браузера)
+- **Jooble** — через офіційний Jooble API (безкоштовний ключ, структурований JSON)
 - **LinkedIn Jobs** — скрейпінг видачі (помірно, раз на день, можна вимкнути)
 - Суворий фільтр для холодних відгуків (бал ≥ 25 + automation-роль) → лише цільові вакансії
 - Готує пакет відгуку: супровідний лист + посилання + шлях до резюме
@@ -87,6 +88,7 @@ HEADFUL=1 node jobs.mjs    # спостерігати за частиною Link
 
 - **DOU** — офіційні RSS-стрічки (`jobs.dou.ua`), чисті й структуровані. Стрічки — у `jobs.config.json`.
 - **Djinni** — публічна дошка вакансій (`djinni.co/jobs/`), читається звичайним fetch (без входу, без браузера). Кожен пошук — повний URL видачі: скопіюйте його з фільтрів у браузері. Вимкнути: `djinni.enabled=false`.
+- **Jooble** — офіційний Jooble API (`jooble.org/api`). Jooble за Cloudflare, тому використовується API. Потрібен **безкоштовний** ключ з [jooble.org/api/about](https://jooble.org/api/about), задається через змінну оточення `JOOBLE_API_KEY` (у `run-jobs.sh`, який у gitignore — ключ ніколи не комітимо). Пошуки — пари `{ keywords, location }` у `jobs.config.json`. Вимкнути: `jooble.enabled=false`.
 - **LinkedIn Jobs** — скрейпить видачу пошуку (⚠️ обмежено ToS, легше виявляється). Вимкнути: `linkedin.enabled=false`.
 - Холодні відгуки мають **високий поріг**: `minScore` (типово 25) + `requireRole`.
 - `jobs-seen.json` не дає готувати ту саму вакансію двічі.
@@ -149,7 +151,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ├── jobs.mjs           пошук вакансій → пакети відгуків
 ├── login.mjs          разовий вхід у LinkedIn
 ├── dashboard.mjs      генератор HTML-дашборда
-├── lib/               логіка (оцінка, шаблони, джерела DOU/Djinni/LinkedIn)
+├── lib/               логіка (оцінка, шаблони, джерела DOU/Djinni/Jooble/LinkedIn)
 ├── skills.json        профіль навичок + ваги
 ├── jobs.config.json   що і де шукати
 ├── drafts/            чернетки відповідей

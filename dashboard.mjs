@@ -40,7 +40,7 @@ function scoreColor(s) {
 }
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#e8453c", djinni: "#3d3bd4" };
+const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#e8453c", djinni: "#3d3bd4", jooble: "#0a8f6c" };
 function badge(source) {
   const c = SOURCE_COLORS[source] || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;

@@ -7,6 +7,8 @@ export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr
 cd "$(dirname "$0")"
 export RESUME_PATH="$HOME/Downloads/your-resume.docx"
 export CANDIDATE_NAME="Your Name"
+# Free Jooble API key from https://jooble.org/api/about (only needed if jooble.enabled in jobs.config.json)
+export JOOBLE_API_KEY="your-jooble-api-key"
 
 MODE="${1:-full}"
 STAMP="$(date +%Y%m%d_%H%M%S)"

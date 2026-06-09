@@ -31,6 +31,20 @@
     ]
   },
 
+  "jooble": {
+    "_comment": "Jooble via its official API (jooble.org/api/about). The site is behind Cloudflare so scraping is blocked; the API needs a FREE key, read from the JOOBLE_API_KEY env var (set it in run-jobs.sh, which is gitignored — never put the key here). Each search is { keywords, location }. NOTE: location='Ukraine' returns almost nothing (the API treats it as a city); use 'remote' for remote roles or '' for any location. The score gate + excludeTitle still filter results.",
+    "_minScoreComment": "Per-source override of the global minScore. Jooble's API returns only short snippets, which score ~5-8 points lower than full descriptions, so it gets a lower bar.",
+    "enabled": true,
+    "minScore": 18,
+    "maxResults": 15,
+    "searches": [
+      { "keywords": "QA Automation", "location": "remote" },
+      { "keywords": "Automation QA", "location": "remote" },
+      { "keywords": "SDET", "location": "remote" },
+      { "keywords": "Playwright", "location": "remote" }
+    ]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,
