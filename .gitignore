@@ -40,3 +40,13 @@ resume.txt
 
 # Local Claude Code settings (machine-specific)
 .claude/
+
+# Djinni browser session (contains your logged-in cookies — never commit)
+.djinni-profile/
+
+# Runtime Dock-badge state for Djinni (written by djinni-check.mjs, read by Jobs.app)
+djinni-notify-state.json
+djinni-notify-state.json.tmp
+
+# Machine-specific Djinni run wrapper — use run-djinni.sh.example
+run-djinni.sh

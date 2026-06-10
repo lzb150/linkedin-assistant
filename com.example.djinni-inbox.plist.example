@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: runs the Djinni inbox check once an hour, at the top of every
+  hour. It writes djinni-notify-state.json; the always-running Jobs.app badge
+  daemon (see com.example.jobs-badge.plist.example) sums it with the LinkedIn
+  count. Copy to a machine-local file and adjust the paths first.
+  Install:
+    cp com.example.djinni-inbox.plist.example ~/Library/LaunchAgents/com.example.djinni-inbox.plist
+    launchctl load ~/Library/LaunchAgents/com.example.djinni-inbox.plist
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.example.djinni-inbox.plist
+  Note: runs only while you are logged into macOS; if the Mac was asleep at the
+  scheduled time, launchd runs it once on wake.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.djinni-inbox</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/example/linkedin-assistant/run-djinni.sh</string>
+  </array>
+
+  <!-- Runs every hour at minute 0 (00:00, 01:00, 02:00 ... 23:00). -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Minute</key><integer>0</integer></dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/example/linkedin-assistant/logs/djinni.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/example/linkedin-assistant/logs/djinni.err.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

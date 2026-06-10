@@ -1,0 +1,14 @@
+#!/bin/bash
+# Wrapper for the scheduled Djinni inbox check (launchd/cron strip your PATH, so
+# set it explicitly). Copy to run-djinni.sh and fill in your own values
+# (run-djinni.sh is gitignored).
+set -euo pipefail
+
+# Point this at the node that has playwright installed (adjust the version).
+export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+cd "$(dirname "$0")"
+STAMP="$(date +%Y%m%d_%H%M%S)"
+
+node djinni-check.mjs >> "logs/djinni_${STAMP}.log" 2>&1
+echo "log: logs/djinni_${STAMP}.log"

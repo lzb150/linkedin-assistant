@@ -88,6 +88,34 @@ Build it with `./build-jobs.sh`, then start it at login by installing
 defensively on each scan. The original AppleScript applet is preserved at
 `Jobs.app.orig`.
 
+## Djinni inbox (combined Dock badge)
+
+The Dock badge on `Jobs.app` ("Вакансії") shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
+
+One-time login (whenever the Djinni session expires):
+
+```bash
+node djinni-login.mjs   # opens a browser; log in to Djinni manually (incl. 2FA)
+```
+
+Count unread Djinni inbox threads (writes `djinni-notify-state.json`):
+
+```bash
+node djinni-check.mjs              # headless
+HEADFUL=1 node djinni-check.mjs    # watch it / fix selectors against the live page
+```
+
+`djinni-check.mjs` is **count-only**: it reads `https://djinni.co/my/inbox/`, never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
+
+Run it hourly via launchd:
+
+```bash
+cp run-djinni.sh.example run-djinni.sh                      # then edit PATH/version
+cp com.example.djinni-inbox.plist.example \
+   ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # then edit the paths
+launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
+```
+
 ## Job discovery — `jobs.mjs`
 
 Finds *new* vacancies, scores them against your resume, and writes an
