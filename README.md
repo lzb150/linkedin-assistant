@@ -105,7 +105,7 @@ node djinni-check.mjs              # headless
 HEADFUL=1 node djinni-check.mjs    # watch it / fix selectors against the live page
 ```
 
-`djinni-check.mjs` is **count-only**: it reads `https://djinni.co/my/inbox/`, never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
+`djinni-check.mjs` is **count-only**: it counts the conversation threads in Djinni's unread bucket (`https://djinni.co/my/inbox?bucket=unread`), never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
 
 Run it hourly via launchd:
 

@@ -1,11 +1,12 @@
-// The scheduled Djinni job. Reuses the session saved by djinni-login.mjs, reads
-// the UNREAD count from https://djinni.co/my/inbox/, and writes it to
-// djinni-notify-state.json. The Jobs.app Dock badge sums this with the LinkedIn
-// count (notify-state.json). COUNT ONLY: it never opens a thread, never drafts,
-// never sends — so it does not change Djinni's read state.
+// The scheduled Djinni job. Reuses the session saved by djinni-login.mjs and
+// counts UNREAD conversations using Djinni's own unread filter
+// (/my/inbox?bucket=unread), then writes the count to djinni-notify-state.json.
+// The Jobs.app Dock badge sums this with the LinkedIn count (notify-state.json).
+// COUNT ONLY: it never opens a thread, never drafts, never sends — so it does
+// not change Djinni's read state.
 //
 // Run:  node djinni-check.mjs              (headless)
-//       HEADFUL=1 node djinni-check.mjs    (watch it work — useful for fixing selectors)
+//       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
 import { chromium } from "playwright";
 import { existsSync } from "node:fs";
@@ -20,22 +21,10 @@ const STATE_FILE = join(__dir, "djinni-notify-state.json");
 const JOBS_APP = join(__dir, "Jobs.app"); // built by build-jobs.sh
 const HEADFUL = process.env.HEADFUL === "1";
 
-// ---- Selectors (centralized; verify against the live page with HEADFUL=1) ----
-// Djinni is server-rendered and does not obfuscate class names, but markup can
-// still change. Two strategies: (1) the nav's own unread counter, (2) per-row
-// unread markers in the inbox list.
-const SEL = {
-  // (1) Primary: the unread-messages counter shown in the top nav / inbox link.
-  navUnread:
-    ".js-unread-messages, .unread-count, a[href*='/my/inbox'] .badge, " +
-    "a[href*='/my/inbox'] [class*='count'], [class*='unread'][class*='count']",
-  // (2) Fallback: conversation rows in the inbox list.
-  inboxRow:
-    "a[href*='/my/inbox/'], .inbox__item, li.conversation, [class*='conversation-item']",
-  // An unread marker WITHIN a row (class-based).
-  rowUnread:
-    ".unread, .is-unread, [class*='unread'], .badge, .new",
-};
+// Djinni's own "unread" inbox bucket. Counting the conversation threads listed
+// here is the most reliable unread signal (verified against the live DOM):
+// each thread is a link of the form /my/inbox/<id>/.
+const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 
 function log(...a) {
   console.log(new Date().toISOString(), ...a);
@@ -66,12 +55,6 @@ function ensureJobsApp() {
   } catch (e) { log("notify: ensureJobsApp threw:", e?.message); }
 }
 
-// Parse the first integer found in a string ("3", "(3)", "3 new" -> 3).
-function firstInt(s) {
-  const m = String(s || "").match(/\d+/);
-  return m ? parseInt(m[0], 10) : null;
-}
-
 const ctx = await chromium.launchPersistentContext(PROFILE, {
   headless: !HEADFUL,
   viewport: { width: 1280, height: 900 },
@@ -82,70 +65,37 @@ let unreadCount = 0;
 
 try {
   const page = ctx.pages()[0] || (await ctx.newPage());
-  await page.goto("https://djinni.co/my/inbox/", { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.waitForTimeout(1500); // let the conversation list render
 
-  // Detect a logged-out session early and bail with a clear message.
-  if (/\/login|\/signup|\/auth/.test(page.url()) || (await page.$("input[type='password']"))) {
-    // Intentionally do NOT writeState here: leave the last known count on the
-    // badge rather than zeroing it on a transient session expiry.
+  // Logged-out detection: Djinni redirects protected pages to /login, and the
+  // /logout link is absent when not authenticated. (A `sessionid` cookie is set
+  // even for anonymous visitors, so cookie presence is NOT a reliable signal.)
+  const loggedIn = !/\/login/.test(page.url()) && (await page.$("a[href='/logout']").then(Boolean));
+  if (!loggedIn) {
+    // Intentionally do NOT writeState here (process.exit skips finally): leave
+    // the last known count on the badge rather than zeroing it on a transient
+    // session expiry.
     log("❌ Not logged in (session expired). Run:  node djinni-login.mjs");
     notify("Djinni assistant", "Session expired — run `node djinni-login.mjs` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }
 
-  await page.waitForTimeout(1500); // let client-side counters settle
-
   // Keep the Dock-badge daemon (Jobs.app) alive.
   ensureJobsApp();
 
-  // (1) Primary: read Djinni's own unread counter from the nav. If the nav
-  // reports a number (including 0), it is authoritative — skip the fallback so
-  // a confirmed-zero is not overridden by row heuristics.
-  let navSucceeded = false;
-  try {
-    const el = await page.$(SEL.navUnread);
-    if (el) {
-      const n = firstInt((await el.innerText()).trim());
-      if (Number.isFinite(n)) {
-        unreadCount = n;
-        navSucceeded = true;
-        log(`Unread (nav counter): ${unreadCount}`);
-      }
+  // Count distinct unread conversation threads. Each thread in the unread bucket
+  // is one or more links of the form /my/inbox/<id>/...; dedupe by the numeric id.
+  unreadCount = await page.evaluate(() => {
+    const ids = new Set();
+    for (const a of document.querySelectorAll("a[href*='/my/inbox/']")) {
+      const m = (a.getAttribute("href") || "").match(/\/my\/inbox\/(\d+)\//);
+      if (m) ids.add(m[1]);
     }
-  } catch (e) {
-    log("⚠️  nav unread selector failed:", e?.message);
-  }
-
-  // (2) Fallback: only when the nav counter was absent/unparseable, count inbox
-  // rows that carry an unread marker.
-  if (!navSucceeded) {
-    try {
-      const rows = await page.$$(SEL.inboxRow);
-      log(`Inbox rows found: ${rows.length}`);
-      let n = 0;
-      for (const row of rows) {
-        let isUnread = false;
-        try { isUnread = await row.$(SEL.rowUnread).then(Boolean); } catch {}
-        if (!isUnread) {
-          // Bold thread title also indicates unread on many list UIs.
-          try {
-            isUnread = await row.evaluate((el) => {
-              const title = el.querySelector("[class*='title'], [class*='subject'], [class*='name'], strong");
-              const target = title || el;
-              const w = getComputedStyle(target).fontWeight;
-              return parseInt(w, 10) >= 600 || w === "bold";
-            });
-          } catch {}
-        }
-        if (isUnread) n++;
-      }
-      unreadCount = n;
-      log(`Unread (row markers): ${unreadCount}`);
-    } catch (e) {
-      log("⚠️  Could not read inbox rows — DOM may have changed. Run with HEADFUL=1 to inspect.", e?.message);
-    }
-  }
+    return ids.size;
+  });
+  log(`Djinni unread threads: ${unreadCount}`);
 } catch (err) {
   log("ERROR:", err?.message || err);
 } finally {

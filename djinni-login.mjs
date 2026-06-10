@@ -31,21 +31,15 @@ console.log(" Log in to Djinni there (handle 2FA if asked).");
 console.log(" This will detect success automatically and close itself.");
 console.log("========================================================\n");
 
-// Indicators that we are logged in (any one is enough).
+// Are we logged in? Djinni sets a `sessionid` cookie even for ANONYMOUS
+// visitors, so cookie presence is NOT a reliable signal (it would auto-detect a
+// "login" before you type anything). The reliable signal is the logged-in nav:
+// a /logout link appears only after a real login, and the /login page itself
+// never shows one.
 async function isLoggedIn() {
-  // 1) A Djinni session cookie is present.
   try {
-    const cookies = await ctx.cookies("https://djinni.co");
-    if (cookies.some((c) => c.name === "sessionid" && c.value)) return true;
-  } catch {}
-  // 2) We have left the /login page for an authenticated path, OR an
-  //    authenticated nav element (user menu / inbox link / logout) is visible.
-  try {
-    if (/djinni\.co\/my\//.test(page.url())) return true;
-    const el = await page.$(
-      "a[href*='/logout'], a[href*='/my/inbox'], .profile-dropdown, [class*='user-menu']"
-    );
-    if (el) return true;
+    if (/\/login/.test(page.url())) return false; // still on the login page
+    return await page.$("a[href='/logout']").then(Boolean);
   } catch {}
   return false;
 }
