@@ -16,12 +16,14 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { buildDraft } from "./lib/draft.mjs";
+import { writeState } from "./lib/notify-state.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
 const SEEN_FILE = join(__dir, "seen.json");
-const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
+const STATE_FILE = join(__dir, "notify-state.json");
+const JOBS_APP = join(__dir, "Jobs.app"); // built by build-jobs.sh
 const HEADFUL = process.env.HEADFUL === "1";
 const MAX = parseInt(process.env.MAX || "12", 10);
 const SCAN_ALL = process.env.SCAN_ALL === "1";
@@ -63,33 +65,21 @@ function notify(title, message) {
   execFile("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}`], () => {});
 }
 
-// iPhone-style "new message" banner: sender name as the bold title and the
-// message text as the body — the same shape as an incoming text on iPhone.
-// Prefers Notifier.app (built by build-notifier.sh), which posts via the modern
-// UserNotifications framework under the green Messages icon. It MUST be launched
-// via `open` so macOS treats it as a registered app — a bare exec is rejected
-// with "Notifications are not allowed". We spawn detached + unref'd so the
-// banner survives this process exiting. -n forces a fresh instance per message.
-// Note: notifications only present from a real GUI-session context (the launchd
-// LaunchAgent that schedules this script) — not from a non-Aqua parent shell.
-// Falls back to osascript (works, but shows the Script Editor icon) if the app
-// is missing. Best-effort, never throws.
-function notifyMessage(sender, text) {
-  const body = (text || "").replace(/\s+/g, " ").trim().slice(0, 240) || "New message";
-  const title = sender || "LinkedIn";
-  if (existsSync(NOTIFIER_APP)) {
-    try {
-      const p = spawn("open", ["-n", "-a", NOTIFIER_APP, "--args", title, body],
-        { detached: true, stdio: "ignore" });
-      p.on("error", (e) => { log("notify: Notifier.app failed, osascript fallback:", e?.message); notify(title, body); });
-      p.unref();
-      log("notify: via Notifier.app (green Messages icon)");
-      return;
-    } catch (e) { log("notify: spawn threw, osascript fallback:", e?.message); }
-  } else {
-    log("notify: Notifier.app missing at", NOTIFIER_APP, "— osascript fallback");
+// Ensure the persistent Jobs.app badge daemon is running so it can render the
+// Dock badge from notify-state.json. `--background` means "badge only, do not
+// open the dashboard"; `-g` keeps focus on the user's current app. `open` is a
+// no-op if Jobs.app is already running. Best-effort, never throws.
+function ensureJobsApp() {
+  if (!existsSync(JOBS_APP)) {
+    log("notify: Jobs.app missing at", JOBS_APP, "— run ./build-jobs.sh");
+    return;
   }
-  notify(title, body);
+  try {
+    const p = spawn("open", ["-g", "-a", JOBS_APP, "--args", "--background"],
+      { detached: true, stdio: "ignore" });
+    p.on("error", (e) => log("notify: ensureJobsApp failed:", e?.message));
+    p.unref();
+  } catch (e) { log("notify: ensureJobsApp threw:", e?.message); }
 }
 
 function loadSeen() {
@@ -110,6 +100,7 @@ const ctx = await chromium.launchPersistentContext(PROFILE, {
 
 let drafted = 0;
 let scanned = 0;
+let unreadCount = 0;
 
 try {
   const page = ctx.pages()[0] || (await ctx.newPage());
@@ -130,6 +121,14 @@ try {
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
   log(`Found ${cards.length} conversation cards.`);
+
+  // Keep the Dock-badge daemon (Jobs.app) alive, then count ALL unread threads
+  // (independent of MAX and the job-relevance filter) — this drives the badge.
+  ensureJobsApp();
+  for (const card of cards) {
+    if (await cardIsUnread(card)) unreadCount++;
+  }
+  log(`Unread threads: ${unreadCount}`);
 
   for (const card of cards) {
     if (drafted + scanned >= MAX) break;
@@ -170,10 +169,6 @@ try {
 
     if (seen.has(threadId)) { log(`· already processed: ${name}`); continue; }
 
-    // New unread message — fire an iPhone-style "new message" notification for
-    // ANY new message (job-relevant or not), before the job filter below.
-    notifyMessage(name, snippet);
-
     if (!fullText || !looksLikeJobMessage(fullText)) {
       log(`· not a job message, skipping: ${name}`);
       seen.add(threadId);
@@ -194,6 +189,11 @@ try {
   log("ERROR:", err?.message || err);
 } finally {
   saveSeen(seen);
+  try {
+    writeState(STATE_FILE, { count: unreadCount });
+  } catch (e) {
+    log("notify: writeState failed:", e?.message);
+  }
   await ctx.close();
 }
 
