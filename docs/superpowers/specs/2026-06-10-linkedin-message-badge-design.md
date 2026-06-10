@@ -1,112 +1,112 @@
-# Design: Unread LinkedIn message badge on the Notifier app
+# Design: Unread LinkedIn message badge on the Jobs app
 
 **Date:** 2026-06-10
-**Status:** Approved
+**Status:** Approved (revised v2 — badge moved to Jobs.app)
 
 ## Goal
 
 Show a persistent red badge with a count of unread LinkedIn message threads on
-the Dock icon — the macOS equivalent of the iPhone "Messages" home-screen badge.
-Today only a transient banner is shown; there is no count badge.
+the **`Jobs.app`** ("Вакансии") Dock icon — the macOS equivalent of the iPhone
+"Messages" home-screen badge. Only the badge is wanted; no banner pop-ups.
 
 ## Approach (decided)
 
-Extend the **existing** `Notifier.app` — do **not** create a separate app.
-The same app gains a persistent Dock presence and a badge, while keeping its
-current banner behaviour.
+The badge lives on the **`Jobs.app`** icon (the launcher the user keeps in the
+Dock), not a separate notifier app.
 
-Today `Notifier.app` is `LSUIElement` (no Dock icon) and one-shot: it is
-launched per message (`open -n -a Notifier.app --args title body`), posts one
-banner, and exits after ~8 s. A Dock badge needs a process that stays alive and
-owns a Dock tile, so the app becomes a long-running, Dock-present app.
+`Jobs.app` is today an AppleScript applet that runs `node dashboard.mjs --open`
+and quits. A Dock badge requires a process that stays alive and owns its Dock
+tile, and a one-shot applet cannot hold a live count. AppleScript "stay-open"
+applets cannot be produced reliably from the CLI (`osacompile` builds run-once
+applets only). Therefore `Jobs.app` is **rebuilt as a small Swift app** that:
+
+- stays running in the Dock with the existing "Вакансии" icon;
+- polls `notify-state.json` every ~3 s and sets the Dock badge to the unread
+  count (cleared at 0);
+- opens the dashboard (`node dashboard.mjs --open`) on a foreground (user)
+  launch and on Dock-icon click — preserving the old applet's behaviour;
+- when launched with `--background` (login LaunchAgent / `check.mjs`) runs the
+  badge daemon only and does NOT open the dashboard.
+
+`Jobs.app` is a git-ignored build artifact (like `Notifier.app`), so rebuilding
+it from a script + committed sources fits the repo. Banners are dropped, so the
+separate `Notifier.app` is no longer used (left in the repo, dormant).
 
 ## Components
 
 ### 1. `notifier.swift` — two modes in one binary
 
 - **Daemon mode** (launched with no banner args, started at login):
-  - Regular activation policy (`.regular`) instead of `LSUIElement`, so the app
-    shows in the Dock with the green Messages icon.
-  - No window. Runs an `NSApplication` run loop.
-  - Every ~3 s reads the state file `notify-state.json` and:
-    - sets `NSApp.dockTile.badgeLabel` to the unread count (empty string when 0,
-      so the badge disappears);
-    - for any `pending` banner entries not yet delivered, posts them via
-      `UserNotifications` (same code path as today) and marks them delivered.
-  - On reopen/click of the Dock icon, opens `https://www.linkedin.com/messaging/`
-    via `NSWorkspace`.
-- **Banner mode** (`notifier "title" "body"`): unchanged one-shot banner, kept
-  for the manual test in `build-notifier.sh`. Not used by the runtime path.
-- `--status` flag: unchanged.
+### Components
 
-### 2. `build-notifier.sh` — packaging changes
+**1. `jobs-app.swift` (new) — the Jobs launcher + badge daemon**
+- Regular activation policy (`.regular`); no window; runs an `NSApplication`
+  run loop and stays in the Dock with the "Вакансии" icon.
+- Every ~3 s reads `notify-state.json` and sets `NSApp.dockTile.badgeLabel` to
+  the `count` (set to `nil` when 0, so the badge disappears).
+- `applicationDidFinishLaunching`: starts the poll timer; on a foreground launch
+  (no `--background` arg) also opens the dashboard once.
+- `applicationShouldHandleReopen` (Dock-icon click while running): opens the
+  dashboard.
+- Opening the dashboard runs `node dashboard.mjs --open` (node path resolved
+  from `$NODE_BIN`, then `~/.nvm/.../v20.14.0/bin/node`, then Homebrew, then
+  `env node`).
 
-- Remove `LSUIElement` from `Info.plist` (Dock icon appears).
-- Keep the same `CFBundleIdentifier` and ad-hoc signing so the granted
-  notification permission is preserved.
-- Green Messages icon build is reused as-is.
+**2. `build-jobs.sh` (new) — packaging**
+- Compiles `jobs-app.swift` into `Jobs.app/Contents/MacOS/jobs`.
+- `Info.plist`: `CFBundleName`/`CFBundleDisplayName` = "Вакансии",
+  `CFBundleIdentifier` = `com.eugene.linkedin-assistant.jobs`, icon = `AppIcon`,
+  no `LSUIElement`.
+- Copies `jobs.icns` (extracted from the old applet, committed) to
+  `Resources/AppIcon.icns`.
+- Ad-hoc signs and registers with LaunchServices.
 
-### 3. `check.mjs` — produce state instead of spawning per message
-
-- Count **all** unread threads using the existing `cardIsUnread` helper,
+**3. `check.mjs` — write the count, drop banners**
+- Counts **all** unread threads via the existing `cardIsUnread` helper,
   independent of `SCAN_ALL` and the job-relevance filter.
-- Replace the per-message `open -n -a Notifier.app --args ...` with a single
-  write to `notify-state.json`:
-  ```json
-  {
-    "count": 2,
-    "pending": [
-      { "id": "thread-id-or-hash", "sender": "Helen", "text": "..." }
-    ],
-    "updatedAt": "2026-06-10T10:00:00.000Z"
-  }
-  ```
-  - `count` is the total unread-thread count (drives the badge).
-  - `pending` carries new-message banners for the daemon to post. Entry `id`
-    reuses the existing `threadId` so the same message is not re-bannered.
-- Defensively ensure the daemon is running: `open -g -j -a Notifier.app`
-  (no-op if already running; `-g` keeps focus, `-j` launches hidden).
+- Removes the per-message banner call (`notifyMessage`) — banners are dropped.
+- Writes `notify-state.json` via the helper: `{ "count": N, "updatedAt": "..." }`.
+- Defensively ensures `Jobs.app` is running: `open -g -a Jobs.app --args --background`
+  (no-op if already running; `--background` means "don't open the dashboard").
+- Keeps the existing `notify()` osascript call for the session-expired alert.
 
-### 4. Autostart
-
-- Add a LaunchAgent plist (modelled on the existing `com.eugene.*.plist`) that
-  launches `Notifier.app` at login and keeps it alive, so the badge is always
-  present.
+**4. Autostart**
+- LaunchAgent plist `com.eugene.jobs-badge.plist` (modelled on the existing
+  `com.eugene.*.plist`) runs `open -g -a Jobs.app --args --background` at login,
+  so the badge daemon is always present without opening the dashboard.
 
 ## Data flow
 
 ```
-LaunchAgent (schedule) -> check.mjs -> counts unread threads
-        -> writes notify-state.json { count, pending }
-Notifier.app (always in Dock) -> every ~3s reads notify-state.json
-        -> NSApp.dockTile.badgeLabel = "<count>"   (red badge)
-        -> posts any new pending banners (UserNotifications)
-Click on Dock icon -> opens linkedin.com/messaging/
+LaunchAgent (login) -> open -g -a Jobs.app --args --background  (badge daemon)
+check.mjs (scan) -> counts unread threads -> writes notify-state.json { count }
+Jobs.app (always in Dock) -> every ~3s reads notify-state.json
+        -> NSApp.dockTile.badgeLabel = "<count>"   (red badge, nil when 0)
+Click on Dock icon -> opens the jobs dashboard (node dashboard.mjs --open)
 ```
 
 ## Decisions
 
-- **Badge number** = all unread threads (matches LinkedIn's own counter), not
-  just job-relevant ones.
-- **Click clears badge?** No optimistic clear. Clicking only opens LinkedIn; the
-  badge is reconciled by the next scan (a few minutes), keeping the number
-  honest rather than briefly wrong.
-- **One app**, not two. Banners and badge live in the same `Notifier.app`.
+- **Badge number** = all unread threads (matches LinkedIn's own counter).
+- **Only the badge** — no banner pop-ups (the former `Notifier.app` path is
+  dropped from `check.mjs`; the app is left dormant in the repo).
+- **Badge lives on Jobs.app**, the icon the user already keeps in the Dock.
+- **No optimistic clear** — the badge is reconciled by the next scan, keeping the
+  number honest.
 
 ## Out of scope (YAGNI)
 
-- No change to banner appearance.
-- No real-time push; the badge updates on the existing scan cadence (plus the
-  ~3 s file poll for prompt pickup).
-- No badge interaction beyond open-on-click.
+- No banners.
+- No real-time push; the badge updates on the scan cadence plus the ~3 s poll.
+- No badge interaction beyond open-dashboard-on-click.
 
 ## Risk notes
 
-- Removing `LSUIElement` keeps the same bundle id, so notification permission is
-  preserved; no re-grant needed.
-- Two-instance hazard (a daemon plus a one-shot `-n` banner) is avoided by
-  routing banners through the daemon via `notify-state.json` instead of
-  `open -n` per message.
-- `notify-state.json` is written by `check.mjs` and read by the daemon; writes
-  should be atomic (write temp + rename) to avoid the daemon reading a partial
-  file.
+- A Dock badge requires a running app owning the Dock tile; hence `Jobs.app`
+  must stay open and be autostarted. A one-shot/closed app cannot show a live
+  badge.
+- `notify-state.json` is written by `check.mjs` and read by `Jobs.app`; writes
+  are atomic (temp + rename) so the reader never sees a partial file.
+- The old applet `Jobs.app` is backed up to `Jobs.app.orig` before replacement.
+- `check.mjs` opens unread threads (may mark them read on LinkedIn); the count is
+  taken at scan start, so the badge tracks LinkedIn's own read-state over scans.
