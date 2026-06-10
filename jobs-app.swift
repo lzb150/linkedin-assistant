@@ -2,8 +2,9 @@
 //
 // Replaces the former AppleScript applet (backed up to Jobs.app.orig). Behaviour:
 //   - Stays running in the Dock with the "Вакансии" icon.
-//   - Polls notify-state.json every ~3s and shows the unread LinkedIn message
-//     count as a red Dock badge (cleared when the count is 0).
+//   - Polls notify-state.json AND djinni-notify-state.json every ~3s and shows
+//     the COMBINED unread count (LinkedIn messages + Djinni inbox) as a red Dock
+//     badge (cleared when the total is 0).
 //   - Opens the jobs dashboard (node dashboard.mjs --open) on a foreground
 //     (user) launch and when its Dock icon is clicked — preserving the old
 //     applet's behaviour.
@@ -17,6 +18,7 @@ import Cocoa
 let bundlePath = Bundle.main.bundlePath                       // <project>/Jobs.app
 let projectDir = (bundlePath as NSString).deletingLastPathComponent
 let statePath = (projectDir as NSString).appendingPathComponent("notify-state.json")
+let djinniStatePath = (projectDir as NSString).appendingPathComponent("djinni-notify-state.json")
 let dashboardScript = (projectDir as NSString).appendingPathComponent("dashboard.mjs")
 let isBackground = CommandLine.arguments.contains("--background")
 
@@ -70,13 +72,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    // Read the "count" field from one notify-state JSON file (missing/invalid -> 0).
+    func unreadCount(at path: String) -> Int {
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let n = (obj["count"] as? NSNumber)?.intValue else { return 0 }
+        return max(0, n)
+    }
+
     func poll() {
-        var count = 0
-        if let data = FileManager.default.contents(atPath: statePath),
-           let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-           let n = (obj["count"] as? NSNumber)?.intValue {
-            count = n
-        }
+        // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
+        let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
         NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
     }
 }
