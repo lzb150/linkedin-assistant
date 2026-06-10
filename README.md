@@ -70,9 +70,23 @@ MAX=5 node check.mjs        # cap unread threads opened this run
 SCAN_ALL=1 node check.mjs   # scan recent threads regardless of read state
 ```
 
-New drafts land in `drafts/` and you get a macOS notification. Each draft is a
-markdown file: their message, a suggested reply, the relevance score, and an
-attach-resume checkbox. It never clicks Send.
+New drafts land in `drafts/`. Each draft is a markdown file: their message, a
+suggested reply, the relevance score, and an attach-resume checkbox. It never
+clicks Send.
+
+### Unread badge on the Jobs app
+
+Each scan writes the number of unread LinkedIn message threads to
+`notify-state.json`. The **Jobs app** (`Jobs.app`, "Вакансии") runs persistently
+in the Dock and reads that file every few seconds, showing the count as a red
+Dock badge (cleared once the threads are read on LinkedIn — the next scan
+reports a lower count). Clicking the Dock icon opens the dashboard as before.
+
+Build it with `./build-jobs.sh`, then start it at login by installing
+`com.eugene.jobs-badge.plist` into `~/Library/LaunchAgents/` (see
+`com.example.jobs-badge.plist.example`). `check.mjs` also relaunches it
+defensively on each scan. The original AppleScript applet is preserved at
+`Jobs.app.orig`.
 
 ## Job discovery — `jobs.mjs`
 

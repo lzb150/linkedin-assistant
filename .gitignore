@@ -14,6 +14,13 @@ applications/index.html
 jobs-seen.json
 seen.json
 
+# Runtime Dock-badge state (written by check.mjs, read by Jobs.app)
+notify-state.json
+notify-state.json.tmp
+
+# Backup of the original AppleScript Jobs applet (kept local)
+Jobs.app.orig/
+
 # macOS
 .DS_Store
 
