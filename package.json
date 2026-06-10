@@ -6,7 +6,8 @@
   "description": "Draft-only LinkedIn message assistant: reads your own inbox, scores job messages against your resume, writes draft replies. Never sends.",
   "scripts": {
     "login": "node login.mjs",
-    "check": "node check.mjs"
+    "check": "node check.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "playwright": "^1.49.0"
