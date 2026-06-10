@@ -86,6 +86,8 @@ try {
 
   // Detect a logged-out session early and bail with a clear message.
   if (/\/login|\/signup|\/auth/.test(page.url()) || (await page.$("input[type='password']"))) {
+    // Intentionally do NOT writeState here: leave the last known count on the
+    // badge rather than zeroing it on a transient session expiry.
     log("❌ Not logged in (session expired). Run:  node djinni-login.mjs");
     notify("Djinni assistant", "Session expired — run `node djinni-login.mjs` to re-authenticate.");
     await ctx.close();
@@ -97,20 +99,27 @@ try {
   // Keep the Dock-badge daemon (Jobs.app) alive.
   ensureJobsApp();
 
-  // (1) Primary: read Djinni's own unread counter from the nav.
+  // (1) Primary: read Djinni's own unread counter from the nav. If the nav
+  // reports a number (including 0), it is authoritative — skip the fallback so
+  // a confirmed-zero is not overridden by row heuristics.
+  let navSucceeded = false;
   try {
     const el = await page.$(SEL.navUnread);
     if (el) {
       const n = firstInt((await el.innerText()).trim());
       if (Number.isFinite(n)) {
         unreadCount = n;
+        navSucceeded = true;
         log(`Unread (nav counter): ${unreadCount}`);
       }
     }
-  } catch {}
+  } catch (e) {
+    log("⚠️  nav unread selector failed:", e?.message);
+  }
 
-  // (2) Fallback: count inbox rows that carry an unread marker.
-  if (unreadCount === 0) {
+  // (2) Fallback: only when the nav counter was absent/unparseable, count inbox
+  // rows that carry an unread marker.
+  if (!navSucceeded) {
     try {
       const rows = await page.$$(SEL.inboxRow);
       log(`Inbox rows found: ${rows.length}`);
@@ -122,7 +131,9 @@ try {
           // Bold thread title also indicates unread on many list UIs.
           try {
             isUnread = await row.evaluate((el) => {
-              const w = getComputedStyle(el).fontWeight;
+              const title = el.querySelector("[class*='title'], [class*='subject'], [class*='name'], strong");
+              const target = title || el;
+              const w = getComputedStyle(target).fontWeight;
               return parseInt(w, 10) >= 600 || w === "bold";
             });
           } catch {}
