@@ -90,7 +90,7 @@ defensively on each scan. The original AppleScript applet is preserved at
 
 ## Djinni inbox (combined Dock badge)
 
-The Dock badge on `Jobs.app` ("Вакансії") shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
+The Dock badge on `Jobs.app` ("Вакансии") shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
 
 One-time login (whenever the Djinni session expires):
 
@@ -191,6 +191,8 @@ Session expired? Re-run `node login.mjs`.
 ├── check.mjs          inbox → reply drafts
 ├── jobs.mjs           job discovery → application packages
 ├── login.mjs          one-time LinkedIn login
+├── djinni-login.mjs   one-time Djinni login
+├── djinni-check.mjs   Djinni inbox unread count → djinni-notify-state.json
 ├── dashboard.mjs      HTML dashboard generator
 ├── lib/               logic (scoring, templates, DOU/Djinni/Jooble/LinkedIn sources)
 ├── skills.json        skill profile + weights
@@ -206,6 +208,8 @@ Session expired? Re-run `node login.mjs`.
 |-----------------------|-----------------------------------------------------------|
 | `login.mjs`           | One-time manual login; persists session.                  |
 | `check.mjs`           | Read unread → score → draft. Never sends.                 |
+| `djinni-login.mjs`    | One-time manual Djinni login; persists session.           |
+| `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
 | `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |

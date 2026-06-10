@@ -4,7 +4,8 @@
   launchd job: runs the Djinni inbox check once an hour, at the top of every
   hour. It writes djinni-notify-state.json; the always-running Jobs.app badge
   daemon (see com.example.jobs-badge.plist.example) sums it with the LinkedIn
-  count. Copy to a machine-local file and adjust the paths first.
+  count. Copy to a machine-local file (e.g. com.<you>.djinni-inbox.plist),
+  change the Label to match, and adjust the paths first.
   Install:
     cp com.example.djinni-inbox.plist.example ~/Library/LaunchAgents/com.example.djinni-inbox.plist
     launchctl load ~/Library/LaunchAgents/com.example.djinni-inbox.plist
