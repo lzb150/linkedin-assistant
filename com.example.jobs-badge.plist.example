@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: starts the Jobs.app badge daemon at login. `--background` means
+  "show the unread Dock badge only, do NOT open the dashboard". Jobs.app stays
+  open and polls notify-state.json. check.mjs also re-launches it defensively
+  (open -g) on each scan.
+  Install:
+    cp com.example.jobs-badge.plist.example ~/Library/LaunchAgents/com.example.jobs-badge.plist
+    launchctl load ~/Library/LaunchAgents/com.example.jobs-badge.plist
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.example.jobs-badge.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.jobs-badge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/open</string>
+    <string>-g</string>
+    <string>-a</string>
+    <string>/Users/example/linkedin-assistant/Jobs.app</string>
+    <string>--args</string>
+    <string>--background</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/example/linkedin-assistant/logs/jobs-badge.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/example/linkedin-assistant/logs/jobs-badge.err.log</string>
+</dict>
+</plist>
