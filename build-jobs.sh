@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Build Jobs.app — the "Вакансии" launcher that also shows the unread LinkedIn
+# message count as a red Dock badge. Replaces the former AppleScript applet
+# (the original is preserved at Jobs.app.orig). The built .app is git-ignored;
+# commit this script + jobs-app.swift + jobs.icns instead.
+#
+# After building, start it once:  open -a ./Jobs.app
+# Autostart at login via com.eugene.jobs-badge.plist (see README).
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP="$DIR/Jobs.app"
+
+echo "Building $APP …"
+
+# Preserve the original applet once, in case it is still the live Jobs.app.
+if [ -d "$APP" ] && [ ! -d "$DIR/Jobs.app.orig" ]; then
+  cp -R "$APP" "$DIR/Jobs.app.orig"
+  echo "  backed up original applet to Jobs.app.orig"
+fi
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Вакансии</string>
+  <key>CFBundleDisplayName</key><string>Вакансии</string>
+  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs</string>
+  <key>CFBundleExecutable</key><string>jobs</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+</dict>
+</plist>
+PLIST
+
+# Icon: reuse the original applet's icon (extracted to jobs.icns).
+if [ -f "$DIR/jobs.icns" ]; then
+  cp "$DIR/jobs.icns" "$APP/Contents/Resources/AppIcon.icns"
+  echo "  icon: copied jobs.icns"
+else
+  echo "  icon: WARNING — jobs.icns missing, app will use a generic icon"
+fi
+
+# Compile the Swift app into the bundle.
+xcrun swiftc -O -framework Cocoa \
+  -o "$APP/Contents/MacOS/jobs" "$DIR/jobs-app.swift"
+
+# Ad-hoc sign for a stable identity.
+codesign --force --sign - "$APP"
+
+# Register with LaunchServices so `open -a` recognizes it.
+LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+[ -x "$LSREG" ] && "$LSREG" -f "$APP" && echo "  registered with LaunchServices"
+
+echo "Done. Test:  open -a \"$APP\"   (badge daemon: open -g -a \"$APP\" --args --background)"
