@@ -66,6 +66,7 @@ const ctx = await chromium.launchPersistentContext(PROFILE, {
 });
 
 let unreadCount = 0;
+let scanned = false; // true once we have a real count from a loaded page
 
 try {
   const page = ctx.pages()[0] || (await ctx.newPage());
@@ -104,6 +105,7 @@ try {
     return [...byId.entries()].map(([id, label]) => ({ id, label }));
   });
   unreadCount = threads.length;
+  scanned = true;
   log(`Djinni unread threads: ${unreadCount}`);
 
   // Banner only for threads we have not already notified about. The seen set is
@@ -136,13 +138,24 @@ try {
 } catch (err) {
   log("ERROR:", err?.message || err);
 } finally {
-  try {
-    writeState(STATE_FILE, { count: unreadCount });
-  } catch (e) {
-    log("notify: writeState failed:", e?.message);
+  // Only overwrite the badge when we actually loaded the page. On a network
+  // error (page never loaded) leave the last known count so the badge does not
+  // flicker to 0 — same policy as the session-expiry path above.
+  if (scanned) {
+    try {
+      writeState(STATE_FILE, { count: unreadCount });
+    } catch (e) {
+      log("notify: writeState failed:", e?.message);
+    }
+  } else {
+    log("scan failed — keeping last known badge count (state not rewritten)");
   }
   await ctx.close();
 }
 
-log(`Done. Djinni unread: ${unreadCount} -> ${STATE_FILE}`);
+log(
+  scanned
+    ? `Done. Djinni unread: ${unreadCount} -> ${STATE_FILE}`
+    : `Done. Scan failed; badge left unchanged.`,
+);
 process.exit(0);
