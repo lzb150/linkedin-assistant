@@ -48,5 +48,8 @@ resume.txt
 djinni-notify-state.json
 djinni-notify-state.json.tmp
 
+# Ids of Djinni threads already notified about (written by djinni-check.mjs)
+djinni-seen.json
+
 # Machine-specific Djinni run wrapper — use run-djinni.sh.example
 run-djinni.sh

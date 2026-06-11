@@ -9,7 +9,7 @@
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
 import { chromium } from "playwright";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -18,6 +18,10 @@ import { writeState } from "./lib/notify-state.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
 const STATE_FILE = join(__dir, "djinni-notify-state.json");
+// Thread ids we have already posted a banner for. Persisted across runs so a
+// given unread conversation only notifies once. A network error never touches
+// this file, so a transient blip can't trigger a spurious re-notification.
+const SEEN_FILE = join(__dir, "djinni-seen.json");
 const JOBS_APP = join(__dir, "Jobs.app"); // built by build-jobs.sh
 const HEADFUL = process.env.HEADFUL === "1";
 
@@ -85,17 +89,50 @@ try {
   // Keep the Dock-badge daemon (Jobs.app) alive.
   ensureJobsApp();
 
-  // Count distinct unread conversation threads. Each thread in the unread bucket
-  // is one or more links of the form /my/inbox/<id>/...; dedupe by the numeric id.
-  unreadCount = await page.evaluate(() => {
-    const ids = new Set();
+  // Collect distinct unread conversation threads. Each thread in the unread
+  // bucket is one or more links of the form /my/inbox/<id>/...; dedupe by the
+  // numeric id and keep the first non-empty link label (recruiter/company name).
+  const threads = await page.evaluate(() => {
+    const byId = new Map();
     for (const a of document.querySelectorAll("a[href*='/my/inbox/']")) {
       const m = (a.getAttribute("href") || "").match(/\/my\/inbox\/(\d+)\//);
-      if (m) ids.add(m[1]);
+      if (!m) continue;
+      const id = m[1];
+      const label = (a.textContent || "").replace(/\s+/g, " ").trim();
+      if (!byId.has(id) || (!byId.get(id) && label)) byId.set(id, label);
     }
-    return ids.size;
+    return [...byId.entries()].map(([id, label]) => ({ id, label }));
   });
+  unreadCount = threads.length;
   log(`Djinni unread threads: ${unreadCount}`);
+
+  // Banner only for threads we have not already notified about. The seen set is
+  // the unread ids from the previous successful scan; a thread that is read (and
+  // leaves the unread bucket) drops out, so if it ever goes unread again it will
+  // notify afresh. First run with no seen file notifies for current unread.
+  let seen = [];
+  try {
+    if (existsSync(SEEN_FILE)) {
+      const raw = JSON.parse(readFileSync(SEEN_FILE, "utf8"));
+      if (Array.isArray(raw)) seen = raw.map(String);
+    }
+  } catch (e) { log("notify: reading seen file failed:", e?.message); }
+
+  const seenSet = new Set(seen);
+  const fresh = threads.filter((t) => !seenSet.has(t.id));
+  if (fresh.length) {
+    const first = fresh.find((t) => t.label)?.label;
+    const message =
+      fresh.length === 1
+        ? `New message${first ? `: ${first}` : ""}`
+        : `${fresh.length} new messages${first ? ` (incl. ${first})` : ""}`;
+    notify("Djinni", message);
+    log(`notify: banner for ${fresh.length} new thread(s)`);
+  }
+
+  try {
+    writeFileSync(SEEN_FILE, JSON.stringify(threads.map((t) => t.id)));
+  } catch (e) { log("notify: writing seen file failed:", e?.message); }
 } catch (err) {
   log("ERROR:", err?.message || err);
 } finally {
