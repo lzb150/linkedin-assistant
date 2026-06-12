@@ -67,6 +67,7 @@ const ctx = await chromium.launchPersistentContext(PROFILE, {
 
 let unreadCount = 0;
 let scanned = false; // true once we have a real count from a loaded page
+let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 
 try {
   const page = ctx.pages()[0] || (await ctx.newPage());
@@ -105,6 +106,7 @@ try {
     return [...byId.entries()].map(([id, label]) => ({ id, label }));
   });
   unreadCount = threads.length;
+  unreadThreads = threads;
   scanned = true;
   log(`Djinni unread threads: ${unreadCount}`);
 
@@ -143,7 +145,13 @@ try {
   // flicker to 0 — same policy as the session-expiry path above.
   if (scanned) {
     try {
-      writeState(STATE_FILE, { count: unreadCount });
+      // Persist the unread threads (id + label) too, so Jobs.app can open the
+      // conversation on a Dock click: a single unread opens that thread, several
+      // open the unread bucket.
+      writeState(STATE_FILE, {
+        count: unreadCount,
+        pending: unreadThreads.map((t) => ({ id: t.id, label: t.label })),
+      });
     } catch (e) {
       log("notify: writeState failed:", e?.message);
     }

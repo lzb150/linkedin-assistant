@@ -5,9 +5,10 @@
 //   - Polls notify-state.json AND djinni-notify-state.json every ~3s and shows
 //     the COMBINED unread count (LinkedIn messages + Djinni inbox) as a red Dock
 //     badge (cleared when the total is 0).
-//   - Opens the jobs dashboard (node dashboard.mjs --open) on a foreground
-//     (user) launch and when its Dock icon is clicked — preserving the old
-//     applet's behaviour.
+//   - On a foreground (user) launch or a Dock-icon click: if Djinni has unread
+//     messages it opens that conversation (a single unread opens the thread, a
+//     few open Djinni's unread bucket); otherwise it opens the jobs dashboard
+//     (node dashboard.mjs --open), preserving the old applet's behaviour.
 //   - Launched with --background (by the login LaunchAgent or check.mjs) it runs
 //     the badge daemon only and does NOT open the dashboard.
 //
@@ -54,6 +55,41 @@ func openDashboard() {
     catch { dbg("openDashboard failed: \(error)") }
 }
 
+// Open a URL in the user's default browser.
+func openURL(_ s: String) {
+    guard let url = URL(string: s) else { dbg("openURL: bad url \(s)"); return }
+    NSWorkspace.shared.open(url)
+}
+
+// Read the Djinni unread state: total count + the unread thread ids (from the
+// `pending` array written by djinni-check.mjs). Missing/old files -> (0, []).
+func djinniUnread() -> (count: Int, ids: [String]) {
+    guard let data = FileManager.default.contents(atPath: djinniStatePath),
+          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return (0, []) }
+    let count = max(0, (obj["count"] as? NSNumber)?.intValue ?? 0)
+    let pending = (obj["pending"] as? [[String: Any]]) ?? []
+    let ids = pending.compactMap { ($0["id"] as? String) ?? ($0["id"] as? NSNumber)?.stringValue }
+    return (count, ids)
+}
+
+// Decide what a Dock-icon activation (click or foreground launch) opens:
+//   - Djinni has unread -> open that conversation (one unread opens the thread,
+//     several open Djinni's unread bucket).
+//   - otherwise -> open the jobs dashboard (the original behaviour).
+func handleActivation() {
+    let (count, ids) = djinniUnread()
+    if count > 0 {
+        let url = ids.count == 1
+            ? "https://djinni.co/my/inbox/\(ids[0])/"
+            : "https://djinni.co/my/inbox?bucket=unread"
+        dbg("activation -> Djinni (count=\(count), ids=\(ids.count)) \(url)")
+        openURL(url)
+        return
+    }
+    openDashboard()
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
 
@@ -62,13 +98,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dbg("launched; background=\(isBackground) state=\(statePath)")
         poll()                                          // immediate first pass
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in self?.poll() }
-        // A foreground (user) launch opens the dashboard, like the old applet.
-        if !isBackground { openDashboard() }
+        // A foreground (user) launch opens Djinni if there are unread messages,
+        // otherwise the dashboard.
+        if !isBackground { handleActivation() }
     }
 
-    // Dock-icon click while already running -> open the dashboard.
+    // Dock-icon click while already running -> Djinni unread thread/bucket if any,
+    // otherwise the dashboard.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        openDashboard()
+        handleActivation()
         return true
     }
 
