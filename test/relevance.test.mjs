@@ -84,3 +84,9 @@ test("scoreMessage does not double-count a concept shared between two skill keys
   const r = scoreMessage("наскрізне тестування продукту");
   assert.equal(r.score, 4);
 });
+
+test("scoreMessage matches a UA 'спеціаліст' role phrasing", () => {
+  const r = scoreMessage("Потрібен спеціаліст з автоматизованого тестування, написання автотестів.");
+  assert.ok(r.matchedRole, "UA 'спеціаліст' role should be matched");
+  assert.equal(r.verdict, "relevant");
+});
