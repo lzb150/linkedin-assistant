@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { identityKey } from "./lib/dedup.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const APPS = join(__dir, "applications");
@@ -27,11 +28,22 @@ const esc = (s) =>
   (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
-const items = files
+const parsed = files
   .map((f) => parse(readFileSync(join(APPS, f), "utf8")))
   .filter(Boolean)
-  .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10) }))
-  .sort((a, b) => b.score - a.score);
+  .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10) }));
+
+// applications/ is append-only: historical runs left many packages for the same
+// vacancy (e.g. a Jooble job whose URL changed every run when seen was URL-keyed).
+// Collapse to one card per identity (company+title), keeping the most recently
+// generated package so the dashboard reflects the latest data.
+const byIdentity = new Map();
+for (const it of parsed) {
+  const key = identityKey({ company: it.fm.company, title: it.fm.title });
+  const prev = byIdentity.get(key);
+  if (!prev || (it.fm.generated || "") > (prev.fm.generated || "")) byIdentity.set(key, it);
+}
+const items = [...byIdentity.values()].sort((a, b) => b.score - a.score);
 
 function scoreColor(s) {
   if (s >= 40) return "#1a7f37";   // green
