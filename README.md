@@ -27,6 +27,8 @@ click is always yours.
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
 - **Jooble** — via the official Jooble API (free key, structured JSON)
 - **LinkedIn Jobs** — search scraping (modest, once a day, toggleable)
+- **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
+  into one package (the other source links are kept on the card)
 - Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
 - Builds an application package: cover letter + link + resume path
 
@@ -133,7 +135,14 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 - **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Searches are `{ keywords, location }` pairs in `jobs.config.json`. Set `jooble.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
 - Cold applications use a **high bar**: `minScore` (default 25) + `requireRole`.
-- `jobs-seen.json` prevents re-preparing the same vacancy.
+- **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
+  differs per board) is collapsed into one record before scoring. The record with
+  the fullest description is kept; the other source links are recorded under
+  `alt_links` in the package and shown as an "also on:" row on the dashboard.
+- `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
+  **identity** (`normalize(company) + normalize(title)`), so a job is remembered
+  regardless of which source it came from. Legacy URL-keyed files migrate
+  automatically on the next run (the old history is reset once).
 
 ## Dashboard — `dashboard.mjs`
 
@@ -142,11 +151,25 @@ node dashboard.mjs          # rebuild applications/index.html
 node dashboard.mjs --open   # rebuild and open it
 ```
 
-Renders every package in `applications/` as a card, sorted by score. Per-card
+Renders the packages in `applications/` as cards, sorted by score. Per-card
 status (New / Viewed) is stored in the browser's localStorage keyed by job URL,
 so it survives dashboard regeneration. Opening a job link or expanding its cover
 letter marks the card Viewed automatically. Use the header filter to focus on a
 status.
+
+`applications/` is append-only, so the dashboard **collapses duplicate packages
+by identity** (`company + title`) at render time, keeping the most recently
+generated one. You see each vacancy once even when older packages linger on disk.
+
+## Clean up stale packages — `prune-applications.mjs`
+
+The dashboard hides on-disk duplicates, but you can reclaim the space. This
+script keeps the newest package per identity and deletes the rest:
+
+```bash
+node prune-applications.mjs           # dry run — lists what would be removed
+node prune-applications.mjs --apply   # actually delete the stale duplicates
+```
 
 ## Tuning relevance — `skills.json`
 
@@ -194,7 +217,8 @@ Session expired? Re-run `node login.mjs`.
 ├── djinni-login.mjs   one-time Djinni login
 ├── djinni-check.mjs   Djinni inbox unread count → djinni-notify-state.json
 ├── dashboard.mjs      HTML dashboard generator
-├── lib/               logic (scoring, templates, DOU/Djinni/Jooble/LinkedIn sources)
+├── prune-applications.mjs  remove stale duplicate packages from applications/
+├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── drafts/            reply drafts
@@ -212,14 +236,16 @@ Session expired? Re-run `node login.mjs`.
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
 | `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |
+| `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
+| `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |
 | `lib/application.mjs` | Builds the application-package markdown.                  |
 | `skills.json`         | Your skill profile + thresholds. Edit freely.             |
 | `resume.txt`          | Extracted from your .docx (reference).                    |
 | `drafts/`             | Output — review and send these manually.                  |
 | `seen.json`           | Tracks processed threads (no duplicate drafts).           |
-| `jobs-seen.json`      | Tracks processed vacancies (no duplicate packages).       |
+| `jobs-seen.json`      | Tracks processed vacancies by identity (no duplicate packages, across sources). |
 
 ## Technologies
 JavaScript (Node.js) · Playwright · DOU RSS · launchd · Swift/AppKit (icon) ·
