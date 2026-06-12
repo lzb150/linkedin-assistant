@@ -66,6 +66,8 @@
     "regression": ["регресійне тестування", "регресія", "регрессионное тестирование", "регрессия"],
     "e2e": ["наскрізне тестування", "сквозне тестування", "сквозное тестирование"]
   },
+  "_maxSkillsComment": "Only the N highest-weight matched skills count toward the score — guards against keyword-stuffed postings outscoring real matches. Role bonus and antiKeywords are not capped. Omit to use the default (8).",
+  "maxSkills": 8,
   "antiKeywords": {
     "manual qa": -6,
     "manual testing only": -4,
