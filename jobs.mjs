@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication } from "./lib/application.mjs";
+import { dedupeJobs, identityKey } from "./lib/dedup.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
@@ -52,7 +53,20 @@ function notify(msg) {
   notifyOsascript(body);
 }
 
-function loadSeen() { try { return new Set(JSON.parse(readFileSync(SEEN_FILE, "utf8"))); } catch { return new Set(); } }
+// jobs-seen.json now stores identity keys (normalize(company)+title), not URLs,
+// so a vacancy is "seen" regardless of which source it came from. Older files
+// hold URLs — detect that legacy format and start fresh (history is rebuilt
+// from the jobs processed in this run).
+function loadSeen() {
+  try {
+    const entries = JSON.parse(readFileSync(SEEN_FILE, "utf8"));
+    if (entries.some((e) => typeof e === "string" && e.startsWith("http"))) {
+      log("jobs-seen.json is in the legacy URL format — migrating to identity keys (starting fresh)");
+      return new Set();
+    }
+    return new Set(entries);
+  } catch { return new Set(); }
+}
 const seen = loadSeen();
 
 let jobs = [];
@@ -100,6 +114,12 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
 
 log(`Total jobs gathered: ${jobs.length}`);
 
+// Collapse the same vacancy arriving from multiple sources into one record
+// (keeps the longest description, records the other source links in altLinks).
+const { deduped, mergedCount } = dedupeJobs(jobs);
+jobs = deduped;
+log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length} unique`);
+
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
 // so a senior role whose description mentions "junior" (e.g. "mentor junior
 // engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
@@ -114,12 +134,13 @@ function excludedByTitle(title) {
 // 5) Score + write application packages for RELEVANT, unseen jobs.
 let written = 0, considered = 0;
 for (const job of jobs) {
-  if (seen.has(job.url)) continue;
+  const id = identityKey(job);
+  if (seen.has(id)) continue;
   considered++;
   const excluded = excludedByTitle(job.title);
   if (excluded) {
     log(`  · skip [excluded:${excluded}] ${job.source}: ${job.title}`);
-    seen.add(job.url);
+    seen.add(id);
     continue;
   }
   const scored = scoreMessage(job.text);
@@ -130,13 +151,13 @@ for (const job of jobs) {
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
     log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}`);
-    seen.add(job.url);
+    seen.add(id);
     continue;
   }
   const { filename, markdown } = buildApplication(job, scored);
   writeFileSync(join(APPS, filename), markdown);
   log(`  ✓ MATCH [${scored.score}] ${job.source}: ${job.title} @ ${job.company}`);
-  seen.add(job.url);
+  seen.add(id);
   written++;
 }
 

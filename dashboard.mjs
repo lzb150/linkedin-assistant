@@ -52,6 +52,15 @@ const cards = items
     const skills = (f.matched_skills || "")
       .split(",").map((s) => s.trim()).filter(Boolean)
       .map((s) => `<span class="chip">${esc(s)}</span>`).join("");
+    // Same vacancy on other boards (collected by dedupeJobs): "source|url, ...".
+    const alt = (f.alt_links || "")
+      .split(",").map((s) => s.trim()).filter(Boolean)
+      .map((pair) => {
+        const sep = pair.indexOf("|");
+        const src = pair.slice(0, sep), url = pair.slice(sep + 1);
+        return `<a class="alt" href="${esc(url)}" target="_blank" rel="noopener">${esc(src)} ↗</a>`;
+      }).join("");
+    const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
     return `
 <article class="card" data-url="${esc(f.url)}">
   <div class="head">
@@ -69,6 +78,7 @@ const cards = items
     </div>
   </div>
   <div class="skills">${skills}</div>
+  ${altRow}
   <details ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')">
     <summary>Cover letter</summary>
     <pre id="cover${idx}">${esc(it.cover)}</pre>
@@ -121,6 +131,9 @@ const html = `<!doctype html>
   pre { white-space: pre-wrap; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
   .copy { background: #0969da; color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
   .resume { font-size: 12px; color: #57606a; margin-left: 10px; }
+  .alt-row { font-size: 12px; color: #57606a; margin: 2px 0 4px; }
+  .alt { color: #0969da; text-decoration: none; margin-right: 8px; }
+  .alt:hover { text-decoration: underline; }
   .empty { text-align: center; color: #57606a; padding: 40px; }
 </style></head>
 <body>
