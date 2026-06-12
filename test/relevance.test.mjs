@@ -48,7 +48,7 @@ test("mentionsStem handles a mixed Latin+Cyrillic phrase", () => {
   assert.equal(mentionsStem("шукаємо автоматизація api у команді", "автоматизація api"), true);
 });
 
-import { scoreMessage } from "../lib/relevance.mjs";
+import { scoreMessage, profile } from "../lib/relevance.mjs";
 
 test("scoreMessage matches a UA role-worded vacancy and clears the jobs.mjs gate", () => {
   const text = "Шукаємо інженера з автоматизації тестування. Досвід: Playwright, TypeScript, автоматизація тестування, CI/CD, API.";
@@ -89,4 +89,37 @@ test("scoreMessage matches a UA 'спеціаліст' role phrasing", () => {
   const r = scoreMessage("Потрібен спеціаліст з автоматизованого тестування, написання автотестів.");
   assert.ok(r.matchedRole, "UA 'спеціаліст' role should be matched");
   assert.equal(r.verdict, "relevant");
+});
+
+test("scoreMessage caps skill contribution at maxSkills (saturation)", () => {
+  const stuffed =
+    "QA Automation Engineer. typescript playwright selenium cypress webdriverio java python sql " +
+    "api testing rest soap cucumber bdd jenkins ci/cd microservices e2e regression test framework";
+  const r = scoreMessage(stuffed);
+  const cap = profile.maxSkills ?? 8;
+  assert.ok(r.matchedSkills.length > cap, `case must overflow the cap (${r.matchedSkills.length} matched)`);
+  const topN = r.matchedSkills
+    .map((s) => profile.skills[s])
+    .sort((a, b) => b - a)
+    .slice(0, cap)
+    .reduce((a, b) => a + b, 0);
+  assert.equal(r.score, 6 + topN); // role bonus + capped skill sum
+  assert.ok(r.score < 50, `stuffed score ${r.score} should be well below the old uncapped 72`);
+});
+
+test("scoreMessage still reports every matched skill despite the cap", () => {
+  const stuffed =
+    "QA Automation Engineer. typescript playwright selenium cypress webdriverio java python sql " +
+    "api testing rest soap cucumber bdd jenkins ci/cd microservices e2e regression test framework";
+  const r = scoreMessage(stuffed);
+  assert.ok(r.matchedSkills.includes("typescript"));
+  assert.ok(r.matchedSkills.includes("regression"), "low-weight matches stay in matchedSkills");
+});
+
+test("scoreMessage keeps a rich real vacancy above the cold-application gate", () => {
+  const rich =
+    "Senior AQA Engineer. Playwright, TypeScript, API testing, REST, CI/CD, Jenkins, e2e, " +
+    "test framework design, microservices.";
+  const r = scoreMessage(rich);
+  assert.ok(r.score >= 25, `rich vacancy score ${r.score} must clear minScore 25`);
 });
