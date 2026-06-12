@@ -78,3 +78,9 @@ test("scoreMessage counts a concept once when English key and UA synonym both ap
   assert.equal(r.matchedRole, null);
   assert.equal(r.score, 9);
 });
+
+test("scoreMessage does not double-count a concept shared between two skill keys", () => {
+  // "наскрізне тестування" is an e2e synonym (4) only — not also end-to-end.
+  const r = scoreMessage("наскрізне тестування продукту");
+  assert.equal(r.score, 4);
+});
