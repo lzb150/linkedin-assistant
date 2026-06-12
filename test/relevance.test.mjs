@@ -38,3 +38,12 @@ test("mentionsStem falls back to exact matching for Latin terms", () => {
   assert.equal(mentionsStem("strong ci/cd skills", "ci/cd"), true);
   assert.equal(mentionsStem("we test apis", "api"), false);
 });
+
+test("mentionsStem enforces a right-word boundary", () => {
+  assert.equal(mentionsStem("автоматизаціяfoo у тексті", "автоматизація"), false);
+  assert.equal(mentionsStem("we did apis", "тестування api"), false);
+});
+
+test("mentionsStem handles a mixed Latin+Cyrillic phrase", () => {
+  assert.equal(mentionsStem("шукаємо автоматизація api у команді", "автоматизація api"), true);
+});
