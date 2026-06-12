@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stemCyrillic } from "../lib/relevance.mjs";
+import { stemCyrillic, mentionsStem } from "../lib/relevance.mjs";
 
 test("stemCyrillic reduces UA declensions of a noun to one stem prefix", () => {
   const stem = stemCyrillic("автоматизація");
@@ -20,4 +20,21 @@ test("stemCyrillic does not over-stem a short consonant-ending word", () => {
 
 test("stemCyrillic leaves Latin words unchanged", () => {
   assert.equal(stemCyrillic("Playwright"), "playwright");
+});
+
+test("mentionsStem matches a Cyrillic phrase across declensions", () => {
+  const hay = "маємо досвід автоматизації тестування продукту".toLowerCase();
+  assert.equal(mentionsStem(hay, "автоматизація тестування"), true);
+});
+
+test("mentionsStem does not match when the stem is absent", () => {
+  const hay = "ручне тестування веб-додатків".toLowerCase();
+  assert.equal(mentionsStem(hay, "автоматизація тестування"), false);
+});
+
+test("mentionsStem falls back to exact matching for Latin terms", () => {
+  assert.equal(mentionsStem("we use playwright daily", "playwright"), true);
+  assert.equal(mentionsStem("backend in c# here", "c#"), true);
+  assert.equal(mentionsStem("strong ci/cd skills", "ci/cd"), true);
+  assert.equal(mentionsStem("we test apis", "api"), false);
 });
