@@ -104,6 +104,7 @@ test("scoreMessage caps skill contribution at maxSkills (saturation)", () => {
     .slice(0, cap)
     .reduce((a, b) => a + b, 0);
   assert.equal(r.score, 6 + topN); // role bonus + capped skill sum
+  assert.equal(r.score, 40); // pinned: 6 role + top-8 weights of the current profile
   assert.ok(r.score < 50, `stuffed score ${r.score} should be well below the old uncapped 72`);
 });
 
@@ -121,5 +122,6 @@ test("scoreMessage keeps a rich real vacancy above the cold-application gate", (
     "Senior AQA Engineer. Playwright, TypeScript, API testing, REST, CI/CD, Jenkins, e2e, " +
     "test framework design, microservices.";
   const r = scoreMessage(rich);
+  // 9 skills matched, no role; the cap drops the lowest weight: expected ≈30.
   assert.ok(r.score >= 25, `rich vacancy score ${r.score} must clear minScore 25`);
 });
