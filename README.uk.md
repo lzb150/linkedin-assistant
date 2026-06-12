@@ -72,9 +72,51 @@ MAX=5 node check.mjs        # обмежити кількість відкрит
 SCAN_ALL=1 node check.mjs   # сканувати недавні діалоги незалежно від статусу прочитання
 ```
 
-Нові чернетки потрапляють у `drafts/`, і ви отримуєте сповіщення macOS. Кожна
-чернетка — markdown-файл: їхнє повідомлення, запропонована відповідь, бал
-релевантності та чекбокс «долучити резюме». Кнопку «Надіслати» не натискає ніколи.
+Нові чернетки потрапляють у `drafts/`. Кожна чернетка — markdown-файл: їхнє
+повідомлення, запропонована відповідь, бал релевантності та чекбокс «долучити
+резюме». Кнопку «Надіслати» не натискає ніколи.
+
+### Бейдж непрочитаних на застосунку Jobs
+
+Кожне сканування записує кількість непрочитаних діалогів LinkedIn у
+`notify-state.json`. **Застосунок Jobs** (`Jobs.app`, «Вакансии») постійно
+працює в Dock і читає цей файл кожні кілька секунд, показуючи число червоним
+бейджем на іконці (зникає, щойно діалоги прочитані в LinkedIn — наступне
+сканування повідомляє менше число). Клік по іконці в Dock відкриває дашборд, як і раніше.
+
+Зберіть його через `./build-jobs.sh`, потім запускайте при вході, встановивши
+`com.eugene.jobs-badge.plist` у `~/Library/LaunchAgents/` (див.
+`com.example.jobs-badge.plist.example`). `check.mjs` також про всяк випадок
+перезапускає його під час кожного сканування. Оригінальний AppleScript-аплет
+збережено в `Jobs.app.orig`.
+
+## Скринька Djinni (спільний бейдж у Dock)
+
+Бейдж у Dock на `Jobs.app` («Вакансии») показує **сумарну** кількість непрочитаних діалогів з **LinkedIn** і **Djinni**.
+
+Разовий вхід (щоразу, коли сесія Djinni спливає):
+
+```bash
+node djinni-login.mjs   # відкриває браузер; увійдіть у Djinni вручну (вкл. 2FA)
+```
+
+Підрахунок непрочитаних діалогів Djinni (пише `djinni-notify-state.json`):
+
+```bash
+node djinni-check.mjs              # headless
+HEADFUL=1 node djinni-check.mjs    # спостерігати / лагодити селектори на живій сторінці
+```
+
+`djinni-check.mjs` **лише рахує**: рахує діалоги в кошику непрочитаних Djinni (`https://djinni.co/my/inbox?bucket=unread`), ніколи не відкриває діалоги, не готує чернеток, не надсилає. `Jobs.app` опитує і `notify-state.json` (LinkedIn), і `djinni-notify-state.json` (Djinni) кожні ~3 с і показує бейджем їхню суму.
+
+Запуск щогодини через launchd:
+
+```bash
+cp run-djinni.sh.example run-djinni.sh                      # потім впишіть PATH/версію
+cp com.example.djinni-inbox.plist.example \
+   ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # потім впишіть шляхи
+launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
+```
 
 ## Пошук вакансій — `jobs.mjs`
 
@@ -173,6 +215,8 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ├── check.mjs          вхідні → чернетки відповідей
 ├── jobs.mjs           пошук вакансій → пакети відгуків
 ├── login.mjs          разовий вхід у LinkedIn
+├── djinni-login.mjs   разовий вхід у Djinni
+├── djinni-check.mjs   підрахунок непрочитаних Djinni → djinni-notify-state.json
 ├── dashboard.mjs      генератор HTML-дашборда
 ├── prune-applications.mjs  видалення застарілих дублів пакетів з applications/
 ├── lib/               логіка (оцінка, дедуп, шаблони, джерела DOU/Djinni/Jooble/LinkedIn)
@@ -189,6 +233,8 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 |-----------------------|-----------------------------------------------------------|
 | `login.mjs`           | Разовий ручний вхід; зберігає сесію.                      |
 | `check.mjs`           | Читає непрочитані → оцінює → чернетка. Не надсилає.        |
+| `djinni-login.mjs`    | Разовий ручний вхід у Djinni; зберігає сесію.             |
+| `djinni-check.mjs`    | Рахує непрочитані діалоги Djinni. Лише підрахунок, не відкриває діалоги. |
 | `jobs.mjs`            | Шукає вакансії → пакети відгуків. Не подає автоматично.    |
 | `dashboard.mjs`       | Будує HTML-дашборд із трекінгом статусів.                  |
 | `prune-applications.mjs` | Видаляє застарілі дублі пакетів (типово — пробний прогін). |
@@ -205,3 +251,6 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ## Технології
 JavaScript (Node.js) · Playwright · DOU RSS · launchd · Swift/AppKit (іконка) ·
 без зовнішніх залежностей, окрім Playwright.
+
+## Ліцензія
+[MIT](LICENSE)
