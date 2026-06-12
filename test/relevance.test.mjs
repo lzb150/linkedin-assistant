@@ -47,3 +47,34 @@ test("mentionsStem enforces a right-word boundary", () => {
 test("mentionsStem handles a mixed Latin+Cyrillic phrase", () => {
   assert.equal(mentionsStem("шукаємо автоматизація api у команді", "автоматизація api"), true);
 });
+
+import { scoreMessage } from "../lib/relevance.mjs";
+
+test("scoreMessage matches a UA role-worded vacancy and clears the jobs.mjs gate", () => {
+  const text = "Шукаємо інженера з автоматизації тестування. Досвід: Playwright, TypeScript, автоматизація тестування, CI/CD, API.";
+  const r = scoreMessage(text);
+  assert.ok(r.matchedRole, "UA role should be matched");
+  assert.ok(r.score >= 25, `score ${r.score} should clear minScore 25`);
+  assert.equal(r.verdict, "relevant");
+});
+
+test("scoreMessage matches a RU role-worded vacancy", () => {
+  const text = "Требуется инженер по автоматизации тестирования. Стек: автоматизация тестирования, Selenium, Java, Python, REST, CI/CD.";
+  const r = scoreMessage(text);
+  assert.ok(r.matchedRole, "RU role should be matched");
+  assert.ok(r.score >= 25, `score ${r.score} should clear minScore 25`);
+});
+
+test("scoreMessage keeps the English baseline unchanged (no regression)", () => {
+  const text = "Looking for a QA Automation Engineer with Playwright, TypeScript, API testing, CI/CD.";
+  const r = scoreMessage(text);
+  assert.equal(r.matchedRole, "qa automation");
+  assert.equal(r.score, 27);
+});
+
+test("scoreMessage counts a concept once when English key and UA synonym both appear", () => {
+  // "test automation" (5, once) + "automation" (4, once) = 9, not doubled.
+  const r = scoreMessage("test automation автоматизація тестування");
+  assert.equal(r.matchedRole, null);
+  assert.equal(r.score, 9);
+});

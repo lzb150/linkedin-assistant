@@ -3,7 +3,12 @@
   "roles": [
     "qa automation", "automation qa", "sdet", "software development engineer in test",
     "test automation engineer", "automation engineer", "qa engineer", "test engineer",
-    "senior qa", "lead qa", "automation tester", "quality engineer"
+    "senior qa", "lead qa", "automation tester", "quality engineer",
+    "інженер з автоматизації тестування", "інженер з автоматизованого тестування",
+    "інженер з тестування", "автоматизатор тестування", "автоматизатор",
+    "інженер із забезпечення якості",
+    "инженер по автоматизации тестирования", "инженер автоматизации тестирования",
+    "автоматизатор тестирования", "инженер по тестированию", "тестировщик-автоматизатор"
   ],
   "skills": {
     "typescript": 5,
@@ -47,6 +52,18 @@
     "test framework": 3,
     "test strategy": 2,
     "sdlc": 1
+  },
+  "_synonymsComment": "Cross-language equivalents for conceptual skills. A skill's weight (from 'skills') counts ONCE if the key OR any synonym matches. Latin tech terms (playwright, typescript, c#) need no synonyms — they appear in Latin in UA/RU text.",
+  "synonyms": {
+    "test automation": ["автоматизація тестування", "автоматизоване тестування", "автоматизація тестів", "автотести", "автоматизация тестирования", "автотесты"],
+    "automation": ["автоматизація", "автоматизация"],
+    "api testing": ["тестування api", "тестування апі", "тестирование api"],
+    "api automation": ["автоматизація api", "автоматизация api"],
+    "test framework": ["тестовий фреймворк", "фреймворк для тестування", "тестовый фреймворк"],
+    "test strategy": ["стратегія тестування", "стратегия тестирования"],
+    "regression": ["регресійне тестування", "регресія", "регрессионное тестирование", "регрессия"],
+    "e2e": ["наскрізне тестування", "сквозне тестування", "сквозное тестирование"],
+    "end-to-end": ["наскрізне тестування", "сквозное тестирование"]
   },
   "antiKeywords": {
     "manual qa": -6,
