@@ -79,7 +79,7 @@ const cards = items
     <span class="score" style="background:${scoreColor(it.score)}">${it.score}</span>
     <div class="titles">
       <h2>${esc(f.title || "—")}</h2>
-      <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span></div>
+      <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
     </div>
     <div class="actions">
       <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
@@ -119,6 +119,7 @@ const html = `<!doctype html>
   .sub { font-size: 13px; color: #57606a; margin-top: 4px; }
   .src { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
   .lang { text-transform: uppercase; font-size: 11px; color: #57606a; }
+  .salary { color: #1a7f37; font-size: .8rem; white-space: nowrap; }
   .actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
   .apply { white-space: nowrap; text-align: center; background: #1f883d; color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
   .apply:hover { background: #1a7f37; }
