@@ -37,3 +37,7 @@ test("no salary in text returns null", () => {
 test("euro range with space-separated thousands", () => {
   assert.equal(extractSalary("€3 000 – €5 000"), "€3 000 – €5 000");
 });
+
+test("ceiling does not match non-salary 'up to N' phrases", () => {
+  assert.equal(extractSalary("up to 5 years experience required"), null);
+});
