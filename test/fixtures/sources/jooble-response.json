@@ -1,0 +1,33 @@
+{
+  "totalCount": 4,
+  "jobs": [
+    {
+      "title": "QA Automation Engineer",
+      "company": "Acme &amp; Co",
+      "location": "Remote",
+      "snippet": "We need <b>Playwright</b> and TypeScript skills.",
+      "link": "https://jooble.org/desc/123?utm_source=api"
+    },
+    {
+      "title": "SDET",
+      "company": "Beta",
+      "location": "Lviv",
+      "snippet": "API automation.",
+      "link": "https://jooble.org/desc/789"
+    },
+    {
+      "title": "",
+      "company": "NoTitle Inc",
+      "location": "Kyiv",
+      "snippet": "Missing title should be dropped.",
+      "link": "https://jooble.org/desc/456"
+    },
+    {
+      "title": "No Link Role",
+      "company": "Gamma",
+      "location": "Odesa",
+      "snippet": "no link.",
+      "link": ""
+    }
+  ]
+}
