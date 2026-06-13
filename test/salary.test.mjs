@@ -1,0 +1,39 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { extractSalary } from "../lib/salary.mjs";
+
+test("range with currency prefix and dash", () => {
+  assert.equal(extractSalary("salary $3,000-$5,000/mo"), "$3,000-$5,000/mo");
+});
+
+test("range with k shorthand and en-dash", () => {
+  assert.equal(extractSalary("compensation $3k–5k"), "$3k–5k");
+});
+
+test("range with currency word suffix", () => {
+  assert.equal(extractSalary("3000-5000 USD"), "3000-5000 USD");
+});
+
+test("ceiling: up to", () => {
+  assert.equal(extractSalary("up to $4,000"), "up to $4,000");
+});
+
+test("ceiling: Cyrillic до", () => {
+  assert.equal(extractSalary("зарплата до $5 000"), "до $5 000");
+});
+
+test("single value with /month suffix", () => {
+  assert.equal(extractSalary("$4,000/month"), "$4,000/month");
+});
+
+test("single value with /hr suffix", () => {
+  assert.equal(extractSalary("$25/hr"), "$25/hr");
+});
+
+test("no salary in text returns null", () => {
+  assert.equal(extractSalary("competitive compensation, great team"), null);
+});
+
+test("euro range with space-separated thousands", () => {
+  assert.equal(extractSalary("€3 000 – €5 000"), "€3 000 – €5 000");
+});
