@@ -14,6 +14,10 @@ import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication } from "./lib/application.mjs";
 import { dedupeJobs, identityKey } from "./lib/dedup.mjs";
+import {
+  newSummary, recordFound, recordOutcome, recordMerged, recordTop,
+  formatTable, formatNotification,
+} from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
@@ -70,21 +74,34 @@ function loadSeen() {
 const seen = loadSeen();
 
 let jobs = [];
+const summary = newSummary();
 
 // 1) DOU via RSS (no browser needed)
 log("Gathering DOU (RSS)...");
-try { jobs.push(...(await fetchDou(config.dou, log))); } catch (e) { log("DOU error:", e.message); }
+try {
+  const douJobs = await fetchDou(config.dou, log);
+  recordFound(summary, "dou", douJobs.length);
+  jobs.push(...douJobs);
+} catch (e) { log("DOU error:", e.message); }
 
 // 2) Djinni via the public jobs board (plain fetch, no browser, no login)
 if (config.djinni?.enabled) {
   log("Gathering Djinni (jobs board)...");
-  try { jobs.push(...(await fetchDjinni(config.djinni, log))); } catch (e) { log("Djinni error:", e.message); }
+  try {
+    const djinniJobs = await fetchDjinni(config.djinni, log);
+    recordFound(summary, "djinni", djinniJobs.length);
+    jobs.push(...djinniJobs);
+  } catch (e) { log("Djinni error:", e.message); }
 }
 
 // 3) Jooble via the official API (needs JOOBLE_API_KEY; no browser)
 if (config.jooble?.enabled) {
   log("Gathering Jooble (API)...");
-  try { jobs.push(...(await fetchJooble(config.jooble, log))); } catch (e) { log("Jooble error:", e.message); }
+  try {
+    const joobleJobs = await fetchJooble(config.jooble, log);
+    recordFound(summary, "jooble", joobleJobs.length);
+    jobs.push(...joobleJobs);
+  } catch (e) { log("Jooble error:", e.message); }
 }
 
 // 4) LinkedIn via the logged-in browser (optional)
@@ -103,7 +120,9 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
       log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
     } else {
       log("Gathering LinkedIn jobs (scraping, modest)...");
-      jobs.push(...(await fetchLinkedInJobs(page, config.linkedin, log)));
+      const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
+      recordFound(summary, "linkedin", liJobs.length);
+      jobs.push(...liJobs);
     }
   } catch (e) {
     log("LinkedIn error:", e.message);
@@ -118,6 +137,7 @@ log(`Total jobs gathered: ${jobs.length}`);
 // (keeps the longest description, records the other source links in altLinks).
 const { deduped, mergedCount } = dedupeJobs(jobs);
 jobs = deduped;
+recordMerged(summary, mergedCount);
 log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length} unique`);
 
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
@@ -135,11 +155,12 @@ function excludedByTitle(title) {
 let written = 0, considered = 0;
 for (const job of jobs) {
   const id = identityKey(job);
-  if (seen.has(id)) continue;
+  if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); continue; }
   considered++;
   const excluded = excludedByTitle(job.title);
   if (excluded) {
     log(`  · skip [excluded:${excluded}] ${job.source}: ${job.title}`);
+    recordOutcome(summary, job.source, "excluded");
     seen.add(id);
     continue;
   }
@@ -151,18 +172,24 @@ for (const job of jobs) {
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
     log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}`);
+    recordOutcome(summary, job.source, "low");
     seen.add(id);
     continue;
   }
   const { filename, markdown } = buildApplication(job, scored);
   writeFileSync(join(APPS, filename), markdown);
   log(`  ✓ MATCH [${scored.score}] ${job.source}: ${job.title} @ ${job.company}`);
+  recordOutcome(summary, job.source, "written");
+  recordTop(summary, scored.score, `${job.title} @ ${job.company}`);
   seen.add(id);
   written++;
 }
 
 writeFileSync(SEEN_FILE, JSON.stringify([...seen], null, 0));
 log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
+
+// Per-source digest of this run (scraper health + the day's catch).
+log("\n" + formatTable(summary));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {
@@ -172,5 +199,6 @@ try {
   log("dashboard refresh skipped:", e.message);
 }
 
-if (written > 0) notify(`${written} matching job(s) ready — open applications/index.html`);
+// Always notify with the run outcome (previously only fired when written > 0).
+notify(formatNotification(summary));
 process.exit(0);
