@@ -121,7 +121,10 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
   const ctx = await chromium.launchPersistentContext(PROFILE, {
     headless: !HEADFUL,
     viewport: { width: 1280, height: 900 },
-    args: ["--disable-blink-features=AutomationControlled"],
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      ...(HEADFUL ? [] : ["--headless=new", "--no-first-run", "--no-default-browser-check"]),
+    ],
   });
   try {
     const page = ctx.pages()[0] || (await ctx.newPage());
