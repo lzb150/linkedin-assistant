@@ -22,11 +22,13 @@ import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
+import { currentCounts, detectRegressions, mergeCounts, formatAlert } from "./lib/source-health.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 const SEEN_FILE = join(__dir, "jobs-seen.json");
+const HEALTH_FILE = join(__dir, "source-health.json");
 const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
 const HEADFUL = process.env.HEADFUL === "1";
 const DOU_ONLY = process.env.DOU_ONLY === "1";
@@ -72,6 +74,15 @@ function loadSeen() {
   } catch { return new Set(); }
 }
 const seen = loadSeen();
+
+// source-health.json records each source's `found` count from the last run so we
+// can warn when a source that had results suddenly returns zero (a likely sign
+// its scraper broke). Missing/unparseable file → no history (no alerts, just seed).
+function loadHealth() {
+  try { return JSON.parse(readFileSync(HEALTH_FILE, "utf8")); }
+  catch { return {}; }
+}
+const prevHealth = loadHealth();
 
 let jobs = [];
 const summary = newSummary();
@@ -190,6 +201,12 @@ log(`Done. Considered ${considered} new, wrote ${written} application package(s)
 
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));
+
+// Scraper-health: warn (separate banner) if a source that had results on the
+// previous run returned 0 this run, then persist this run's counts for next time.
+const regressions = detectRegressions(prevHealth, summary);
+if (regressions.length) notify(formatAlert(regressions));
+writeFileSync(HEALTH_FILE, JSON.stringify(mergeCounts(prevHealth, currentCounts(summary)), null, 0));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {

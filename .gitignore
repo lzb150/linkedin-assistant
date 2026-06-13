@@ -12,6 +12,7 @@ applications/index.html
 
 # Tracked job state (machine-local)
 jobs-seen.json
+source-health.json
 seen.json
 
 # Runtime Dock-badge state (written by check.mjs, read by Jobs.app)
