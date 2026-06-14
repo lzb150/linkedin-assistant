@@ -11,7 +11,7 @@
 
 import { chromium } from "playwright";
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
@@ -67,13 +67,16 @@ function notify(title, message) {
 
 // Ensure the persistent Jobs.app badge daemon is running so it can render the
 // Dock badge from notify-state.json. `--background` means "badge only, do not
-// open the dashboard"; `-g` keeps focus on the user's current app. `open` is a
-// no-op if Jobs.app is already running. Best-effort, never throws.
+// open the dashboard"; `-g` keeps focus on the user's current app.
+// Guard: skip open(1) if Jobs.app is already running — calling open(1) on a
+// running app triggers applicationShouldHandleReopen in the Swift delegate,
+// which opens the dashboard unexpectedly.
 function ensureJobsApp() {
   if (!existsSync(JOBS_APP)) {
     log("notify: Jobs.app missing at", JOBS_APP, "— run ./build-jobs.sh");
     return;
   }
+  if (spawnSync("pgrep", ["-x", "Jobs"], { stdio: "ignore" }).status === 0) return;
   try {
     const p = spawn("open", ["-g", "-a", JOBS_APP, "--args", "--background"],
       { detached: true, stdio: "ignore" });
