@@ -76,7 +76,7 @@ function ensureJobsApp() {
     log("notify: Jobs.app missing at", JOBS_APP, "— run ./build-jobs.sh");
     return;
   }
-  if (spawnSync("pgrep", ["-x", "Jobs"], { stdio: "ignore" }).status === 0) return;
+  if (spawnSync("pgrep", ["-x", "jobs"], { stdio: "ignore" }).status === 0) return;
   try {
     const p = spawn("open", ["-g", "-a", JOBS_APP, "--args", "--background"],
       { detached: true, stdio: "ignore" });
