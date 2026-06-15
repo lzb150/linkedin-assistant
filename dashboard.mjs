@@ -233,7 +233,8 @@ function applyFilter(){
   document.querySelectorAll('.card').forEach((card) => {
     const st = statusOf(card.dataset.url);
     counts.all++; counts[st]++;
-    card.style.display = (activeFilter === 'all' || activeFilter === st) ? '' : 'none';
+    const detailsOpen = !!card.querySelector('details[open]');
+    card.style.display = (activeFilter === 'all' || activeFilter === st || detailsOpen) ? '' : 'none';
   });
   for (const k of ['all', 'new', 'viewed']) {
     const el = document.getElementById('cnt-' + k);
