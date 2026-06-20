@@ -9,6 +9,7 @@ cd "$(dirname "$0")"
 node dashboard.mjs   # regenerate applications/index.html (no --open)
 
 # Start the server only if port 7777 is not already listening.
+mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
 if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
   nohup node state-server.mjs >> "logs/state-server.log" 2>&1 &
   # Give it a moment to bind before we open the browser.
