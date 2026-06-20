@@ -12,7 +12,8 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
 const DEDUPE = join(dir, "followup-notify-state.json");
-const THRESHOLD_DAYS = Number(process.env.FOLLOWUP_DAYS || 7);
+const envDays = Number(process.env.FOLLOWUP_DAYS);
+const THRESHOLD_DAYS = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 
 // Map url -> { title, company } from the application packages.
 function jobIndex() {

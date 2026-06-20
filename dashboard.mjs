@@ -225,7 +225,9 @@ function loadLocal() {
   const out = { _meta: {} };
   for (const [url, v] of Object.entries(map)) {
     if (url === '_meta') { out._meta = v || {}; continue; }
-    out[url] = (typeof v === 'string') ? { status: v } : v;   // upgrade legacy strings
+    out[url] = (typeof v === 'string')
+      ? (v === 'viewed' || v === 'applied' ? { status: v } : {})
+      : v;   // upgrade legacy strings; drop invalid/"new" status to match server normalize
   }
   return out;
 }
