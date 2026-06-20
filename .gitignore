@@ -54,3 +54,9 @@ djinni-seen.json
 
 # Machine-specific Djinni run wrapper — use run-djinni.sh.example
 run-djinni.sh
+
+# Dashboard job state and follow-up notify dedupe (machine-local runtime state)
+job-state.json
+job-state.json.tmp
+followup-notify-state.json
+followup-notify-state.json.tmp
