@@ -217,14 +217,13 @@ async function initState() {
     state = await fetch('/state').then((r) => r.json());
     // One-time migration: push any local entries the server doesn't have yet.
     const local = loadLocal();
-    let migrated = false;
+    const hadLocalEntries = Object.keys(local).some((k) => k !== '_meta');
     for (const [url, v] of Object.entries(local)) {
       if (url === '_meta' || state[url]) continue;
       const patch = (typeof v === 'string') ? { status: v } : v;
       state = await postState({ url, patch });
-      migrated = true;
     }
-    if (migrated) localStorage.removeItem(STATUS_KEY);
+    if (hadLocalEntries) localStorage.removeItem(STATUS_KEY);
   } catch {
     online = false;
     state = loadLocal();
