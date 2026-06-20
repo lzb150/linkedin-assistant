@@ -161,6 +161,8 @@ const html = `<!doctype html>
   .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
   .note-has { color: #9a6700; }
   .offline { background: #9a6700; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  .card.fresh { box-shadow: inset 3px 0 0 #0969da; }
+  .ribbon { background: #0969da; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
 </style></head>
 <body>
 <header>
@@ -172,6 +174,7 @@ const html = `<!doctype html>
       <button data-filter="new" class="active" onclick="setFilter(this,'new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" onclick="setFilter(this,'viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
       <button data-filter="applied" onclick="setFilter(this,'applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
+      <button data-filter="fresh" onclick="setFilter(this,'fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
   </div>
 </header>
@@ -284,6 +287,34 @@ async function autoStatus(card, status){ if (statusOf(card.dataset.url) === 'app
 
 async function saveNote(card, value){ await patchEntry(card.dataset.url, { note: value.trim() }); renderCard(card); }
 
+// Inlined from lib/freshness.mjs (browser has no module import here).
+function isNew(generatedISO, lastVisitISO) {
+  if (!lastVisitISO) return false;
+  const g = Date.parse(generatedISO), v = Date.parse(lastVisitISO);
+  if (!isFinite(g) || !isFinite(v)) return false;
+  return g > v;
+}
+
+function markFreshness() {
+  const lastVisit = (state._meta && state._meta.lastVisit) || '';
+  let count = 0;
+  document.querySelectorAll('.card').forEach((card) => {
+    const fresh = isNew(card.dataset.generated, lastVisit);
+    card.classList.toggle('fresh', fresh);
+    if (fresh) {
+      count++;
+      if (!card.querySelector('.ribbon')) card.querySelector('.titles h2').insertAdjacentHTML('beforeend', ' <span class="ribbon">NEW</span>');
+    }
+  });
+  const el = document.getElementById('cnt-fresh'); if (el) el.textContent = count;
+}
+
+async function advanceLastVisit() {
+  const nowIso = new Date().toISOString();
+  if (online) { try { state = await postState({ _meta: { lastVisit: nowIso } }); } catch {} }
+  else { state._meta = { ...(state._meta || {}), lastVisit: nowIso }; saveLocal(); }
+}
+
 let activeFilter = 'new';
 function applyFilter(){
   const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
@@ -291,7 +322,8 @@ function applyFilter(){
     const st = statusOf(card.dataset.url);
     counts.all++; counts[st]++;
     const detailsOpen = !!card.querySelector('details[open]');
-    const show = (activeFilter === 'all' || activeFilter === st || detailsOpen);
+    const isFresh = card.classList.contains('fresh');
+    const show = (activeFilter === 'all' || (activeFilter === 'fresh' ? isFresh : activeFilter === st) || detailsOpen);
     card.style.display = show ? '' : 'none';
   });
   for (const k of ['all','new','viewed','applied']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
@@ -301,7 +333,9 @@ function setFilter(btn, filter){ activeFilter = filter; document.querySelectorAl
 (async function init(){
   await initState();
   document.querySelectorAll('.card').forEach(renderCard);
+  markFreshness();
   applyFilter();
+  setTimeout(advanceLastVisit, 4000);
 })();
 </script>
 </body></html>`;
