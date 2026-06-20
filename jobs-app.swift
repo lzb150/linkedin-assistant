@@ -20,7 +20,8 @@ let bundlePath = Bundle.main.bundlePath                       // <project>/Jobs.
 let projectDir = (bundlePath as NSString).deletingLastPathComponent
 let statePath = (projectDir as NSString).appendingPathComponent("notify-state.json")
 let djinniStatePath = (projectDir as NSString).appendingPathComponent("djinni-notify-state.json")
-let dashboardScript = (projectDir as NSString).appendingPathComponent("dashboard.mjs")
+// Resolve the dashboard launcher script next to the app bundle.
+let dashboardLauncher = (projectDir as NSString).appendingPathComponent("open-dashboard.sh")
 let isBackground = CommandLine.arguments.contains("--background")
 
 func dbg(_ s: String) {
@@ -28,30 +29,11 @@ func dbg(_ s: String) {
     FileHandle.standardError.write(("jobs: " + s + "\n").data(using: .utf8)!)
 }
 
-// Resolve a node binary: $NODE_BIN, then the applet's nvm path, then Homebrew,
-// then fall back to `/usr/bin/env node` (uses PATH).
-func nodeInvocation() -> (launch: String, args: [String]) {
-    let env = ProcessInfo.processInfo.environment
-    if let bin = env["NODE_BIN"], !bin.isEmpty, FileManager.default.isExecutableFile(atPath: bin) {
-        return (bin, [dashboardScript, "--open"])
-    }
-    let candidates = [
-        "\(NSHomeDirectory())/.nvm/versions/node/v20.14.0/bin/node",
-        "/opt/homebrew/bin/node",
-        "/usr/local/bin/node",
-    ]
-    for c in candidates where FileManager.default.isExecutableFile(atPath: c) {
-        return (c, [dashboardScript, "--open"])
-    }
-    return ("/usr/bin/env", ["node", dashboardScript, "--open"])
-}
-
 func openDashboard() {
-    let (launch, args) = nodeInvocation()
     let proc = Process()
-    proc.executableURL = URL(fileURLWithPath: launch)
-    proc.arguments = args
-    do { try proc.run(); dbg("opened dashboard via \(launch)") }
+    proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+    proc.arguments = [dashboardLauncher]
+    do { try proc.run(); dbg("opened dashboard via \(dashboardLauncher)") }
     catch { dbg("openDashboard failed: \(error)") }
 }
 
