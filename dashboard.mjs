@@ -74,7 +74,7 @@ const cards = items
       }).join("");
     const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
     return `
-<article class="card" data-url="${esc(f.url)}" data-generated="${esc(f.generated || "")}">
+<article class="card" data-url="${esc(f.url)}" data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-score="${it.score}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
     <span class="score" style="background:${scoreColor(it.score)}">${it.score}</span>
     <div class="titles">
@@ -163,6 +163,12 @@ const html = `<!doctype html>
   .offline { background: #9a6700; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
   .card.fresh { box-shadow: inset 3px 0 0 #0969da; }
   .ribbon { background: #0969da; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid #57606a; background: #32383f; color: #fff; font-size: 13px; }
+  #q::placeholder { color: #9aa5b1; }
+  .src-seg, .min-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
+  .src-seg button, .min-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .src-seg button:first-child, .min-seg button:first-child { border-left: 0; }
+  .src-seg button.active, .min-seg button.active { background: #0969da; color: #fff; }
 </style></head>
 <body>
 <header>
@@ -175,6 +181,19 @@ const html = `<!doctype html>
       <button data-filter="viewed" onclick="setFilter(this,'viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
       <button data-filter="applied" onclick="setFilter(this,'applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
       <button data-filter="fresh" onclick="setFilter(this,'fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
+    </div>
+    <input id="q" type="search" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
+    <div class="src-seg" role="group" aria-label="Source">
+      <button data-src="all" class="active" onclick="setSource(this,'all')">All</button>
+      <button data-src="linkedin" onclick="setSource(this,'linkedin')">LinkedIn</button>
+      <button data-src="dou" onclick="setSource(this,'dou')">DOU</button>
+      <button data-src="djinni" onclick="setSource(this,'djinni')">Djinni</button>
+      <button data-src="jooble" onclick="setSource(this,'jooble')">Jooble</button>
+    </div>
+    <div class="min-seg" role="group" aria-label="Minimum score">
+      <button data-min="0" class="active" onclick="setMin(this,0)">All</button>
+      <button data-min="30" onclick="setMin(this,30)">≥30</button>
+      <button data-min="40" onclick="setMin(this,40)">≥40</button>
     </div>
   </div>
 </header>
@@ -317,6 +336,11 @@ async function advanceLastVisit() {
   else { state._meta = { ...(state._meta || {}), lastVisit: nowIso }; saveLocal(); }
 }
 
+let query = '', srcFilter = 'all', minScore = 0;
+function setQuery(v){ query = v.trim().toLowerCase(); applyFilter(); }
+function setSource(btn, src){ srcFilter = src; document.querySelectorAll('.src-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
+function setMin(btn, n){ minScore = n; document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
+
 let activeFilter = 'new';
 function applyFilter(){
   const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
@@ -324,9 +348,13 @@ function applyFilter(){
     const st = statusOf(card.dataset.url);
     counts.all++; counts[st]++;
     const detailsOpen = !!card.querySelector('details[open]');
+    const matchFind =
+      (srcFilter === 'all' || card.dataset.source === srcFilter) &&
+      (Number(card.dataset.score) >= minScore) &&
+      (!query || (card.dataset.search || '').includes(query));
     const isFresh = card.classList.contains('fresh');
-    const show = (activeFilter === 'all' || (activeFilter === 'fresh' ? isFresh : activeFilter === st) || detailsOpen);
-    card.style.display = show ? '' : 'none';
+    const matchStatus = (activeFilter === 'all' || (activeFilter === 'fresh' ? isFresh : activeFilter === st) || detailsOpen);
+    card.style.display = (matchStatus && matchFind) ? '' : 'none';
   });
   for (const k of ['all','new','viewed','applied']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
 }
