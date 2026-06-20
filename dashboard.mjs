@@ -304,6 +304,8 @@ function markFreshness() {
     if (fresh) {
       count++;
       if (!card.querySelector('.ribbon')) card.querySelector('.titles h2').insertAdjacentHTML('beforeend', ' <span class="ribbon">NEW</span>');
+    } else {
+      const r = card.querySelector('.ribbon'); if (r) r.remove();
     }
   });
   const el = document.getElementById('cnt-fresh'); if (el) el.textContent = count;
