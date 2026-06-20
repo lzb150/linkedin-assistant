@@ -161,6 +161,42 @@ status.
 by identity** (`company + title`) at render time, keeping the most recently
 generated one. You see each vacancy once even when older packages linger on disk.
 
+### Dashboard v2 — state server, pipeline tracking & follow-up reminders
+
+**State server (`state-server.mjs`)** replaces in-browser localStorage as the
+persistence layer. The dashboard is now served by a tiny local HTTP server at
+`http://127.0.0.1:7777/` (localhost only, never exposed). Clicking the Jobs.app
+Dock icon runs `open-dashboard.sh`, which regenerates the dashboard, starts the
+server if it is not already running, and opens the browser. Job state (status,
+applied-date, per-card notes, last-visit timestamp) is written to `job-state.json`
+on disk, so it survives a browser reset or a full OS restart. If the server is
+unreachable the dashboard falls back to `localStorage` and shows an
+**"offline — not saved to disk"** badge.
+
+**Pipeline tracking** — each card now moves through a three-stage pipeline:
+**New → Viewed → Applied**. Marking a job Applied records the date and shows it
+as "applied 5d ago". You can attach private notes to any card; they are saved to
+disk via the state server. The header shows live status/freshness counters and
+lets you filter by stage.
+
+**Find & freshness** — a search box filters cards by title, company, or skill
+keywords. Source chips (LinkedIn / DOU / Djinni / Jooble) and min-score presets
+(≥ 30 / ≥ 40) narrow the list further. Cards that arrived since your last visit
+are highlighted with a 🆕 badge and can be isolated with the "New since last
+visit" filter.
+
+**Follow-up reminders (`followup.mjs`)** — a daily launchd job
+(`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
+notification (via `osascript`) for every job you marked **Applied** with no
+status movement for 7+ days. Tune the threshold with the `FOLLOWUP_DAYS` env
+var. Install:
+
+```bash
+cp com.example.jobs-followup.plist.example \
+   ~/Library/LaunchAgents/com.eugene.jobs-followup.plist   # edit paths inside
+launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
+```
+
 ## Clean up stale packages — `prune-applications.mjs`
 
 The dashboard hides on-disk duplicates, but you can reclaim the space. This
@@ -217,10 +253,14 @@ Session expired? Re-run `node login.mjs`.
 ├── djinni-login.mjs   one-time Djinni login
 ├── djinni-check.mjs   Djinni inbox unread count → djinni-notify-state.json
 ├── dashboard.mjs      HTML dashboard generator
+├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
+├── followup.mjs       follow-up reminder script (daily launchd job)
+├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
 ├── prune-applications.mjs  remove stale duplicate packages from applications/
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
+├── job-state.json     per-card state (status, applied-date, notes, last-visit) — gitignored
 ├── drafts/            reply drafts
 ├── applications/      application packages + index.html
 └── Jobs.app           Dock shortcut 💼
@@ -236,6 +276,9 @@ Session expired? Re-run `node login.mjs`.
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
 | `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |
+| `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
+| `followup.mjs`        | Post macOS notifications for Applied jobs with no movement for 7+ days. |
+| `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
 | `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
 | `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |

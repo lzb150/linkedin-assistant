@@ -31,7 +31,7 @@ const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
 const parsed = files
   .map((f) => parse(readFileSync(join(APPS, f), "utf8")))
   .filter(Boolean)
-  .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10) }));
+  .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10), generated: x.fm.generated || "" }));
 
 // applications/ is append-only: historical runs left many packages for the same
 // vacancy (e.g. a Jooble job whose URL changed every run when seen was URL-keyed).
@@ -74,7 +74,7 @@ const cards = items
       }).join("");
     const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
     return `
-<article class="card" data-url="${esc(f.url)}">
+<article class="card" data-url="${esc(f.url)}" data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-score="${it.score}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
     <span class="score" style="background:${scoreColor(it.score)}">${it.score}</span>
     <div class="titles">
@@ -86,7 +86,9 @@ const cards = items
       <div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
+        <button data-status="applied" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
       </div>
+      <span class="applied-ago" hidden></span>
     </div>
   </div>
   <div class="skills">${skills}</div>
@@ -96,6 +98,10 @@ const cards = items
     <pre id="cover${idx}">${esc(it.cover)}</pre>
     <button class="copy" onclick="copyCover(${idx})">Copy letter</button>
     <span class="resume">📎 resume: ${esc(f.resume || "")}</span>
+  </details>
+  <details class="note-wrap">
+    <summary>📝 Note <span class="note-has" hidden>●</span></summary>
+    <textarea class="note" rows="3" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
   </details>
 </article>`;
   })
@@ -148,6 +154,21 @@ const html = `<!doctype html>
   .alt { color: #0969da; text-decoration: none; margin-right: 8px; }
   .alt:hover { text-decoration: underline; }
   .empty { text-align: center; color: #57606a; padding: 40px; }
+  .status-seg button.active[data-status="applied"] { background: #1a7f37; color: #fff; }
+  .card.applied { border-left: 4px solid #1a7f37; }
+  .applied-ago { font-size: 11px; color: #1a7f37; text-align: center; }
+  .note-wrap summary { color: #57606a; }
+  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
+  .note-has { color: #9a6700; }
+  .offline { background: #9a6700; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  .card.fresh { box-shadow: inset 3px 0 0 #0969da; }
+  .ribbon { background: #0969da; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid #57606a; background: #32383f; color: #fff; font-size: 13px; }
+  #q::placeholder { color: #9aa5b1; }
+  .src-seg, .min-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
+  .src-seg button, .min-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .src-seg button:first-child, .min-seg button:first-child { border-left: 0; }
+  .src-seg button.active, .min-seg button.active { background: #0969da; color: #fff; }
 </style></head>
 <body>
 <header>
@@ -158,6 +179,21 @@ const html = `<!doctype html>
       <button data-filter="all" onclick="setFilter(this,'all')">All <span class="cnt" id="cnt-all">0</span></button>
       <button data-filter="new" class="active" onclick="setFilter(this,'new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" onclick="setFilter(this,'viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      <button data-filter="applied" onclick="setFilter(this,'applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
+      <button data-filter="fresh" onclick="setFilter(this,'fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
+    </div>
+    <input id="q" type="search" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
+    <div class="src-seg" role="group" aria-label="Source">
+      <button data-src="all" class="active" onclick="setSource(this,'all')">All</button>
+      <button data-src="linkedin" onclick="setSource(this,'linkedin')">LinkedIn</button>
+      <button data-src="dou" onclick="setSource(this,'dou')">DOU</button>
+      <button data-src="djinni" onclick="setSource(this,'djinni')">Djinni</button>
+      <button data-src="jooble" onclick="setSource(this,'jooble')">Jooble</button>
+    </div>
+    <div class="min-seg" role="group" aria-label="Minimum score">
+      <button data-min="0" class="active" onclick="setMin(this,0)">All</button>
+      <button data-min="30" onclick="setMin(this,30)">≥30</button>
+      <button data-min="40" onclick="setMin(this,40)">≥40</button>
     </div>
   </div>
 </header>
@@ -165,92 +201,174 @@ const html = `<!doctype html>
 ${items.length ? cards : '<div class="empty">No matching jobs yet. Run <code>node jobs.mjs</code>.</div>'}
 </main>
 <script>
-function copyCover(i){
-  const t = document.getElementById('cover'+i).innerText;
-  navigator.clipboard.writeText(t).then(()=>{
-    event.target.textContent='✓ Copied';
-    setTimeout(()=>event.target.textContent='Copy letter',1500);
-  });
+// ---- State client: server-backed with a localStorage fallback ----------
+// When the state server (state-server.mjs) is reachable, job-state.json on disk
+// is the source of truth. When it is not (page opened as bare file://, or the
+// server is down), we fall back to localStorage and flag it in the header.
+const STATUS_KEY = 'jobStatus';        // legacy + offline cache: { url: {status,appliedAt,note} | "viewed" }
+let online = false;
+let state = { _meta: {} };             // mirror of the server store (or localStorage offline)
+
+const entryOf = (url) => state[url] || {};
+const statusOf = (url) => { const s = entryOf(url).status; return (s === 'viewed' || s === 'applied') ? s : 'new'; };
+
+async function postState(body) {
+  const r = await fetch('/state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error('post failed');
+  return r.json();
 }
 
-// Job status persists in localStorage keyed by job URL, so it survives dashboard
-// regeneration (jobs.mjs rewrites this file on every run). Map shape:
-// { "<url>": "viewed" | "applied" }. A missing entry means status "new".
-const STATUS_KEY = 'jobStatus';
-const LEGACY_SEEN_KEY = 'dashboardSeenJobs';
-
-function loadStatus(){
+function loadLocal() {
   let map = {};
   try { map = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}'); } catch {}
-  if (typeof map !== 'object' || map === null || Array.isArray(map)) map = {};
-  // The "applied" status was removed; fold any previously-stored "applied" into "viewed".
-  let changed = false;
-  for (const url of Object.keys(map)) {
-    if (map[url] === 'applied') { map[url] = 'viewed'; changed = true; }
+  if (!map || typeof map !== 'object' || Array.isArray(map)) map = {};
+  const out = { _meta: {} };
+  for (const [url, v] of Object.entries(map)) {
+    if (url === '_meta') { out._meta = v || {}; continue; }
+    out[url] = (typeof v === 'string')
+      ? (v === 'viewed' || v === 'applied' ? { status: v } : {})
+      : v;   // upgrade legacy strings; drop invalid/"new" status to match server normalize
   }
-  if (changed) localStorage.setItem(STATUS_KEY, JSON.stringify(map));
-  // One-time migration from the old binary "seen" Set: each becomes "viewed".
-  const legacy = localStorage.getItem(LEGACY_SEEN_KEY);
-  if (legacy !== null) {
-    try { for (const url of JSON.parse(legacy)) { if (!map[url]) map[url] = 'viewed'; } } catch {}
-    localStorage.removeItem(LEGACY_SEEN_KEY);
-    localStorage.setItem(STATUS_KEY, JSON.stringify(map));
-  }
-  return map;
+  return out;
 }
-function saveStatus(){ localStorage.setItem(STATUS_KEY, JSON.stringify(statusMap)); }
+function saveLocal() { localStorage.setItem(STATUS_KEY, JSON.stringify(state)); }
 
-let statusMap = loadStatus();
-let activeFilter = 'new';
+async function initState() {
+  try {
+    const ok = await fetch('/health').then((r) => r.ok).catch(() => false);
+    if (!ok) throw new Error('offline');
+    online = true;
+    state = await fetch('/state').then((r) => r.json());
+    // One-time migration: push any local entries the server doesn't have yet.
+    const local = loadLocal();
+    const hadLocalEntries = Object.keys(local).some((k) => k !== '_meta');
+    for (const [url, v] of Object.entries(local)) {
+      if (url === '_meta' || state[url]) continue;
+      const patch = (typeof v === 'string') ? { status: v } : v;
+      state = await postState({ url, patch });
+    }
+    if (hadLocalEntries) localStorage.removeItem(STATUS_KEY);
+  } catch {
+    online = false;
+    state = loadLocal();
+    const h = document.querySelector('header .meta');
+    if (h) h.insertAdjacentHTML('beforeend', '<span class="offline">offline — not saved to disk</span>');
+  }
+}
 
-const statusOf = (url) => statusMap[url] || 'new';
+async function patchEntry(url, patch) {
+  if (online) { state = await postState({ url, patch }); }
+  else {
+    // Mirror mergeEntry locally so offline edits round-trip.
+    const e = { ...(state[url] || {}) };
+    if ('status' in patch) { if (patch.status === 'new') delete e.status; else e.status = patch.status; }
+    if ('appliedAt' in patch) { if (patch.appliedAt == null) delete e.appliedAt; else e.appliedAt = patch.appliedAt; }
+    if ('note' in patch) { if (!patch.note) delete e.note; else e.note = patch.note; }
+    const empty = !(e.status === 'viewed' || e.status === 'applied' || (e.note && e.note.length) || e.appliedAt);
+    if (empty) delete state[url]; else state[url] = e;
+    saveLocal();
+  }
+}
+
+function daysAgo(iso) {
+  const d = (Date.now() - new Date(iso).getTime()) / 86400000;
+  if (!isFinite(d)) return '';
+  const n = Math.floor(d);
+  return n <= 0 ? 'today' : n + 'd ago';
+}
+
+function copyCover(i){
+  const t = document.getElementById('cover'+i).innerText;
+  navigator.clipboard.writeText(t).then(()=>{ event.target.textContent='✓ Copied'; setTimeout(()=>event.target.textContent='Copy letter',1500); });
+}
 
 function renderCard(card){
-  const st = statusOf(card.dataset.url);
-  card.classList.toggle('viewed', st === 'viewed');
-  card.querySelectorAll('.status-seg button').forEach((b) => {
-    b.classList.toggle('active', b.dataset.status === st);
-  });
-}
-
-// Set a card's status and persist it. Used by both the manual status buttons
-// and the automatic triggers (opening the job link / expanding the cover letter).
-// Auto-triggers always overwrite the stored status (per user preference), so e.g.
-// re-opening a card's letter sets it back to "viewed" even if it was "applied".
-function setStatus(card, status){
   const url = card.dataset.url;
-  if (status === 'new') delete statusMap[url]; else statusMap[url] = status;
-  saveStatus();
-  renderCard(card);
-  applyFilter();
+  const st = statusOf(url);
+  const e = entryOf(url);
+  card.classList.toggle('viewed', st === 'viewed');
+  card.classList.toggle('applied', st === 'applied');
+  card.querySelectorAll('.status-seg button').forEach((b) => b.classList.toggle('active', b.dataset.status === st));
+  const ago = card.querySelector('.applied-ago');
+  if (ago) { if (st === 'applied' && e.appliedAt) { ago.textContent = 'applied ' + daysAgo(e.appliedAt); ago.hidden = false; } else ago.hidden = true; }
+  const ta = card.querySelector('.note'); if (ta && document.activeElement !== ta) ta.value = e.note || '';
+  const dot = card.querySelector('.note-has'); if (dot) dot.hidden = !(e.note && e.note.length);
 }
 
-// Automatic status change fired by user interaction (always overwrites).
-function autoStatus(card, status){ setStatus(card, status); }
+async function setStatus(card, status){
+  const url = card.dataset.url;
+  const patch = { status };
+  if (status === 'applied' && !entryOf(url).appliedAt) patch.appliedAt = new Date().toISOString();
+  if (status !== 'applied') patch.appliedAt = null;
+  await patchEntry(url, patch);
+  renderCard(card); applyFilter();
+}
+// Auto-status never downgrades an Applied card.
+async function autoStatus(card, status){ if (statusOf(card.dataset.url) === 'applied') return; await setStatus(card, status); }
 
+async function saveNote(card, value){ await patchEntry(card.dataset.url, { note: value.trim() }); renderCard(card); }
+
+// Inlined from lib/freshness.mjs (browser has no module import here).
+function isNew(generatedISO, lastVisitISO) {
+  if (!lastVisitISO) return false;
+  const g = Date.parse(generatedISO), v = Date.parse(lastVisitISO);
+  if (!isFinite(g) || !isFinite(v)) return false;
+  return g > v;
+}
+
+function markFreshness() {
+  const lastVisit = (state._meta && state._meta.lastVisit) || '';
+  let count = 0;
+  document.querySelectorAll('.card').forEach((card) => {
+    const fresh = isNew(card.dataset.generated, lastVisit);
+    card.classList.toggle('fresh', fresh);
+    if (fresh) {
+      count++;
+      if (!card.querySelector('.ribbon')) card.querySelector('.titles h2').insertAdjacentHTML('beforeend', ' <span class="ribbon">NEW</span>');
+    } else {
+      const r = card.querySelector('.ribbon'); if (r) r.remove();
+    }
+  });
+  const el = document.getElementById('cnt-fresh'); if (el) el.textContent = count;
+}
+
+async function advanceLastVisit() {
+  const nowIso = new Date().toISOString();
+  if (online) { try { state = await postState({ _meta: { lastVisit: nowIso } }); } catch {} }
+  else { state._meta = { ...(state._meta || {}), lastVisit: nowIso }; saveLocal(); }
+}
+
+let query = '', srcFilter = 'all', minScore = 0;
+function setQuery(v){ query = v.trim().toLowerCase(); applyFilter(); }
+function setSource(btn, src){ srcFilter = src; document.querySelectorAll('.src-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
+function setMin(btn, n){ minScore = n; document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
+
+let activeFilter = 'new';
 function applyFilter(){
-  const counts = { all: 0, new: 0, viewed: 0 };
+  const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
   document.querySelectorAll('.card').forEach((card) => {
     const st = statusOf(card.dataset.url);
     counts.all++; counts[st]++;
     const detailsOpen = !!card.querySelector('details[open]');
-    card.style.display = (activeFilter === 'all' || activeFilter === st || detailsOpen) ? '' : 'none';
+    const matchFind =
+      (srcFilter === 'all' || card.dataset.source === srcFilter) &&
+      (Number(card.dataset.score) >= minScore) &&
+      (!query || (card.dataset.search || '').includes(query));
+    const isFresh = card.classList.contains('fresh');
+    const matchStatus = (activeFilter === 'all' || (activeFilter === 'fresh' ? isFresh : activeFilter === st) || detailsOpen);
+    card.style.display = (matchStatus && matchFind) ? '' : 'none';
   });
-  for (const k of ['all', 'new', 'viewed']) {
-    const el = document.getElementById('cnt-' + k);
-    if (el) el.textContent = counts[k];
-  }
+  for (const k of ['all','new','viewed','applied']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
 }
+function setFilter(btn, filter){ activeFilter = filter; document.querySelectorAll('.filter-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
 
-function setFilter(btn, filter){
-  activeFilter = filter;
-  document.querySelectorAll('.filter-seg button').forEach((b) => b.classList.toggle('active', b === btn));
+(async function init(){
+  await initState();
+  document.querySelectorAll('.card').forEach(renderCard);
+  markFreshness();
   applyFilter();
-}
-
-// Restore saved state on load.
-document.querySelectorAll('.card').forEach(renderCard);
-applyFilter();
+  setTimeout(advanceLastVisit, 4000);
+})();
 </script>
 </body></html>`;
 
