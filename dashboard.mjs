@@ -338,12 +338,36 @@ async function advanceLastVisit() {
   else { state._meta = { ...(state._meta || {}), lastVisit: nowIso }; saveLocal(); }
 }
 
-let query = '', srcFilter = 'all', minScore = 0;
+let query = '', minScore = 0;
+// Multi-select filters: empty Set === "All". Clicking a chip toggles it, "All" clears.
+const srcSel = new Set(), statusSel = new Set(['new']);
+function toggleSel(sel, v){ if (v === 'all') sel.clear(); else if (!sel.delete(v)) sel.add(v); }
+function syncSeg(sel, selector, attr){
+  document.querySelectorAll(selector).forEach((b)=>{
+    const v = b.dataset[attr];
+    b.classList.toggle('active', v === 'all' ? sel.size === 0 : sel.has(v));
+  });
+}
+const FILTERS_KEY = 'jobFilters';      // filter selection survives reloads (localStorage, per-browser)
+function saveFilters(){
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify({ status: [...statusSel], src: [...srcSel], minScore, query })); } catch {}
+}
+function restoreFilters(){
+  let f; try { f = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null'); } catch {}
+  if (!f || typeof f !== 'object') return;
+  statusSel.clear(); (f.status || []).forEach((v)=>statusSel.add(v));
+  srcSel.clear(); (f.src || []).forEach((v)=>srcSel.add(v));
+  minScore = Number(f.minScore) || 0;
+  query = (f.query || '').trim().toLowerCase();
+  const q = document.getElementById('q'); if (q) q.value = query;
+  syncSeg(statusSel, '.filter-seg button', 'filter');
+  syncSeg(srcSel, '.src-seg button', 'src');
+  document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', Number(b.dataset.min) === minScore));
+}
 function setQuery(v){ query = v.trim().toLowerCase(); applyFilter(); }
-function setSource(btn, src){ srcFilter = src; document.querySelectorAll('.src-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
+function setSource(btn, src){ toggleSel(srcSel, src); syncSeg(srcSel, '.src-seg button', 'src'); applyFilter(); }
 function setMin(btn, n){ minScore = n; document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
 
-let activeFilter = 'new';
 function applyFilter(){
   const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
   document.querySelectorAll('.card').forEach((card) => {
@@ -351,21 +375,23 @@ function applyFilter(){
     counts.all++; counts[st]++;
     const detailsOpen = !!card.querySelector('details[open]');
     const matchFind =
-      (srcFilter === 'all' || card.dataset.source === srcFilter) &&
+      (srcSel.size === 0 || srcSel.has(card.dataset.source)) &&
       (Number(card.dataset.score) >= minScore) &&
       (!query || (card.dataset.search || '').includes(query));
     const isFresh = card.classList.contains('fresh');
-    const matchStatus = (activeFilter === 'all' || (activeFilter === 'fresh' ? isFresh : activeFilter === st) || detailsOpen);
+    const matchStatus = (statusSel.size === 0 || statusSel.has(st) || (statusSel.has('fresh') && isFresh) || detailsOpen);
     card.style.display = (matchStatus && matchFind) ? '' : 'none';
   });
   for (const k of ['all','new','viewed','applied']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
+  saveFilters();
 }
-function setFilter(btn, filter){ activeFilter = filter; document.querySelectorAll('.filter-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
+function setFilter(btn, filter){ toggleSel(statusSel, filter); syncSeg(statusSel, '.filter-seg button', 'filter'); applyFilter(); }
 
 (async function init(){
   await initState();
   document.querySelectorAll('.card').forEach(renderCard);
   markFreshness();
+  restoreFilters();
   applyFilter();
   setTimeout(advanceLastVisit, 4000);
 })();
