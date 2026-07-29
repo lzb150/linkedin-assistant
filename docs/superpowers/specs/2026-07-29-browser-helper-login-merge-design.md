@@ -20,20 +20,23 @@ Behavior must not change.
 One export:
 
 ```js
-// Shared persistent-context launcher (HEADFUL=1 → visible browser).
-export function launchBrowser(profileDir) {
+// Shared persistent-context launcher. Visible browser when headful (login
+// scripts always; scheduled jobs with HEADFUL=1), headless "new" mode otherwise.
+export function launchBrowser(profileDir, { headful = HEADFUL } = {}) {
   return chromium.launchPersistentContext(profileDir, {
-    headless: !HEADFUL,
+    headless: !headful,
     viewport: { width: 1280, height: 900 },
     args: [
       "--disable-blink-features=AutomationControlled",
-      ...(HEADFUL ? [] : ["--headless=new", "--no-first-run", "--no-default-browser-check"]),
+      ...(headful ? [] : ["--headless=new", "--no-first-run", "--no-default-browser-check"]),
     ],
   });
 }
 ```
 
-`HEADFUL` is read from `process.env` inside the module. Callers replace their
+`HEADFUL` is read from `process.env` inside the module. The `headful` option
+exists because the login scripts always open a visible window regardless of
+`HEADFUL` (they pass `{ headful: true }`). Scheduled callers replace their
 inline block with `await launchBrowser(PROFILE)`:
 
 - `check.mjs`
