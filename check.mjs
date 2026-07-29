@@ -9,7 +9,7 @@
 //                                     useful for a first pass / when unread marker is missed.
 //                                     seen.json still prevents duplicate drafts.)
 
-import { chromium } from "playwright";
+import { launchBrowser } from "./lib/browser.mjs";
 import { writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -23,7 +23,6 @@ const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
-const HEADFUL = process.env.HEADFUL === "1";
 const MAX = parseInt(process.env.MAX || "12", 10);
 const SCAN_ALL = process.env.SCAN_ALL === "1";
 
@@ -65,14 +64,7 @@ function saveSeen(set) {
 
 const seen = loadSeen();
 
-const ctx = await chromium.launchPersistentContext(PROFILE, {
-  headless: !HEADFUL,
-  viewport: { width: 1280, height: 900 },
-  args: [
-    "--disable-blink-features=AutomationControlled",
-    ...(HEADFUL ? [] : ["--headless=new", "--no-first-run", "--no-default-browser-check"]),
-  ],
-});
+const ctx = await launchBrowser(PROFILE);
 
 let drafted = 0;
 let scanned = 0;

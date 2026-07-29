@@ -95,7 +95,7 @@ The Dock badge on `Jobs.app` ("Вакансии") shows the **combined** number 
 One-time login (whenever the Djinni session expires):
 
 ```bash
-node djinni-login.mjs   # opens a browser; log in to Djinni manually (incl. 2FA)
+node login.mjs djinni   # opens a browser; log in to Djinni manually (incl. 2FA)
 ```
 
 Count unread Djinni inbox threads (writes `djinni-notify-state.json`):
@@ -247,8 +247,7 @@ Session expired? Re-run `node login.mjs`.
 ~/linkedin-assistant/
 ├── check.mjs          inbox → reply drafts
 ├── jobs.mjs           job discovery → application packages
-├── login.mjs          one-time LinkedIn login
-├── djinni-login.mjs   one-time Djinni login
+├── login.mjs          one-time login (LinkedIn by default, `djinni` argument)
 ├── djinni-check.mjs   Djinni inbox unread count → djinni-notify-state.json
 ├── dashboard.mjs      HTML dashboard generator
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
@@ -268,9 +267,8 @@ Session expired? Re-run `node login.mjs`.
 
 | File                  | Purpose                                                   |
 |-----------------------|-----------------------------------------------------------|
-| `login.mjs`           | One-time manual login; persists session.                  |
+| `login.mjs`           | One-time manual login (LinkedIn default, `node login.mjs djinni`); persists session. |
 | `check.mjs`           | Read unread → score → draft. Never sends.                 |
-| `djinni-login.mjs`    | One-time manual Djinni login; persists session.           |
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
 | `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |

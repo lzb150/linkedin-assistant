@@ -1,4 +1,4 @@
-// The scheduled Djinni job. Reuses the session saved by djinni-login.mjs and
+// The scheduled Djinni job. Reuses the session saved by `node login.mjs djinni` and
 // counts UNREAD conversations using Djinni's own unread filter
 // (/my/inbox?bucket=unread), then writes the count to djinni-notify-state.json.
 // The Jobs.app Dock badge sums this with the LinkedIn count (notify-state.json).
@@ -8,7 +8,7 @@
 // Run:  node djinni-check.mjs              (headless)
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
-import { chromium } from "playwright";
+import { launchBrowser } from "./lib/browser.mjs";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -22,21 +22,13 @@ const STATE_FILE = join(__dir, "djinni-notify-state.json");
 // given unread conversation only notifies once. A network error never touches
 // this file, so a transient blip can't trigger a spurious re-notification.
 const SEEN_FILE = join(__dir, "djinni-seen.json");
-const HEADFUL = process.env.HEADFUL === "1";
 
 // Djinni's own "unread" inbox bucket. Counting the conversation threads listed
 // here is the most reliable unread signal (verified against the live DOM):
 // each thread is a link of the form /my/inbox/<id>/.
 const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 
-const ctx = await chromium.launchPersistentContext(PROFILE, {
-  headless: !HEADFUL,
-  viewport: { width: 1280, height: 900 },
-  args: [
-    "--disable-blink-features=AutomationControlled",
-    ...(HEADFUL ? [] : ["--headless=new", "--no-first-run", "--no-default-browser-check"]),
-  ],
-});
+const ctx = await launchBrowser(PROFILE);
 
 let unreadCount = 0;
 let scanned = false; // true once we have a real count from a loaded page
@@ -55,8 +47,8 @@ try {
     // Intentionally do NOT writeState here (process.exit skips finally): leave
     // the last known count on the badge rather than zeroing it on a transient
     // session expiry.
-    log("❌ Not logged in (session expired). Run:  node djinni-login.mjs");
-    notify("Djinni assistant", "Session expired — run `node djinni-login.mjs` to re-authenticate.");
+    log("❌ Not logged in (session expired). Run:  node login.mjs djinni");
+    notify("Djinni assistant", "Session expired — run `node login.mjs djinni` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }

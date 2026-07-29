@@ -24,6 +24,7 @@ import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { currentCounts, detectRegressions, mergeCounts, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as osaNotify } from "./lib/notify.mjs";
+import { launchBrowser } from "./lib/browser.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -31,7 +32,6 @@ const APPS = join(__dir, "applications");
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
 const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
-const HEADFUL = process.env.HEADFUL === "1";
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
@@ -105,15 +105,7 @@ for (const s of BROWSERLESS_SOURCES) {
 
 // 4) LinkedIn via the logged-in browser (optional)
 if (!DOU_ONLY && config.linkedin?.enabled) {
-  const { chromium } = await import("playwright");
-  const ctx = await chromium.launchPersistentContext(PROFILE, {
-    headless: !HEADFUL,
-    viewport: { width: 1280, height: 900 },
-    args: [
-      "--disable-blink-features=AutomationControlled",
-      ...(HEADFUL ? [] : ["--headless=new", "--no-first-run", "--no-default-browser-check"]),
-    ],
-  });
+  const ctx = await launchBrowser(PROFILE);
   try {
     const page = ctx.pages()[0] || (await ctx.newPage());
     // bail early if logged out
