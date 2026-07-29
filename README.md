@@ -1,7 +1,5 @@
 # LinkedIn Job Assistant
 
-> 🇺🇦 [Читати українською](README.uk.md)
-
 A local job-search helper: it watches recruiter messages in your LinkedIn inbox,
 finds vacancies on DOU and LinkedIn, scores them against your resume, and prepares
 ready-to-review reply/application drafts. **It never sends anything** — the final

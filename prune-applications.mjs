@@ -13,6 +13,7 @@ import { readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
+import { parseFrontmatter } from "./lib/frontmatter.mjs";
 
 /**
  * Decide which package files to keep and which to remove.
@@ -36,20 +37,14 @@ export function planPrune(packages) {
   return { keep, remove };
 }
 
-// Read one frontmatter field from a package's markdown.
-function field(md, name) {
-  const m = md.match(new RegExp(`^${name}:\\s*(.*)$`, "m"));
-  return m ? m[1].trim() : "";
-}
-
 // CLI: only runs when invoked directly, not when imported by tests.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const apply = process.argv.includes("--apply");
   const APPS = join(dirname(fileURLToPath(import.meta.url)), "applications");
   const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
   const packages = files.map((f) => {
-    const md = readFileSync(join(APPS, f), "utf8");
-    return { file: f, company: field(md, "company"), title: field(md, "title"), generated: field(md, "generated") };
+    const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {};
+    return { file: f, company: fm.company || "", title: fm.title || "", generated: fm.generated || "" };
   });
 
   const { keep, remove } = planPrune(packages);

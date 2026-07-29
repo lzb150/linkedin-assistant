@@ -10,10 +10,10 @@
 
 import { chromium } from "playwright";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { execFile, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
+import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
@@ -22,45 +22,12 @@ const STATE_FILE = join(__dir, "djinni-notify-state.json");
 // given unread conversation only notifies once. A network error never touches
 // this file, so a transient blip can't trigger a spurious re-notification.
 const SEEN_FILE = join(__dir, "djinni-seen.json");
-const JOBS_APP = join(__dir, "Jobs.app"); // built by build-jobs.sh
 const HEADFUL = process.env.HEADFUL === "1";
 
 // Djinni's own "unread" inbox bucket. Counting the conversation threads listed
 // here is the most reliable unread signal (verified against the live DOM):
 // each thread is a link of the form /my/inbox/<id>/.
 const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
-
-function log(...a) {
-  console.log(new Date().toISOString(), ...a);
-}
-
-function notify(title, message) {
-  // macOS notification; best-effort, never throws.
-  execFile(
-    "osascript",
-    ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}`],
-    () => {}
-  );
-}
-
-// Keep the persistent Jobs.app badge daemon running so it can render the Dock
-// badge. `--background` means "badge only, do not open the dashboard"; `-g`
-// keeps focus on the user's current app.
-// Guard: skip open(1) if Jobs.app is already running — calling open(1) on a
-// running app triggers applicationShouldHandleReopen, which opens the dashboard.
-function ensureJobsApp() {
-  if (!existsSync(JOBS_APP)) {
-    log("notify: Jobs.app missing at", JOBS_APP, "— run ./build-jobs.sh");
-    return;
-  }
-  if (spawnSync("pgrep", ["-x", "jobs"], { stdio: "ignore" }).status === 0) return;
-  try {
-    const p = spawn("open", ["-g", "-a", JOBS_APP, "--args", "--background"],
-      { detached: true, stdio: "ignore" });
-    p.on("error", (e) => log("notify: ensureJobsApp failed:", e?.message));
-    p.unref();
-  } catch (e) { log("notify: ensureJobsApp threw:", e?.message); }
-}
 
 const ctx = await chromium.launchPersistentContext(PROFILE, {
   headless: !HEADFUL,

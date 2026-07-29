@@ -5,22 +5,17 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
+import { parseFrontmatter } from "./lib/frontmatter.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const APPS = join(__dir, "applications");
 const OUT = join(APPS, "index.html");
 
 function parse(md) {
-  const fm = {};
-  const m = md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!m) return null;
-  for (const line of m[1].split("\n")) {
-    const i = line.indexOf(":");
-    if (i === -1) continue;
-    fm[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-  }
+  const fm = parseFrontmatter(md);
+  if (!fm) return null;
   // cover note = text between "## Cover note" and "## Action"
-  const cover = (m[2].match(/## Cover note[^\n]*\n([\s\S]*?)\n## Action/) || [])[1] || "";
+  const cover = (md.match(/## Cover note[^\n]*\n([\s\S]*?)\n## Action/) || [])[1] || "";
   return { fm, cover: cover.trim() };
 }
 

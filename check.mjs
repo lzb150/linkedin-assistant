@@ -10,20 +10,19 @@
 //                                     seen.json still prevents duplicate drafts.)
 
 import { chromium } from "playwright";
-import { writeFileSync, readFileSync, existsSync } from "node:fs";
-import { execFile, spawn, spawnSync } from "node:child_process";
+import { writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
+import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
-const JOBS_APP = join(__dir, "Jobs.app"); // built by build-jobs.sh
 const HEADFUL = process.env.HEADFUL === "1";
 const MAX = parseInt(process.env.MAX || "12", 10);
 const SCAN_ALL = process.env.SCAN_ALL === "1";
@@ -54,35 +53,6 @@ async function cardIsUnread(card) {
     });
   } catch {}
   return false;
-}
-
-function log(...a) {
-  console.log(new Date().toISOString(), ...a);
-}
-
-function notify(title, message) {
-  // macOS notification; best-effort, never throws
-  execFile("osascript", ["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}`], () => {});
-}
-
-// Ensure the persistent Jobs.app badge daemon is running so it can render the
-// Dock badge from notify-state.json. `--background` means "badge only, do not
-// open the dashboard"; `-g` keeps focus on the user's current app.
-// Guard: skip open(1) if Jobs.app is already running — calling open(1) on a
-// running app triggers applicationShouldHandleReopen in the Swift delegate,
-// which opens the dashboard unexpectedly.
-function ensureJobsApp() {
-  if (!existsSync(JOBS_APP)) {
-    log("notify: Jobs.app missing at", JOBS_APP, "— run ./build-jobs.sh");
-    return;
-  }
-  if (spawnSync("pgrep", ["-x", "jobs"], { stdio: "ignore" }).status === 0) return;
-  try {
-    const p = spawn("open", ["-g", "-a", JOBS_APP, "--args", "--background"],
-      { detached: true, stdio: "ignore" });
-    p.on("error", (e) => log("notify: ensureJobsApp failed:", e?.message));
-    p.unref();
-  } catch (e) { log("notify: ensureJobsApp threw:", e?.message); }
 }
 
 function loadSeen() {

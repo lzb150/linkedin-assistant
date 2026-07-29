@@ -8,7 +8,7 @@
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
@@ -23,6 +23,7 @@ import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { currentCounts, detectRegressions, mergeCounts, formatAlert } from "./lib/source-health.mjs";
+import { log, notify as osaNotify } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -34,14 +35,12 @@ const HEADFUL = process.env.HEADFUL === "1";
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
-const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 // Prefer Notifier.app (the green Messages icon, same banner as check.mjs) and
 // fall back to osascript (shows the Script Editor icon) if the app is missing.
 // Notifier.app MUST be launched via `open` so macOS treats it as a registered
 // app, detached + unref'd so the banner survives this process exiting.
-const notifyOsascript = (msg) =>
-  execFile("osascript", ["-e", `display notification ${JSON.stringify(msg)} with title "Job assistant"`], () => {});
+const notifyOsascript = (msg) => osaNotify("Job assistant", msg);
 function notify(msg) {
   const body = (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready";
   if (existsSync(NOTIFIER_APP)) {
@@ -87,32 +86,21 @@ const prevHealth = loadHealth();
 let jobs = [];
 const summary = newSummary();
 
-// 1) DOU via RSS (no browser needed)
-log("Gathering DOU (RSS)...");
-try {
-  const douJobs = await fetchDou(config.dou, log);
-  recordFound(summary, "dou", douJobs.length);
-  jobs.push(...douJobs);
-} catch (e) { log("DOU error:", e.message); }
-
-// 2) Djinni via the public jobs board (plain fetch, no browser, no login)
-if (config.djinni?.enabled) {
-  log("Gathering Djinni (jobs board)...");
+// 1–3) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
+// Jooble (official API — needs JOOBLE_API_KEY). Same gather/record/collect shape.
+const BROWSERLESS_SOURCES = [
+  { name: "dou", enabled: true, fetch: fetchDou },
+  { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
+  { name: "jooble", enabled: config.jooble?.enabled, fetch: fetchJooble },
+];
+for (const s of BROWSERLESS_SOURCES) {
+  if (!s.enabled) continue;
+  log(`Gathering ${s.name}...`);
   try {
-    const djinniJobs = await fetchDjinni(config.djinni, log);
-    recordFound(summary, "djinni", djinniJobs.length);
-    jobs.push(...djinniJobs);
-  } catch (e) { log("Djinni error:", e.message); }
-}
-
-// 3) Jooble via the official API (needs JOOBLE_API_KEY; no browser)
-if (config.jooble?.enabled) {
-  log("Gathering Jooble (API)...");
-  try {
-    const joobleJobs = await fetchJooble(config.jooble, log);
-    recordFound(summary, "jooble", joobleJobs.length);
-    jobs.push(...joobleJobs);
-  } catch (e) { log("Jooble error:", e.message); }
+    const found = await s.fetch(config[s.name], log);
+    recordFound(summary, s.name, found.length);
+    jobs.push(...found);
+  } catch (e) { log(`${s.name} error:`, e.message); }
 }
 
 // 4) LinkedIn via the logged-in browser (optional)
