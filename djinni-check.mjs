@@ -1,4 +1,4 @@
-// The scheduled Djinni job. Reuses the session saved by djinni-login.mjs and
+// The scheduled Djinni job. Reuses the session saved by `node login.mjs djinni` and
 // counts UNREAD conversations using Djinni's own unread filter
 // (/my/inbox?bucket=unread), then writes the count to djinni-notify-state.json.
 // The Jobs.app Dock badge sums this with the LinkedIn count (notify-state.json).
@@ -47,8 +47,8 @@ try {
     // Intentionally do NOT writeState here (process.exit skips finally): leave
     // the last known count on the badge rather than zeroing it on a transient
     // session expiry.
-    log("❌ Not logged in (session expired). Run:  node djinni-login.mjs");
-    notify("Djinni assistant", "Session expired — run `node djinni-login.mjs` to re-authenticate.");
+    log("❌ Not logged in (session expired). Run:  node login.mjs djinni");
+    notify("Djinni assistant", "Session expired — run `node login.mjs djinni` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }
