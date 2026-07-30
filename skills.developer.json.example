@@ -1,0 +1,61 @@
+{
+  "_comment": "Drop-in skills.json for a backend/full-stack TypeScript-Node developer. Activate with: cp skills.developer.json.example skills.json — then update the searches in jobs.config.json, resume.txt and RESUME_PATH (see README, 'Adapting to another profession').",
+  "roles": [
+    "software engineer", "software developer", "backend developer", "backend engineer",
+    "full stack developer", "full stack engineer", "node.js developer", "typescript developer",
+    "frontend developer", "web developer", "senior developer", "senior engineer",
+    "розробник програмного забезпечення", "бекенд розробник", "фулстек розробник",
+    "веб розробник", "інженер-програміст", "програміст",
+    "разработчик программного обеспечения", "бэкенд разработчик", "фулстек разработчик",
+    "веб разработчик", "инженер-программист", "программист"
+  ],
+  "skills": {
+    "typescript": 5,
+    "node.js": 5,
+    "nodejs": 5,
+    "javascript": 4,
+    "react": 4,
+    "rest": 4,
+    "api": 3,
+    "graphql": 3,
+    "postgresql": 3,
+    "sql": 3,
+    "mongodb": 2,
+    "redis": 2,
+    "docker": 3,
+    "kubernetes": 2,
+    "aws": 3,
+    "microservices": 4,
+    "ci/cd": 3,
+    "git": 1,
+    "jest": 2,
+    "express": 3,
+    "nestjs": 3,
+    "websocket": 2,
+    "rabbitmq": 2,
+    "kafka": 2
+  },
+  "_synonymsComment": "Cross-language equivalents for conceptual skills. A skill's weight counts ONCE if the key OR any synonym matches.",
+  "synonyms": {
+    "microservices": ["мікросервіси", "микросервисы"],
+    "api": ["апі"]
+  },
+  "antiKeywords": {
+    "wordpress": -3,
+    "unpaid": -6,
+    "internship": -3,
+    "relocation required": -1,
+    "on-site only": -1
+  },
+  "thresholds": {
+    "_comment": "score >= relevant -> draft + 'attach resume'. score >= maybe -> draft flagged for your judgment. below maybe -> logged only, no draft.",
+    "relevant": 8,
+    "maybe": 4
+  },
+  "_profileComment": "How the FALLBACK cover letters describe your specialization, per language (LLM letters ignore this — they are grounded in resume.txt). Cyrillic phrases sit in genitive position — 'досвід в …' / 'опыт в …'.",
+  "profile": {
+    "en": "software development",
+    "uk": "розробці програмного забезпечення",
+    "ru": "разработке программного обеспечения"
+  }
+}
