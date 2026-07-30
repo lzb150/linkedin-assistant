@@ -328,8 +328,8 @@ async function setStatus(card, status){
   await patchEntry(url, patch);
   renderCard(card); applyFilter(); renderFunnel();
 }
-// Auto-status never downgrades an Applied card.
-async function autoStatus(card, status){ if (statusOf(card.dataset.url) === 'applied') return; await setStatus(card, status); }
+// Auto-status never downgrades any post-applied card.
+async function autoStatus(card, status){ if (POST_APPLIED.includes(statusOf(card.dataset.url))) return; await setStatus(card, status); }
 
 async function saveNote(card, value){ await patchEntry(card.dataset.url, { note: value.trim() }); renderCard(card); }
 
