@@ -13,16 +13,18 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication } from "./lib/application.mjs";
+import { llmJSON, buildJobPrompt } from "./lib/llm.mjs";
+import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey } from "./lib/dedup.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatNotification,
+  formatTable, formatNotification, topMatches, formatTopMatches,
 } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { currentCounts, detectRegressions, mergeCounts, formatAlert } from "./lib/source-health.mjs";
+import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as osaNotify } from "./lib/notify.mjs";
 import { launchBrowser } from "./lib/browser.mjs";
 
@@ -35,6 +37,14 @@ const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
+
+// Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
+function loadResume() {
+  try { return readFileSync(join(__dir, "resume.txt"), "utf8"); } catch { return ""; }
+}
+const RESUME_TXT = loadResume();
+const LLM = config.llm || {};
+const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 
 // Prefer Notifier.app (the green Messages icon, same banner as check.mjs) and
 // fall back to osascript (shows the Script Editor icon) if the app is missing.
@@ -74,14 +84,14 @@ function loadSeen() {
 }
 const seen = loadSeen();
 
-// source-health.json records each source's `found` count from the last run so we
-// can warn when a source that had results suddenly returns zero (a likely sign
-// its scraper broke). Missing/unparseable file → no history (no alerts, just seed).
+// source-health.json keeps the last 10 runs' `found` counts per source so we
+// can warn when a source degrades well below its recent norm (a likely sign
+// its scraper broke). Missing/unparseable/legacy file → normalized quietly.
 function loadHealth() {
   try { return JSON.parse(readFileSync(HEALTH_FILE, "utf8")); }
   catch { return {}; }
 }
-const prevHealth = loadHealth();
+const health = normalizeHistory(loadHealth());
 
 let jobs = [];
 const summary = newSummary();
@@ -145,8 +155,10 @@ function excludedByTitle(title) {
   );
 }
 
-// 5) Score + write application packages for RELEVANT, unseen jobs.
+// 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
+// Gate unchanged: per-source/global minScore + requireRole. LLM never gates.
 let written = 0, considered = 0;
+const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
   if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); continue; }
@@ -170,11 +182,28 @@ for (const job of jobs) {
     seen.add(id);
     continue;
   }
-  const { filename, markdown } = buildApplication(job, scored);
+  matches.push({ id, job, scored });
+}
+
+// 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
+// per run), then write the package. LLM failure → keyword-only package.
+matches.sort((a, b) => b.scored.score - a.scored.score);
+const writtenList = [];
+let llmCalls = 0;
+for (const { id, job, scored } of matches) {
+  let llm = null;
+  if (llmOn && scored.score >= (LLM.minKeywordScore ?? 15) && llmCalls < (LLM.maxPerRun ?? 15)) {
+    llmCalls++;
+    const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
+    if (res && Number.isFinite(Number(res.score))) llm = res;
+    else log(`  · llm failed for: ${job.title} — keyword-only package`);
+  }
+  const { filename, markdown } = buildApplication(job, scored, llm);
   writeFileSync(join(APPS, filename), markdown);
-  log(`  ✓ MATCH [${scored.score}] ${job.source}: ${job.title} @ ${job.company}`);
+  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${job.title} @ ${job.company}`);
   recordOutcome(summary, job.source, "written");
   recordTop(summary, scored.score, `${job.title} @ ${job.company}`);
+  writtenList.push({ score: scored.score, llmScore: llm ? Number(llm.score) : null, label: `${job.title} @ ${job.company}` });
   seen.add(id);
   written++;
 }
@@ -185,11 +214,11 @@ log(`Done. Considered ${considered} new, wrote ${written} application package(s)
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));
 
-// Scraper-health: warn (separate banner) if a source that had results on the
-// previous run returned 0 this run, then persist this run's counts for next time.
-const regressions = detectRegressions(prevHealth, summary);
-if (regressions.length) notify(formatAlert(regressions));
-writeFileSync(HEALTH_FILE, JSON.stringify(mergeCounts(prevHealth, currentCounts(summary)), null, 0));
+// Scraper-health: warn (separate banner) if a source came in far below its
+// recent norm, then append this run's counts to the history.
+const degraded = detectDegradations(health, summary);
+if (degraded.length) notify(formatAlert(degraded));
+writeFileSync(HEALTH_FILE, JSON.stringify(appendHistory(health, currentCounts(summary)), null, 0));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {
@@ -198,6 +227,10 @@ try {
 } catch (e) {
   log("dashboard refresh skipped:", e.message);
 }
+
+// Separate banner for strong matches so they don't drown in the run digest.
+const top = topMatches(writtenList);
+if (top.length) notify(formatTopMatches(top));
 
 // Always notify with the run outcome (previously only fired when written > 0).
 notify(formatNotification(summary));

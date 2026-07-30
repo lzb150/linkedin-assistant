@@ -31,11 +31,18 @@ click is always yours.
   into one package (the other source links are kept on the card)
 - Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
 - Builds an application package: cover letter + link + resume path
+- **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
+  second look from a local `claude -p` call (haiku by default): a 0–100 verdict,
+  a one-line "why", and a tailored cover letter. The LLM never gates — the keyword
+  score still decides what gets a package — it only ranks, explains, and writes.
+  Any CLI failure falls back silently to a keyword-only package. Needs `resume.txt`;
+  tune via the `llm` block in `jobs.config.json` (`enabled`, `model`, `minKeywordScore`,
+  `maxPerRun`). LLM-scored cards show a 🤖 badge on the dashboard.
 
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance, with pipeline
-  tracking (New → Viewed → Applied), private notes, multi-select filters,
-  search, freshness highlights, and a copy-letter button
+  tracking (New → Viewed → Applied → Answered → Interview / Rejected), private
+  notes, multi-select filters, search, freshness highlights, and a copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
 **4. Automation (launchd)**
@@ -45,6 +52,15 @@ click is always yours.
 | Inbox check        | hourly              |
 | DOU discovery      | hourly              |
 | LinkedIn discovery | every 3 hours (at :45) |
+
+Every `jobs.mjs` run ends with a macOS notification of the run outcome, plus
+a separate 🔥 banner when a run wrote a strong match (LLM score ≥ 70, or
+keyword score ≥ 40 when the LLM didn't score it) — so a great match doesn't
+drown in the day's digest. A scraper-health check also watches each source's
+found-count against its own recent history (last 10 runs) and fires a ⚠️ alert
+when a source comes in under 30% of its recent median (median ≥ 5, to ignore
+sources that are naturally low-volume) — this catches a slow selector decay
+(50 → 20 → 6), not just a source dropping to a clean 0.
 
 ## Key principles
 - 🔒 **Security:** your password is never stored (you log in once yourself), everything is local, no API keys
@@ -175,11 +191,14 @@ on disk, so it survives a browser reset or a full OS restart. If the server is
 unreachable the dashboard falls back to `localStorage` and shows an
 **"offline — not saved to disk"** badge.
 
-**Pipeline tracking** — each card now moves through a three-stage pipeline:
-**New → Viewed → Applied**. Marking a job Applied records the date and shows it
-as "applied 5d ago". You can attach private notes to any card; they are saved to
-disk via the state server. The header shows live status/freshness counters and
-lets you filter by stage.
+**Pipeline tracking** — each card moves through **New → Viewed → Applied**, then
+on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**
+at any point. Marking a job Applied records the date and shows it as "applied
+5d ago". A header line summarizes the funnel for the whole board (applied →
+answered → interview, with conversion %, plus a rejected count and a
+per-source breakdown). You can attach private notes to any card; they are
+saved to disk via the state server. The header also shows live status/freshness
+counters and lets you filter by stage.
 
 ![Card expanded — cover letter, private note, Applied state](docs/card.png)
 
@@ -194,8 +213,10 @@ visit" filter.
 **Follow-up reminders (`followup.mjs`)** — a daily launchd job
 (`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
 notification (via `osascript`) for every job you marked **Applied** with no
-status movement for 7+ days. Tune the threshold with the `FOLLOWUP_DAYS` env
-var. Install:
+status movement for 7+ days. Reminders auto-silence themselves the moment a
+card moves past Applied (Answered, Interview, or Rejected) — no more nagging
+about jobs that already got a reply. Tune the threshold with the
+`FOLLOWUP_DAYS` env var. Install:
 
 ```bash
 cp com.example.jobs-followup.plist.example \

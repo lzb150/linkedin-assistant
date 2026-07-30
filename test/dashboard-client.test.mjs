@@ -39,3 +39,17 @@ test("status, appliedAt and note persist across a server restart", async (t) => 
   const html = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.text());
   assert.match(html, /<html>/);
 });
+
+test("the state server round-trips the new funnel statuses", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dash-"));
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  const U = "https://example.com/jobs/9/";
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  const port = await listen(srv);
+  await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: U, patch: { status: "interview" } }) });
+  const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
+  assert.equal(state[U].status, "interview");
+  await new Promise((r) => srv.close(r));
+  rmSync(dir, { recursive: true, force: true });
+});

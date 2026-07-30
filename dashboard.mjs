@@ -30,7 +30,12 @@ const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
 const parsed = files
   .map((f) => parse(readFileSync(join(APPS, f), "utf8")))
   .filter(Boolean)
-  .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10), generated: x.fm.generated || "" }));
+  .map((x) => ({
+    ...x,
+    score: parseInt(x.fm.score || "0", 10),
+    llm: /^\d+$/.test(x.fm.llm_score || "") ? parseInt(x.fm.llm_score, 10) : null,
+    generated: x.fm.generated || "",
+  }));
 
 // Packages written before the extractSalary trailing-comma fix have values like
 // "$2800–3500," baked into their frontmatter; clean them up at render time.
@@ -46,7 +51,9 @@ for (const it of parsed) {
   const prev = byIdentity.get(key);
   if (!prev || (it.fm.generated || "") > (prev.fm.generated || "")) byIdentity.set(key, it);
 }
-const items = [...byIdentity.values()].sort((a, b) => b.score - a.score);
+const items = [...byIdentity.values()].sort(
+  (a, b) => (b.llm ?? -1) - (a.llm ?? -1) || b.score - a.score,
+);
 
 function scoreColor(s) {
   if (s >= 40) return "#1a7f37";   // green
@@ -83,6 +90,7 @@ const cards = items
     <div class="titles">
       <h2>${esc(f.title || "—")}</h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
+      ${it.llm != null ? `<div class="llm-row"><span class="llm">🤖 ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
       <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
@@ -90,6 +98,9 @@ const cards = items
         <button data-status="new" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
         <button data-status="applied" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
+        <button data-status="answered" onclick="setStatus(this.closest('.card'),'answered')">Answered</button>
+        <button data-status="interview" onclick="setStatus(this.closest('.card'),'interview')">Interview</button>
+        <button data-status="rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
       </div>
       <span class="applied-ago" hidden></span>
     </div>
@@ -126,6 +137,9 @@ const html = `<!doctype html>
   .titles { flex: 1; }
   .titles h2 { margin: 0; font-size: 16px; }
   .sub { font-size: 13px; color: #57606a; margin-top: 4px; }
+  .llm-row { margin-top: 4px; font-size: 12px; }
+  .llm { background: #8250df; color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  .llm-why { color: #57606a; font-style: italic; }
   .src { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
   .lang { text-transform: uppercase; font-size: 11px; color: #57606a; }
   .salary { color: #1a7f37; font-size: .8rem; white-space: nowrap; }
@@ -161,8 +175,13 @@ const html = `<!doctype html>
   .alt:hover { text-decoration: underline; }
   .empty { text-align: center; color: #57606a; padding: 40px; }
   .status-seg button.active[data-status="applied"] { background: #1a7f37; color: #fff; }
+  .status-seg button.active[data-status="answered"] { background: #0969da; color: #fff; }
+  .status-seg button.active[data-status="interview"] { background: #8250df; color: #fff; }
+  .status-seg button.active[data-status="rejected"] { background: #cf222e; color: #fff; }
   .card.applied { border-left: 4px solid #1a7f37; }
+  .card.rejected { opacity: .45; }
   .applied-ago { font-size: 11px; color: #1a7f37; text-align: center; }
+  .funnel { font-size: 12px; color: #cdd9e5; margin-top: 6px; }
   .note-wrap summary { color: #57606a; }
   .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
   .note-has { color: #9a6700; }
@@ -186,6 +205,9 @@ const html = `<!doctype html>
       <button data-filter="new" class="active" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
       <button data-filter="applied" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
+      <button data-filter="answered" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
+      <button data-filter="interview" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
+      <button data-filter="rejected" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
       <button data-filter="fresh" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
@@ -202,6 +224,7 @@ const html = `<!doctype html>
       <button data-min="40" onclick="setMin(this,40)">≥40</button>
     </div>
   </div>
+  <div class="funnel" id="funnel"></div>
 </header>
 <main>
 ${items.length ? cards : '<div class="empty">No matching jobs yet. Run <code>node jobs.mjs</code>.</div>'}
@@ -216,7 +239,9 @@ let online = false;
 let state = { _meta: {} };             // mirror of the server store (or localStorage offline)
 
 const entryOf = (url) => state[url] || {};
-const statusOf = (url) => { const s = entryOf(url).status; return (s === 'viewed' || s === 'applied') ? s : 'new'; };
+const STATUSES = ['viewed','applied','answered','interview','rejected'];
+const POST_APPLIED = ['applied','answered','interview','rejected'];
+const statusOf = (url) => { const s = entryOf(url).status; return STATUSES.includes(s) ? s : 'new'; };
 
 async function postState(body) {
   const r = await fetch('/state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -270,7 +295,7 @@ async function patchEntry(url, patch) {
     if ('status' in patch) { if (patch.status === 'new') delete e.status; else e.status = patch.status; }
     if ('appliedAt' in patch) { if (patch.appliedAt == null) delete e.appliedAt; else e.appliedAt = patch.appliedAt; }
     if ('note' in patch) { if (!patch.note) delete e.note; else e.note = patch.note; }
-    const empty = !(e.status === 'viewed' || e.status === 'applied' || (e.note && e.note.length) || e.appliedAt);
+    const empty = !(STATUSES.includes(e.status) || (e.note && e.note.length) || e.appliedAt);
     if (empty) delete state[url]; else state[url] = e;
     saveLocal();
   }
@@ -293,10 +318,11 @@ function renderCard(card){
   const st = statusOf(url);
   const e = entryOf(url);
   card.classList.toggle('viewed', st === 'viewed');
-  card.classList.toggle('applied', st === 'applied');
+  card.classList.toggle('applied', POST_APPLIED.includes(st));
+  card.classList.toggle('rejected', st === 'rejected');
   card.querySelectorAll('.status-seg button').forEach((b) => b.classList.toggle('active', b.dataset.status === st));
   const ago = card.querySelector('.applied-ago');
-  if (ago) { if (st === 'applied' && e.appliedAt) { ago.textContent = 'applied ' + daysAgo(e.appliedAt); ago.hidden = false; } else ago.hidden = true; }
+  if (ago) { if (POST_APPLIED.includes(st) && e.appliedAt) { ago.textContent = 'applied ' + daysAgo(e.appliedAt); ago.hidden = false; } else ago.hidden = true; }
   const ta = card.querySelector('.note'); if (ta && document.activeElement !== ta) ta.value = e.note || '';
   const dot = card.querySelector('.note-has'); if (dot) dot.hidden = !(e.note && e.note.length);
 }
@@ -305,12 +331,12 @@ async function setStatus(card, status){
   const url = card.dataset.url;
   const patch = { status };
   if (status === 'applied' && !entryOf(url).appliedAt) patch.appliedAt = new Date().toISOString();
-  if (status !== 'applied') patch.appliedAt = null;
+  if (!POST_APPLIED.includes(status)) patch.appliedAt = null;
   await patchEntry(url, patch);
-  renderCard(card); applyFilter();
+  renderCard(card); applyFilter(); renderFunnel();
 }
-// Auto-status never downgrades an Applied card.
-async function autoStatus(card, status){ if (statusOf(card.dataset.url) === 'applied') return; await setStatus(card, status); }
+// Auto-status never downgrades any post-applied card.
+async function autoStatus(card, status){ if (POST_APPLIED.includes(statusOf(card.dataset.url))) return; await setStatus(card, status); }
 
 async function saveNote(card, value){ await patchEntry(card.dataset.url, { note: value.trim() }); renderCard(card); }
 
@@ -336,6 +362,27 @@ function markFreshness() {
     }
   });
   const el = document.getElementById('cnt-fresh'); if (el) el.textContent = count;
+}
+
+function renderFunnel() {
+  const bySrc = {};
+  let applied = 0, answered = 0, interview = 0, rejected = 0;
+  document.querySelectorAll('.card').forEach((card) => {
+    const st = statusOf(card.dataset.url);
+    if (!POST_APPLIED.includes(st)) return;
+    applied++;
+    const s = bySrc[card.dataset.source] = bySrc[card.dataset.source] || { a: 0, r: 0, i: 0 };
+    s.a++;
+    if (st !== 'applied') { answered++; s.r++; }
+    if (st === 'interview') { interview++; s.i++; }
+    if (st === 'rejected') rejected++;
+  });
+  const pct = (x, y) => y ? Math.round(x / y * 100) + '%' : '—';
+  const src = Object.entries(bySrc).map(([k, s]) => k + ' ' + s.a + '/' + s.r + '/' + s.i).join(' · ');
+  const el = document.getElementById('funnel');
+  if (el) el.textContent = applied
+    ? 'Funnel: ' + applied + ' applied → ' + answered + ' answered (' + pct(answered, applied) + ') → ' + interview + ' interview (' + pct(interview, answered) + ')' + (rejected ? ' · ' + rejected + ' rejected' : '') + (src ? '  ·  applied/answered/interview by source: ' + src : '')
+    : '';
 }
 
 async function advanceLastVisit() {
@@ -375,7 +422,7 @@ function setSource(src){ toggleSel(srcSel, src); syncSeg(srcSel, '.src-seg butto
 function setMin(btn, n){ minScore = n; document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
 
 function applyFilter(){
-  const counts = { all: 0, new: 0, viewed: 0, applied: 0 };
+  const counts = { all: 0, new: 0, viewed: 0, applied: 0, answered: 0, interview: 0, rejected: 0 };
   document.querySelectorAll('.card').forEach((card) => {
     const st = statusOf(card.dataset.url);
     counts.all++; counts[st]++;
@@ -388,7 +435,7 @@ function applyFilter(){
     const matchStatus = (statusSel.size === 0 || statusSel.has(st) || (statusSel.has('fresh') && isFresh) || detailsOpen);
     card.style.display = (matchStatus && matchFind) ? '' : 'none';
   });
-  for (const k of ['all','new','viewed','applied']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
+  for (const k of ['all','new','viewed','applied','answered','interview','rejected']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
   saveFilters();
 }
 function setFilter(filter){ toggleSel(statusSel, filter); syncSeg(statusSel, '.filter-seg button', 'filter'); applyFilter(); }
@@ -399,6 +446,7 @@ function setFilter(filter){ toggleSel(statusSel, filter); syncSeg(statusSel, '.f
   markFreshness();
   restoreFilters();
   applyFilter();
+  renderFunnel();
   setTimeout(advanceLastVisit, 4000);
 })();
 </script>

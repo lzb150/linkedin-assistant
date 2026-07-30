@@ -32,3 +32,15 @@ test("ignores _meta and entries without appliedAt", () => {
   const map = { _meta: { lastVisit: "x" }, "u1": { status: "applied" } };
   assert.equal(dueReminders({ stateMap: map, now }).length, 0);
 });
+
+test("post-applied stages are never reminded (answered/interview/rejected)", () => {
+  const old = "2026-06-01T00:00:00Z";
+  const stateMap = {
+    "https://a/": { status: "answered", appliedAt: old },
+    "https://b/": { status: "interview", appliedAt: old },
+    "https://c/": { status: "rejected", appliedAt: old },
+    "https://d/": { status: "applied", appliedAt: old },
+  };
+  const due = dueReminders({ stateMap, now: "2026-07-30T00:00:00Z", thresholdDays: 7 });
+  assert.deepEqual(due.map((d) => d.url), ["https://d/"]);
+});

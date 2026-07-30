@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatNotification,
+  formatTable, formatNotification, topMatches, formatTopMatches,
 } from "../lib/run-summary.mjs";
 
 test("recordFound tallies raw counts into a lazily-created source bucket", () => {
@@ -81,4 +81,23 @@ test("formatNotification reports scanned total when nothing was written", () => 
   recordFound(s, "jooble", 5);
   recordOutcome(s, "dou", "seen");
   assert.equal(formatNotification(s), "No new matches · scanned 17");
+});
+
+test("topMatches: llm-scored entries use the LLM threshold (70)", () => {
+  const w = [
+    { score: 45, llmScore: 71, label: "A" },  // in: llm >= 70
+    { score: 45, llmScore: 69, label: "B" },  // out: llm verdict wins over keyword
+    { score: 40, llmScore: null, label: "C" }, // in: keyword >= 40, no llm
+    { score: 39, llmScore: null, label: "D" }, // out
+  ];
+  assert.deepEqual(topMatches(w).map((m) => m.label), ["A", "C"]);
+});
+
+test("formatTopMatches renders one line, caps at 3 labels", () => {
+  assert.equal(formatTopMatches([]), "");
+  assert.equal(formatTopMatches([{ label: "A @ X" }]), "🔥 Strong match: A @ X");
+  assert.equal(
+    formatTopMatches([{ label: "A" }, { label: "B" }, { label: "C" }, { label: "D" }]),
+    "🔥 4 strong matches: A, B, C, …",
+  );
 });
