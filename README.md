@@ -26,7 +26,7 @@ click is always yours.
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
 - **Jooble** — via the official Jooble API (free key, structured JSON)
-- **LinkedIn Jobs** — search scraping (modest, once a day, toggleable)
+- **LinkedIn Jobs** — search scraping (hourly by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
   into one package (the other source links are kept on the card)
 - Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
@@ -44,7 +44,7 @@ click is always yours.
 |--------------------|---------------------|
 | Inbox check        | hourly              |
 | DOU discovery      | hourly              |
-| LinkedIn discovery | once a day (10:45)  |
+| LinkedIn discovery | hourly (at :45)     |
 
 ## Key principles
 - 🔒 **Security:** your password is never stored (you log in once yourself), everything is local, no API keys
