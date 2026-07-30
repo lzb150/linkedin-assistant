@@ -37,7 +37,9 @@ click is always yours.
   score still decides what gets a package — it only ranks, explains, and writes.
   Any CLI failure falls back silently to a keyword-only package. Needs `resume.txt`;
   tune via the `llm` block in `jobs.config.json` (`enabled`, `model`, `minKeywordScore`,
-  `maxPerRun`). LLM-scored cards show a 🤖 badge on the dashboard.
+  `maxPerRun`). LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
+  child process runs hardened — tools disallowed, cwd off the repo — since job
+  descriptions are untrusted input and must not be able to read local files.
 
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance, with pipeline
