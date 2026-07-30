@@ -192,7 +192,7 @@ const writtenList = [];
 let llmCalls = 0;
 for (const { id, job, scored } of matches) {
   let llm = null;
-  if (llmOn && scored.score >= (LLM.minKeywordScore ?? 15) && llmCalls < (LLM.maxPerRun ?? 15)) {
+  if (llmOn && llmCalls < (LLM.maxPerRun ?? 15)) {
     llmCalls++;
     const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
     if (res && Number.isFinite(Number(res.score))) llm = res;
