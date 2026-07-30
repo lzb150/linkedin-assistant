@@ -39,3 +39,10 @@ test("an empty llm cover falls back to the template", () => {
   const { markdown } = buildApplication(job, scored, llm);
   assert.match(markdown, /I came across your "Senior AQA"/);
 });
+
+test("an empty llm verdict keeps llm_score but drops the llm_why line", () => {
+  const llm = { score: 85, why: "", red_flags: [], cover: "Dear team." };
+  const { markdown } = buildApplication(job, scored, llm);
+  assert.match(markdown, /^llm_score: 85$/m);
+  assert.ok(!markdown.includes("llm_why:"));
+});

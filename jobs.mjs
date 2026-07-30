@@ -191,19 +191,22 @@ matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 let llmCalls = 0;
 for (const { id, job, scored } of matches) {
+  const label = `${job.title} @ ${job.company}`;
   let llm = null;
   if (llmOn && llmCalls < (LLM.maxPerRun ?? 15)) {
     llmCalls++;
     const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
-    if (res && Number.isFinite(Number(res.score))) llm = res;
+    // Normalize the score once at the trust boundary; downstream (log,
+    // package frontmatter, writtenList) can rely on a rounded number.
+    if (res && Number.isFinite(Number(res.score))) llm = { ...res, score: Math.round(Number(res.score)) };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
   writeFileSync(join(APPS, filename), markdown);
-  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${job.title} @ ${job.company}`);
+  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${label}`);
   recordOutcome(summary, job.source, "written");
-  recordTop(summary, scored.score, `${job.title} @ ${job.company}`);
-  writtenList.push({ score: scored.score, llmScore: llm ? Number(llm.score) : null, label: `${job.title} @ ${job.company}` });
+  recordTop(summary, scored.score, label);
+  writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label });
   seen.add(id);
   written++;
 }
