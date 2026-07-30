@@ -8,6 +8,7 @@ set -euo pipefail
 export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 cd "$(dirname "$0")"
+mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
 STAMP="$(date +%Y%m%d_%H%M%S)"
 
 node djinni-check.mjs >> "logs/djinni_${STAMP}.log" 2>&1

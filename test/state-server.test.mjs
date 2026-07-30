@@ -47,3 +47,58 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
   });
   assert.equal(bad.status, 400);
 });
+
+test("rejects cross-origin shaped requests: foreign Host and non-JSON POST", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+
+  // DNS-rebinding shape: request reaches the server with a foreign Host header.
+  // (fetch strips a custom Host — it's a forbidden header — so use node:http.)
+  const { request } = await import("node:http");
+  const rebindStatus = await new Promise((resolve, reject) => {
+    const r = request(`${base}/state`, { headers: { host: "evil.example" } }, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    r.on("error", reject);
+    r.end();
+  });
+  assert.equal(rebindStatus, 403);
+
+  // CSRF shape: a no-preflight "simple request" POST (text/plain body).
+  const csrf = await fetch(`${base}/state`, {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    body: JSON.stringify({ url: "https://x/", patch: { status: "applied" } }),
+  });
+  assert.equal(csrf.status, 415);
+
+  // Legit same-origin JSON still works.
+  const ok = await fetch(`${base}/state`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "https://x/", patch: { status: "viewed" } }),
+  });
+  assert.equal(ok.status, 200);
+});
+
+test("oversize POST body is dropped without hanging the request", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+
+  // >1MB body → server destroys the connection; the client sees an error
+  // instead of an eternally pending request (the old behavior).
+  await assert.rejects(
+    fetch(`${base}/state`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: `{"url":"https://x/","patch":{"note":"${"x".repeat(1_100_000)}"}}`,
+    })
+  );
+});

@@ -22,6 +22,10 @@ function parse(md) {
 const esc = (s) =>
   (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Frontmatter urls come from scraped job postings — only ever link http(s),
+// so a hostile posting can't smuggle a javascript: url into an href.
+const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
+
 const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
 const parsed = files
   .map((f) => parse(readFileSync(join(APPS, f), "utf8")))
@@ -69,7 +73,7 @@ const cards = items
       .map((pair) => {
         const sep = pair.indexOf("|");
         const src = pair.slice(0, sep), url = pair.slice(sep + 1);
-        return `<a class="alt" href="${esc(url)}" target="_blank" rel="noopener">${esc(src)} ↗</a>`;
+        return `<a class="alt" href="${esc(safeUrl(url))}" target="_blank" rel="noopener">${esc(src)} ↗</a>`;
       }).join("");
     const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
     return `
@@ -81,7 +85,7 @@ const cards = items
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
     </div>
     <div class="actions">
-      <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
+      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
       <div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
@@ -134,7 +138,10 @@ const html = `<!doctype html>
   .status-seg button:hover { background: #f3f4f6; }
   .status-seg button.active[data-status="new"] { background: #6e7781; color: #fff; }
   .status-seg button.active[data-status="viewed"] { background: #9a6700; color: #fff; }
-  .card.viewed { opacity: .55; }
+  /* Muted background + heading (not whole-card opacity, which drops text
+     contrast below WCAG 4.5:1). */
+  .card.viewed { background: #f6f8fa; }
+  .card.viewed .titles h2 { color: #57606a; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
   .filter-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
   .filter-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
@@ -181,7 +188,7 @@ const html = `<!doctype html>
       <button data-filter="applied" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
       <button data-filter="fresh" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
-    <input id="q" type="search" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
+    <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
       <button data-src="all" class="active" onclick="setSource('all')">All</button>
       <button data-src="linkedin" onclick="setSource('linkedin')">LinkedIn</button>
