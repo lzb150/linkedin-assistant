@@ -18,7 +18,7 @@ import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey } from "./lib/dedup.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatNotification,
+  formatTable, formatNotification, topMatches, formatTopMatches,
 } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
@@ -227,6 +227,10 @@ try {
 } catch (e) {
   log("dashboard refresh skipped:", e.message);
 }
+
+// Separate banner for strong matches so they don't drown in the run digest.
+const top = topMatches(writtenList);
+if (top.length) notify(formatTopMatches(top));
 
 // Always notify with the run outcome (previously only fired when written > 0).
 notify(formatNotification(summary));
