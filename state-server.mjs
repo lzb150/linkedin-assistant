@@ -18,19 +18,35 @@ function send(res, code, body, type = "application/json") {
 function readBody(req) {
   return new Promise((resolve) => {
     let data = "";
-    req.on("data", (c) => { data += c; if (data.length > 1e6) req.destroy(); });
+    // resolve(null) alongside destroy(): destroy emits neither "end" nor
+    // "error", so without it this promise would hang forever.
+    req.on("data", (c) => { data += c; if (data.length > 1e6) { req.destroy(); resolve(null); } });
     req.on("error", () => resolve(null));
+    req.on("close", () => resolve(null)); // client aborted mid-body
     req.on("end", () => { try { resolve(JSON.parse(data || "{}")); } catch { resolve(null); } });
   });
 }
 
 export function createServer({ statePath, indexPath }) {
   return http.createServer(async (req, res) => {
+    // Loopback-only guard: a browser on this machine can be induced to hit
+    // 127.0.0.1 from any website (CSRF via no-preflight POST, DNS rebinding
+    // with a foreign Host). Reject anything not addressed to loopback.
+    const hostname = (req.headers.host || "").replace(/:\d+$/, "");
+    if (hostname !== "127.0.0.1" && hostname !== "localhost") {
+      return send(res, 403, { error: "forbidden host" });
+    }
+
     if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true });
 
     if (req.method === "GET" && req.url === "/state") return send(res, 200, readStore(statePath));
 
     if (req.method === "POST" && req.url === "/state") {
+      // Require a JSON content-type: cross-origin JSON POSTs then need a CORS
+      // preflight, which this server never approves.
+      if (!/^application\/json/i.test(req.headers["content-type"] || "")) {
+        return send(res, 415, { error: "content-type must be application/json" });
+      }
       const body = await readBody(req);
       if (!body || typeof body !== "object") return send(res, 400, { error: "bad body" });
       let map = readStore(statePath);

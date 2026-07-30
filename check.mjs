@@ -23,7 +23,9 @@ const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
-const MAX = parseInt(process.env.MAX || "12", 10);
+// Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`
+// comparison would be false, silently disabling the cap.
+const MAX = /^\d+$/.test(process.env.MAX || "") ? Number(process.env.MAX) : 12;
 const SCAN_ALL = process.env.SCAN_ALL === "1";
 
 // ---- Selectors (centralized; LinkedIn obfuscates + changes these) ------------

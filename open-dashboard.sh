@@ -3,7 +3,7 @@
 # then open it in the default browser. Idempotent: a second call reuses the
 # already-running server instead of starting a duplicate.
 set -euo pipefail
-export PATH="/Users/eugenelazeba/.nvm/versions/node/v20.14.0/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.nvm/versions/node/v20.14.0/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 cd "$(dirname "$0")"
 
 node dashboard.mjs   # regenerate applications/index.html (no --open)
