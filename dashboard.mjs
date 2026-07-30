@@ -14,11 +14,11 @@ const OUT = join(APPS, "index.html");
 // The client script ships as two standalone files inlined at build time:
 // the unit-tested pure core (.cjs so node:test can require it) and the DOM
 // glue. Interpolated text is not re-parsed, so backticks in them are safe;
-// a literal </script> would terminate the tag mid-file — refuse to build.
+// a </script tag (any case/spacing) would terminate the tag mid-file — refuse to build.
 const clientJs = ["dashboard-client-core.cjs", "dashboard-client-dom.js"]
   .map((f) => readFileSync(join(__dir, "lib", f), "utf8"))
   .join("\n");
-if (clientJs.includes("</script>")) throw new Error("dashboard client JS must not contain </script>");
+if (/<\/script/i.test(clientJs)) throw new Error("dashboard client JS must not contain </script>");
 
 function parse(md) {
   const fm = parseFrontmatter(md);
