@@ -5,7 +5,7 @@ finds vacancies on DOU and LinkedIn, scores them against your resume, and prepar
 ready-to-review reply/application drafts. **It never sends anything** — the final
 click is always yours.
 
-![Dashboard — matched jobs sorted by relevance, with per-card status tracking](docs/dashboard.png)
+![Dashboard — matched jobs sorted by relevance, with pipeline tracking and filters](docs/dashboard.png)
 
 > ⚠️ LinkedIn's User Agreement restricts automated access. This tool only *reads*
 > your own inbox and *drafts* replies for you — it does not auto-message or scrape
@@ -31,9 +31,9 @@ click is always yours.
 - Builds an application package: cover letter + link + resume path
 
 **3. Dashboard & convenience**
-- **HTML dashboard** — all jobs on one page, sorted by relevance, with per-card
-  status tracking (New → Viewed), a status filter with counters, and a
-  copy-letter button
+- **HTML dashboard** — all jobs on one page, sorted by relevance, with pipeline
+  tracking (New → Viewed → Applied), private notes, multi-select filters,
+  search, freshness highlights, and a copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
 **4. Automation (launchd)**
@@ -73,6 +73,8 @@ SCAN_ALL=1 node check.mjs   # scan recent threads regardless of read state
 New drafts land in `drafts/`. Each draft is a markdown file: their message, a
 suggested reply, the relevance score, and an attach-resume checkbox. It never
 clicks Send.
+
+![A reply draft in drafts/ — their message, a suggested reply, score, and action checklist](docs/draft.png)
 
 ### Unread badge on the Jobs app
 
@@ -150,10 +152,10 @@ node dashboard.mjs --open   # rebuild and open it
 ```
 
 Renders the packages in `applications/` as cards, sorted by score. Per-card
-status (New / Viewed) is stored in the browser's localStorage keyed by job URL,
-so it survives dashboard regeneration. Opening a job link or expanding its cover
-letter marks the card Viewed automatically. Use the header filter to focus on a
-status.
+state (status, applied date, notes) is keyed by job URL and stored on disk by
+the state server (see Dashboard v2 below), so it survives dashboard
+regeneration and browser resets. Opening a job link or expanding its cover
+letter marks the card Viewed automatically.
 
 `applications/` is append-only, so the dashboard **collapses duplicate packages
 by identity** (`company + title`) at render time, keeping the most recently
@@ -177,11 +179,15 @@ as "applied 5d ago". You can attach private notes to any card; they are saved to
 disk via the state server. The header shows live status/freshness counters and
 lets you filter by stage.
 
+![Card expanded — cover letter, private note, Applied state](docs/card.png)
+
 **Find & freshness** — a search box filters cards by title, company, or skill
 keywords. Source chips (LinkedIn / DOU / Djinni / Jooble) and min-score presets
 (≥ 30 / ≥ 40) narrow the list further. Cards that arrived since your last visit
 are highlighted with a 🆕 badge and can be isolated with the "New since last
 visit" filter.
+
+![Multi-select filters, source chips and search](docs/filters.png)
 
 **Follow-up reminders (`followup.mjs`)** — a daily launchd job
 (`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
