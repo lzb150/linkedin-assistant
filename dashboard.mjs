@@ -100,7 +100,7 @@ const cards = items
         <button data-status="applied" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
         <button data-status="answered" onclick="setStatus(this.closest('.card'),'answered')">Answered</button>
         <button data-status="interview" onclick="setStatus(this.closest('.card'),'interview')">Interview</button>
-        <button data-status="rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
+        <button data-status="rejected" aria-label="Rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
       </div>
       <span class="applied-ago" hidden></span>
     </div>
@@ -207,7 +207,7 @@ const html = `<!doctype html>
       <button data-filter="applied" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
       <button data-filter="answered" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
       <button data-filter="interview" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
-      <button data-filter="rejected" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
+      <button data-filter="rejected" aria-label="Rejected" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
       <button data-filter="fresh" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
@@ -330,7 +330,9 @@ function renderCard(card){
 async function setStatus(card, status){
   const url = card.dataset.url;
   const patch = { status };
-  if (status === 'applied' && !entryOf(url).appliedAt) patch.appliedAt = new Date().toISOString();
+  // First entry into any post-applied stage IS the apply moment (a card can
+  // jump straight to Answered when the reply arrives before bookkeeping).
+  if (POST_APPLIED.includes(status) && !entryOf(url).appliedAt) patch.appliedAt = new Date().toISOString();
   if (!POST_APPLIED.includes(status)) patch.appliedAt = null;
   await patchEntry(url, patch);
   renderCard(card); applyFilter(); renderFunnel();

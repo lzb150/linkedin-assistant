@@ -45,6 +45,7 @@ function loadResume() {
 const RESUME_TXT = loadResume();
 const LLM = config.llm || {};
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
+if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
 // Prefer Notifier.app (the green Messages icon, same banner as check.mjs) and
 // fall back to osascript (shows the Script Editor icon) if the app is missing.
@@ -198,7 +199,7 @@ for (const { id, job, scored } of matches) {
     const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
-    if (res && Number.isFinite(Number(res.score))) llm = { ...res, score: Math.round(Number(res.score)) };
+    if (res && Number.isFinite(Number(res.score))) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(Number(res.score)))) };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
