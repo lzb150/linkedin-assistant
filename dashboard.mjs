@@ -332,8 +332,11 @@ async function setStatus(card, status){
   const patch = { status };
   // First entry into any post-applied stage IS the apply moment (a card can
   // jump straight to Answered when the reply arrives before bookkeeping).
-  if (POST_APPLIED.includes(status) && !entryOf(url).appliedAt) patch.appliedAt = new Date().toISOString();
-  if (!POST_APPLIED.includes(status)) patch.appliedAt = null;
+  if (POST_APPLIED.includes(status)) {
+    if (!entryOf(url).appliedAt) patch.appliedAt = new Date().toISOString();
+  } else {
+    patch.appliedAt = null;
+  }
   await patchEntry(url, patch);
   renderCard(card); applyFilter(); renderFunnel();
 }
