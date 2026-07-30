@@ -194,8 +194,9 @@ unreachable the dashboard falls back to `localStorage` and shows an
 
 **Pipeline tracking** — each card moves through **New → Viewed → Applied**, then
 on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**
-at any point. Marking a job Applied records the date and shows it as "applied
-5d ago". A header line summarizes the funnel for the whole board (applied →
+at any point. The apply date is recorded on the first move into any
+post-Applied stage (even when a card jumps straight to Answered because the
+reply arrived before the bookkeeping) and shows as "applied 5d ago". A header line summarizes the funnel for the whole board (applied →
 answered → interview, with conversion %, plus a rejected count and a
 per-source breakdown). You can attach private notes to any card; they are
 saved to disk via the state server. The header also shows live status/freshness
@@ -315,6 +316,11 @@ Session expired? Re-run `node login.mjs`.
 | `drafts/`             | Output — review and send these manually.                  |
 | `seen.json`           | Tracks processed threads (no duplicate drafts).           |
 | `jobs-seen.json`      | Tracks processed vacancies by identity (no duplicate packages, across sources). |
+
+## Contributing
+Issues and pull requests are welcome. `main` is protected: changes land only
+through a PR with an approving review from the repository owner — fork, open a
+PR, and it will be reviewed.
 
 ## Technologies
 JavaScript (Node.js) · Playwright · DOU RSS · launchd · Swift/AppKit (icon) ·
