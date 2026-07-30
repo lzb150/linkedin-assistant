@@ -249,6 +249,24 @@ node prune-applications.mjs           # пробний запуск — пока
 node prune-applications.mjs --apply   # справді видалити застарілі дублікати
 ```
 
+## Адаптація під іншу професію
+
+Код нічого не знає про QA — професія повністю живе в конфігурації. Щоб
+шукати, наприклад, вакансії розробника:
+
+1. **Профіль навичок** — `cp skills.developer.json.example skills.json`
+   (готовий пресет TypeScript/Node) або відредагуйте власні `roles` /
+   `skills` / `antiKeywords` / `profile`. Блок `profile` — це фраза
+   спеціалізації для *резервних* супровідних листів (LLM-листи будуються з
+   резюме); кириличні значення стоять у родовому відмінку ("досвід в …").
+2. **Пошуки** — перенаправте `jobs.config.json` на нову сферу, напр. DOU-фід
+   `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, Jooble
+   `{ "keywords": "node.js developer", "location": "remote" }`, LinkedIn
+   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
+3. **Резюме** — замініть `resume.txt` (керує LLM-оцінкою та листами).
+4. **Вкладення** — оновіть `RESUME_PATH` у `run.sh` / `run-jobs.sh`.
+
 ## Налаштування релевантності — `skills.json`
 
 - `skills` — ключове слово → вага. Більша вага = сильніший збіг.

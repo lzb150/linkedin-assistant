@@ -236,6 +236,24 @@ node prune-applications.mjs           # dry run — lists what would be removed
 node prune-applications.mjs --apply   # actually delete the stale duplicates
 ```
 
+## Adapting to another profession
+
+Nothing in the code knows you are a QA engineer — the profession lives
+entirely in config. To hunt, say, developer jobs instead:
+
+1. **Skill profile** — `cp skills.developer.json.example skills.json` (a
+   ready TypeScript/Node preset), or edit your own `roles` / `skills` /
+   `antiKeywords` / `profile`. The `profile` block is the specialization
+   phrase the *fallback* cover letters use (LLM letters derive from your
+   resume instead); Cyrillic values sit in genitive position ("досвід в …").
+2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
+   `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, Jooble
+   `{ "keywords": "node.js developer", "location": "remote" }`, LinkedIn
+   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
+3. **Resume** — replace `resume.txt` (drives LLM scoring and letters).
+4. **Attachment** — update `RESUME_PATH` in `run.sh` / `run-jobs.sh`.
+
 ## Tuning relevance — `skills.json`
 
 - `skills` — keyword → weight. Higher weight = stronger match.

@@ -83,5 +83,11 @@
     "_comment": "score >= relevant -> draft + 'attach resume'. score >= maybe -> draft flagged for your judgment. below maybe -> logged only, no draft.",
     "relevant": 8,
     "maybe": 4
+  },
+  "_profileComment": "How the FALLBACK cover letters describe your specialization, per language (LLM letters ignore this — they are grounded in resume.txt). Cyrillic phrases sit in genitive position — 'досвід в …' / 'опыт в …' — so word them to fit that case.",
+  "profile": {
+    "en": "test automation",
+    "uk": "автоматизації тестування",
+    "ru": "автоматизации тестирования"
   }
 }
