@@ -9,10 +9,12 @@ function listen(srv) {
   return new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port)));
 }
 
-test("POST /state persists a patch and GET /state reads it back", async () => {
+test("POST /state persists a patch and GET /state reads it back", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const statePath = join(dir, "job-state.json");
   const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
   const port = await listen(srv);
   const base = `http://127.0.0.1:${port}`;
   const U = "https://example.com/jobs/9/";
@@ -44,7 +46,4 @@ test("POST /state persists a patch and GET /state reads it back", async () => {
     body: JSON.stringify({ url: U, patch: { status: "offer" } }),
   });
   assert.equal(bad.status, 400);
-
-  await new Promise((r) => srv.close(r));
-  rmSync(dir, { recursive: true, force: true });
 });
