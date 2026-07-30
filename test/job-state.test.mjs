@@ -77,3 +77,25 @@ test("readStore tolerates malformed JSON", () => {
   assert.deepEqual(readStore(p), { _meta: {} });
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("normalize keeps the new post-applied statuses", () => {
+  for (const st of ["answered", "interview", "rejected"]) {
+    const out = normalize({ [U]: { status: st } });
+    assert.equal(out[U].status, st, st);
+    assert.equal(statusOf(out, U), st);
+  }
+});
+
+test("validatePatch accepts the new statuses and still rejects junk", () => {
+  for (const st of ["answered", "interview", "rejected"]) {
+    assert.equal(validatePatch({ status: st }), true, st);
+  }
+  assert.equal(validatePatch({ status: "ghosted" }), false);
+});
+
+test("mergeEntry keeps appliedAt when moving applied → answered", () => {
+  let map = mergeEntry({}, U, { status: "applied", appliedAt: "2026-07-01T00:00:00Z" });
+  map = mergeEntry(map, U, { status: "answered" });
+  assert.equal(map[U].status, "answered");
+  assert.equal(map[U].appliedAt, "2026-07-01T00:00:00Z");
+});
