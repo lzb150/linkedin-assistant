@@ -30,7 +30,10 @@ test("llmJSON passes model and prompt to the CLI", async () => {
   const exec = (cmd, args, _opts, cb) => { seen = { cmd, args }; cb(null, "{}"); };
   await llmJSON("my prompt", { model: "haiku", exec });
   assert.equal(seen.cmd, "claude");
-  assert.deepEqual(seen.args, ["-p", "my prompt", "--model", "haiku"]);
+  assert.deepEqual(seen.args, [
+    "-p", "my prompt", "--model", "haiku",
+    "--disallowedTools", "Read,Glob,Grep,Bash,WebFetch,WebSearch,Write,Edit",
+  ]);
 });
 
 test("llmJSON resolves null when the CLI errors (missing binary, timeout)", async () => {
