@@ -36,7 +36,7 @@ click is always yours.
   a one-line "why", and a tailored cover letter. The LLM never gates — the keyword
   score still decides what gets a package — it only ranks, explains, and writes.
   Any CLI failure falls back silently to a keyword-only package. Needs `resume.txt`;
-  tune via the `llm` block in `jobs.config.json` (`enabled`, `model`, `minKeywordScore`,
+  tune via the `llm` block in `jobs.config.json` (`enabled`, `model`,
   `maxPerRun`). LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
   child process runs hardened — tools disallowed, cwd off the repo — since job
   descriptions are untrusted input and must not be able to read local files.
@@ -107,8 +107,7 @@ reports a lower count). Clicking the Dock icon opens the dashboard as before.
 Build it with `./build-jobs.sh`, then start it at login by installing
 `com.eugene.jobs-badge.plist` into `~/Library/LaunchAgents/` (see
 `com.example.jobs-badge.plist.example`). `check.mjs` also relaunches it
-defensively on each scan. The original AppleScript applet is preserved at
-`Jobs.app.orig`.
+defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)
 

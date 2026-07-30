@@ -340,7 +340,7 @@ async function autoStatus(card, status){ if (POST_APPLIED.includes(statusOf(card
 
 async function saveNote(card, value){ await patchEntry(card.dataset.url, { note: value.trim() }); renderCard(card); }
 
-// Inlined from lib/freshness.mjs (browser has no module import here).
+// A job is "new since last visit" when generated after the stored lastVisit.
 function isNew(generatedISO, lastVisitISO) {
   if (!lastVisitISO) return false;
   const g = Date.parse(generatedISO), v = Date.parse(lastVisitISO);
