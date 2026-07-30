@@ -8,6 +8,14 @@
   "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles. Matched in the title only, so senior roles that merely mention these words in the description are kept.",
   "excludeTitle": ["junior", "intern", "internship", "trainee"],
 
+  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). The LLM NEVER gates: keyword minScore/requireRole decide what gets a package; the LLM only ranks, explains, and writes the letter. Any CLI failure silently falls back to keyword-only packages. minKeywordScore is an extra floor (relevant where a per-source minScore is lower), maxPerRun caps CLI calls per run.",
+  "llm": {
+    "enabled": true,
+    "model": "haiku",
+    "minKeywordScore": 15,
+    "maxPerRun": 15
+  },
+
   "dou": {
     "enabled": true,
     "feeds": [
