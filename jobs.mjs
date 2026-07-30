@@ -24,7 +24,7 @@ import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { currentCounts, detectRegressions, mergeCounts, formatAlert } from "./lib/source-health.mjs";
+import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as osaNotify } from "./lib/notify.mjs";
 import { launchBrowser } from "./lib/browser.mjs";
 
@@ -84,14 +84,14 @@ function loadSeen() {
 }
 const seen = loadSeen();
 
-// source-health.json records each source's `found` count from the last run so we
-// can warn when a source that had results suddenly returns zero (a likely sign
-// its scraper broke). Missing/unparseable file → no history (no alerts, just seed).
+// source-health.json keeps the last 10 runs' `found` counts per source so we
+// can warn when a source degrades well below its recent norm (a likely sign
+// its scraper broke). Missing/unparseable/legacy file → normalized quietly.
 function loadHealth() {
   try { return JSON.parse(readFileSync(HEALTH_FILE, "utf8")); }
   catch { return {}; }
 }
-const prevHealth = loadHealth();
+const health = normalizeHistory(loadHealth());
 
 let jobs = [];
 const summary = newSummary();
@@ -214,11 +214,11 @@ log(`Done. Considered ${considered} new, wrote ${written} application package(s)
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));
 
-// Scraper-health: warn (separate banner) if a source that had results on the
-// previous run returned 0 this run, then persist this run's counts for next time.
-const regressions = detectRegressions(prevHealth, summary);
-if (regressions.length) notify(formatAlert(regressions));
-writeFileSync(HEALTH_FILE, JSON.stringify(mergeCounts(prevHealth, currentCounts(summary)), null, 0));
+// Scraper-health: warn (separate banner) if a source came in far below its
+// recent norm, then append this run's counts to the history.
+const degraded = detectDegradations(health, summary);
+if (degraded.length) notify(formatAlert(degraded));
+writeFileSync(HEALTH_FILE, JSON.stringify(appendHistory(health, currentCounts(summary)), null, 0));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {
