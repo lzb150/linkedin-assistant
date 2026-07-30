@@ -26,7 +26,12 @@ const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
 const parsed = files
   .map((f) => parse(readFileSync(join(APPS, f), "utf8")))
   .filter(Boolean)
-  .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10), generated: x.fm.generated || "" }));
+  .map((x) => ({
+    ...x,
+    score: parseInt(x.fm.score || "0", 10),
+    llm: /^\d+$/.test(x.fm.llm_score || "") ? parseInt(x.fm.llm_score, 10) : null,
+    generated: x.fm.generated || "",
+  }));
 
 // Packages written before the extractSalary trailing-comma fix have values like
 // "$2800–3500," baked into their frontmatter; clean them up at render time.
@@ -42,7 +47,9 @@ for (const it of parsed) {
   const prev = byIdentity.get(key);
   if (!prev || (it.fm.generated || "") > (prev.fm.generated || "")) byIdentity.set(key, it);
 }
-const items = [...byIdentity.values()].sort((a, b) => b.score - a.score);
+const items = [...byIdentity.values()].sort(
+  (a, b) => (b.llm ?? -1) - (a.llm ?? -1) || b.score - a.score,
+);
 
 function scoreColor(s) {
   if (s >= 40) return "#1a7f37";   // green
@@ -79,6 +86,7 @@ const cards = items
     <div class="titles">
       <h2>${esc(f.title || "—")}</h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
+      ${it.llm != null ? `<div class="llm-row"><span class="llm">🤖 ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
       <a class="apply" href="${esc(f.url)}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
@@ -122,6 +130,9 @@ const html = `<!doctype html>
   .titles { flex: 1; }
   .titles h2 { margin: 0; font-size: 16px; }
   .sub { font-size: 13px; color: #57606a; margin-top: 4px; }
+  .llm-row { margin-top: 4px; font-size: 12px; }
+  .llm { background: #8250df; color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  .llm-why { color: #57606a; font-style: italic; }
   .src { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
   .lang { text-transform: uppercase; font-size: 11px; color: #57606a; }
   .salary { color: #1a7f37; font-size: .8rem; white-space: nowrap; }
