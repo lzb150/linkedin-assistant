@@ -23,6 +23,7 @@ test("normalizeHistory passes arrays through and drops garbage", () => {
   assert.deepEqual(normalizeHistory({ dou: [1, 2], bad: "x", worse: null }), { dou: [1, 2] });
   assert.deepEqual(normalizeHistory(null), {});
   assert.deepEqual(normalizeHistory("junk"), {});
+  assert.deepEqual(normalizeHistory([1, 2, 3]), {}); // top-level array is garbage too
 });
 
 test("median: odd, even, empty", () => {
