@@ -28,6 +28,10 @@ const parsed = files
   .filter(Boolean)
   .map((x) => ({ ...x, score: parseInt(x.fm.score || "0", 10), generated: x.fm.generated || "" }));
 
+// Packages written before the extractSalary trailing-comma fix have values like
+// "$2800–3500," baked into their frontmatter; clean them up at render time.
+for (const it of parsed) if (it.fm.salary) it.fm.salary = it.fm.salary.replace(/[,\s]+$/, "");
+
 // applications/ is append-only: historical runs left many packages for the same
 // vacancy (e.g. a Jooble job whose URL changed every run when seen was URL-keyed).
 // Collapse to one card per identity (company+title), keeping the most recently

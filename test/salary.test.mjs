@@ -41,3 +41,7 @@ test("euro range with space-separated thousands", () => {
 test("ceiling does not match non-salary 'up to N' phrases", () => {
   assert.equal(extractSalary("up to 5 years experience required"), null);
 });
+
+test("range followed by a sentence comma keeps the number clean", () => {
+  assert.equal(extractSalary("Salary $2800–3500, fully remote"), "$2800–3500");
+});
