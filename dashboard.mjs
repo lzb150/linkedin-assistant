@@ -91,7 +91,7 @@ const cards = items
   <details ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')">
     <summary>Cover letter</summary>
     <pre id="cover${idx}">${esc(it.cover)}</pre>
-    <button class="copy" onclick="copyCover(${idx})">Copy letter</button>
+    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter</button>
     <span class="resume">📎 resume: ${esc(f.resume || "")}</span>
   </details>
   <details class="note-wrap">
@@ -171,19 +171,19 @@ const html = `<!doctype html>
   <div class="meta">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
-      <button data-filter="all" onclick="setFilter(this,'all')">All <span class="cnt" id="cnt-all">0</span></button>
-      <button data-filter="new" class="active" onclick="setFilter(this,'new')">New <span class="cnt" id="cnt-new">0</span></button>
-      <button data-filter="viewed" onclick="setFilter(this,'viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
-      <button data-filter="applied" onclick="setFilter(this,'applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
-      <button data-filter="fresh" onclick="setFilter(this,'fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
+      <button data-filter="all" onclick="setFilter('all')">All <span class="cnt" id="cnt-all">0</span></button>
+      <button data-filter="new" class="active" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
+      <button data-filter="viewed" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      <button data-filter="applied" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
+      <button data-filter="fresh" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
     <input id="q" type="search" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
-      <button data-src="all" class="active" onclick="setSource(this,'all')">All</button>
-      <button data-src="linkedin" onclick="setSource(this,'linkedin')">LinkedIn</button>
-      <button data-src="dou" onclick="setSource(this,'dou')">DOU</button>
-      <button data-src="djinni" onclick="setSource(this,'djinni')">Djinni</button>
-      <button data-src="jooble" onclick="setSource(this,'jooble')">Jooble</button>
+      <button data-src="all" class="active" onclick="setSource('all')">All</button>
+      <button data-src="linkedin" onclick="setSource('linkedin')">LinkedIn</button>
+      <button data-src="dou" onclick="setSource('dou')">DOU</button>
+      <button data-src="djinni" onclick="setSource('djinni')">Djinni</button>
+      <button data-src="jooble" onclick="setSource('jooble')">Jooble</button>
     </div>
     <div class="min-seg" role="group" aria-label="Minimum score">
       <button data-min="0" class="active" onclick="setMin(this,0)">All</button>
@@ -272,9 +272,9 @@ function daysAgo(iso) {
   return n <= 0 ? 'today' : n + 'd ago';
 }
 
-function copyCover(i){
+function copyCover(i, btn){
   const t = document.getElementById('cover'+i).innerText;
-  navigator.clipboard.writeText(t).then(()=>{ event.target.textContent='✓ Copied'; setTimeout(()=>event.target.textContent='Copy letter',1500); });
+  navigator.clipboard.writeText(t).then(()=>{ btn.textContent='✓ Copied'; setTimeout(()=>btn.textContent='Copy letter',1500); });
 }
 
 function renderCard(card){
@@ -360,7 +360,7 @@ function restoreFilters(){
   document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', Number(b.dataset.min) === minScore));
 }
 function setQuery(v){ query = v.trim().toLowerCase(); applyFilter(); }
-function setSource(btn, src){ toggleSel(srcSel, src); syncSeg(srcSel, '.src-seg button', 'src'); applyFilter(); }
+function setSource(src){ toggleSel(srcSel, src); syncSeg(srcSel, '.src-seg button', 'src'); applyFilter(); }
 function setMin(btn, n){ minScore = n; document.querySelectorAll('.min-seg button').forEach((b)=>b.classList.toggle('active', b===btn)); applyFilter(); }
 
 function applyFilter(){
@@ -380,7 +380,7 @@ function applyFilter(){
   for (const k of ['all','new','viewed','applied']) { const el = document.getElementById('cnt-'+k); if (el) el.textContent = counts[k]; }
   saveFilters();
 }
-function setFilter(btn, filter){ toggleSel(statusSel, filter); syncSeg(statusSel, '.filter-seg button', 'filter'); applyFilter(); }
+function setFilter(filter){ toggleSel(statusSel, filter); syncSeg(statusSel, '.filter-seg button', 'filter'); applyFilter(); }
 
 (async function init(){
   await initState();
