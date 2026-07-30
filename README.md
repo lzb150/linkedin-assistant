@@ -259,7 +259,11 @@ entirely in config. To hunt, say, developer jobs instead:
 - `skills` — keyword → weight. Higher weight = stronger match.
 - `roles` — titles you'd accept (strong signal).
 - `antiKeywords` — phrases that *lower* the score (e.g. "manual testing only").
+- `maxSkills` — only the N highest-weight matched skills count toward the score
+  (guards against keyword-stuffed postings; default 8).
 - `thresholds.relevant` / `.maybe` — score cutoffs for drafting + attaching.
+- `profile` — the per-language specialization phrase for fallback cover letters
+  (see "Adapting to another profession" above).
 
 Job-discovery search config (feeds, LinkedIn searches, `minScore`, `requireRole`)
 lives in `jobs.config.json`.
