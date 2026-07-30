@@ -10,14 +10,17 @@ import { createServer } from "../state-server.mjs";
 
 function listen(srv) { return new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port))); }
 
-test("status, appliedAt and note persist across a server restart", async () => {
+test("status, appliedAt and note persist across a server restart", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "dash-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const statePath = join(dir, "job-state.json");
   const indexPath = join(dir, "index.html");
   writeFileSync(indexPath, "<html></html>");
   const U = "https://example.com/jobs/7/";
 
   let srv = createServer({ statePath, indexPath });
+  // closes whichever server instance is current, even if an assert throws
+  t.after(() => new Promise((r) => srv.close(() => r())));
   let port = await listen(srv);
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ url: U, patch: { status: "applied", appliedAt: "2026-06-15T10:00:00Z" } }) });
@@ -35,6 +38,4 @@ test("status, appliedAt and note persist across a server restart", async () => {
   // GET / serves the generated dashboard html.
   const html = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.text());
   assert.match(html, /<html>/);
-  await new Promise((r) => srv.close(r));
-  rmSync(dir, { recursive: true, force: true });
 });

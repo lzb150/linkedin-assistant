@@ -8,7 +8,13 @@ import {
 } from "../lib/job-state.mjs";
 
 const U = "https://example.com/jobs/1/";
-function tmp() { return mkdtempSync(join(tmpdir(), "js-")); }
+// creates a temp dir and registers its removal via t.after so cleanup
+// runs even when an assert throws
+function tmp(t) {
+  const dir = mkdtempSync(join(tmpdir(), "js-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 test("normalize upgrades the legacy string shape to an entry object", () => {
   const out = normalize({ [U]: "viewed" });
@@ -56,24 +62,22 @@ test("validatePatch rejects an unknown status and accepts a valid one", () => {
   assert.equal(validatePatch({ note: 5 }), false);
 });
 
-test("readStore round-trips through writeStore atomically", () => {
-  const dir = tmp();
+test("readStore round-trips through writeStore atomically", (t) => {
+  const dir = tmp(t);
   const p = join(dir, "job-state.json");
   writeStore(p, mergeEntry({ _meta: { lastVisit: "t" } }, U, { status: "applied", appliedAt: "a" }));
   const back = readStore(p);
   assert.equal(back[U].status, "applied");
   assert.equal(back._meta.lastVisit, "t");
-  rmSync(dir, { recursive: true, force: true });
 });
 
 test("readStore returns an empty store for a missing file", () => {
   assert.deepEqual(readStore("/no/such/job-state.json"), { _meta: {} });
 });
 
-test("readStore tolerates malformed JSON", () => {
-  const dir = tmp();
+test("readStore tolerates malformed JSON", (t) => {
+  const dir = tmp(t);
   const p = join(dir, "job-state.json");
   writeFileSync(p, "{ not json");
   assert.deepEqual(readStore(p), { _meta: {} });
-  rmSync(dir, { recursive: true, force: true });
 });
