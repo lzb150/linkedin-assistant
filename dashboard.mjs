@@ -1,11 +1,11 @@
 // Builds a single self-contained HTML dashboard of all application packages
 // in applications/, sorted by score. Run:  node dashboard.mjs [--open]
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
+import { openPath } from "./lib/open.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const APPS = join(__dir, "applications");
@@ -247,5 +247,5 @@ writeFileSync(OUT, html);
 console.log(`Dashboard: ${OUT} (${items.length} jobs)`);
 
 if (process.argv.includes("--open")) {
-  execFile("open", [OUT], () => {});
+  openPath(OUT);
 }
