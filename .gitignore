@@ -36,6 +36,11 @@ run.sh
 run-jobs.sh
 com.*.plist
 
+# Machine-specific Windows wrappers & task registration — use the *.example templates
+scripts/windows/run.ps1
+scripts/windows/run-jobs.ps1
+scripts/windows/register-tasks.ps1
+
 # Personal resume — kept local only
 resume.txt
 

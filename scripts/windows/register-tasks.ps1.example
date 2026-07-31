@@ -1,0 +1,41 @@
+# Registers the scheduled tasks — the Task Scheduler mirror of the launchd
+# plists. Copy to register-tasks.ps1 (gitignored), set $Repo, then run from
+# an ELEVATED PowerShell:
+#   powershell -ExecutionPolicy Bypass -File register-tasks.ps1
+# Uninstall: Unregister-ScheduledTask -TaskName "linkedin-assistant *"
+$ErrorActionPreference = "Stop"
+$identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  throw "Run from an elevated PowerShell — Task Scheduler registration needs admin."
+}
+
+$Repo = "C:\Users\YOUR_USERNAME\linkedin-assistant"
+$Win = Join-Path $Repo "scripts\windows"
+$forever = New-TimeSpan -Days 3650
+
+function Register-Job([string]$Name, [string]$Arguments, $Trigger) {
+  $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass $Arguments" -WorkingDirectory $Repo
+  Register-ScheduledTask -TaskName $Name -Action $action -Trigger $Trigger -Force | Out-Null
+  Write-Host "registered: $Name"
+}
+
+# Inbox check — hourly (mirror of com.*.linkedin-assistant.plist)
+Register-Job "linkedin-assistant inbox" "-File `"$Win\run.ps1`"" `
+  (New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration $forever)
+
+# DOU/Djinni/Jooble discovery — hourly (mirror of com.*.job-discovery-dou.plist)
+Register-Job "linkedin-assistant discovery-dou" "-File `"$Win\run-jobs.ps1`" -Mode dou" `
+  (New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration $forever)
+
+# LinkedIn discovery — every 3 hours at :45 (mirror of com.*.job-discovery-linkedin.plist)
+Register-Job "linkedin-assistant discovery-linkedin" "-File `"$Win\run-jobs.ps1`" -Mode full" `
+  (New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(45) -RepetitionInterval (New-TimeSpan -Hours 3) -RepetitionDuration $forever)
+
+# Follow-up reminders — daily at 10:00 (mirror of com.*.jobs-followup.plist)
+Register-Job "linkedin-assistant followup" "-Command `"Set-Location '$Repo'; node followup.mjs`"" `
+  (New-ScheduledTaskTrigger -Daily -At 10:00)
+
+# Tray badge — at logon (mirror of com.*.jobs-badge.plist)
+Register-Job "linkedin-assistant tray-badge" "-WindowStyle Hidden -File `"$Win\tray-badge.ps1`"" `
+  (New-ScheduledTaskTrigger -AtLogOn)

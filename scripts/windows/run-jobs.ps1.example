@@ -1,0 +1,21 @@
+# Wrapper for scheduled job discovery (mirror of run-jobs.sh.example).
+# Arg: -Mode dou (RSS/API sources only) or -Mode full (adds LinkedIn scraping).
+# Copy to run-jobs.ps1 (gitignored) and fill in your own values.
+param([string]$Mode = "full")
+$ErrorActionPreference = "Stop"
+$env:Path = "C:\Program Files\nodejs;" + $env:Path   # adjust if node lives elsewhere
+Set-Location (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))   # repo root
+
+$env:RESUME_PATH = "$env:USERPROFILE\Downloads\your-resume.docx"
+$env:CANDIDATE_NAME = "Your Name"
+# Free Jooble API key from https://jooble.org/api/about (only if jooble.enabled)
+$env:JOOBLE_API_KEY = "your-jooble-api-key"
+
+New-Item -ItemType Directory -Force -Path logs | Out-Null
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+if ($Mode -eq "dou") {
+  $env:DOU_ONLY = "1"
+  node jobs.mjs *>> "logs\jobs_dou_$stamp.log"
+} else {
+  node jobs.mjs *>> "logs\jobs_full_$stamp.log"
+}
