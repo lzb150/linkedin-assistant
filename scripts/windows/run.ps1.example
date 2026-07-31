@@ -1,0 +1,13 @@
+# Wrapper for the scheduled LinkedIn inbox check (mirror of run.sh.example).
+# Copy to run.ps1 (gitignored) and fill in your own values.
+$ErrorActionPreference = "Stop"
+$env:Path = "C:\Program Files\nodejs;" + $env:Path   # adjust if node lives elsewhere
+Set-Location (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))   # repo root
+
+$env:RESUME_PATH = "$env:USERPROFILE\Downloads\your-resume.docx"
+$env:CANDIDATE_NAME = "Your Name"
+
+New-Item -ItemType Directory -Force -Path logs | Out-Null
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+node check.mjs *>> "logs\check_$stamp.log"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,0 +1,49 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # Tests never launch a browser — plain npm ci, no playwright install.
+      - run: npm ci
+      - run: node --test test/
+      - name: Syntax-check every module
+        shell: bash
+        run: |
+          set -e
+          for f in *.mjs lib/*.mjs lib/sources/*.mjs; do node --check "$f"; done
+      - name: Dashboard smoke build
+        shell: bash
+        run: |
+          set -e
+          mkdir -p applications
+          node dashboard.mjs
+          grep -q "statusOfEntry" applications/index.html
+      - name: Parse PowerShell scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bad = @()
+          Get-ChildItem scripts/windows -File | ForEach-Object {
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $bad += $_.Name; $errors | ForEach-Object { Write-Host "$($_.Extent.File): $($_.Message)" } }
+          }
+          if ($bad) { throw "PowerShell parse errors in: $($bad -join ', ')" }
