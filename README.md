@@ -285,6 +285,39 @@ Unload to stop: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assist
 Discovery has its own templates: `com.example.job-discovery-dou.plist.example`
 and `com.example.job-discovery-linkedin.plist.example`.
 
+## Windows
+
+The Node core — discovery, scoring, LLM letters, packages, the dashboard with
+its state server — is cross-platform and needs no extras: the one-time setup
+above works as-is (`npm install`, `npx playwright install chromium`,
+`node login.mjs`), then `node jobs.mjs` / `node check.mjs` / `node
+dashboard.mjs --open` behave exactly like on macOS. Notifications dispatch
+per-platform automatically (macOS: osascript banner, Windows: WinRT toast,
+Linux: notify-send) and are always best-effort.
+
+The optional Windows shell lives in `scripts\windows\`:
+
+- **Toasts** — used automatically by every script once the repo is cloned
+  (`toast.ps1` is invoked by `lib/notify.mjs` on win32). Try it:
+  `powershell -ExecutionPolicy Bypass -File scripts\windows\toast.ps1 -Title Hi -Message "it works"`.
+- **Tray unread badge** (the Dock-badge analog) —
+  `powershell -ExecutionPolicy Bypass -File scripts\windows\tray-badge.ps1`:
+  a tray icon with the summed LinkedIn+Djinni unread count, left-click opens
+  the dashboard. Registered at logon by the scheduler script below.
+- **Dashboard shortcut** — `scripts\windows\open-dashboard.ps1` rebuilds the
+  page, starts the state server if needed, opens the browser.
+- **Scheduling** — copy `run.ps1.example` / `run-jobs.ps1.example` /
+  `register-tasks.ps1.example` without the `.example` suffix, fill in your
+  paths, then run `register-tasks.ps1` from an **elevated** PowerShell. It
+  registers the same cadence as the launchd setup: inbox hourly, DOU
+  discovery hourly, LinkedIn discovery every 3 h at :45, follow-ups daily,
+  tray badge at logon. The filled-in copies are gitignored.
+
+Limitations: there is no taskbar overlay badge (the tray icon is the analog),
+and the toast/tray scripts are best-effort — CI parses them on a real Windows
+runner, but banners are inherently visual; the one-line toast test above is
+the manual check.
+
 ## When it breaks
 
 LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read messages:
