@@ -16,6 +16,8 @@ $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 if ($Mode -eq "dou") {
   $env:DOU_ONLY = "1"
   node jobs.mjs *>> "logs\jobs_dou_$stamp.log"
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } else {
   node jobs.mjs *>> "logs\jobs_full_$stamp.log"
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }

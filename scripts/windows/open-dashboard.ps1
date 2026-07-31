@@ -1,5 +1,5 @@
 # Mirror of open-dashboard.sh: rebuild the dashboard, ensure the state server
-# is listening on 127.0.0.1:7777, open the browser. Idempotent — a second
+# is listening on 127.0.0.1:7777, open the browser. Idempotent - a second
 # call reuses the already-running server.
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

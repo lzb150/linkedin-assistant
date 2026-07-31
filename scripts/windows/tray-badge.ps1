@@ -1,4 +1,4 @@
-# Tray-icon unread badge — the Windows mirror of Jobs.app ("Вакансії").
+# Tray-icon unread badge - the Windows mirror of Jobs.app ("Вакансії").
 # Polls notify-state.json (LinkedIn) + djinni-notify-state.json (Djinni)
 # every 3 s, draws the summed unread count into the tray icon, opens the
 # dashboard on left-click. Exit via the tray context menu.
@@ -6,6 +6,7 @@
 $ErrorActionPreference = "SilentlyContinue"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon);' -Name Native -Namespace Win32
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # scripts\windows -> repo root
 $stateFiles = @(
@@ -42,7 +43,9 @@ function New-BadgeIcon([int]$count) {
     $g.FillRectangle([System.Drawing.Brushes]::DimGray, 5, 3, 6, 3)
   }
   $g.Dispose()
-  return [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+  $h = $bmp.GetHicon()
+  $bmp.Dispose()
+  return [System.Drawing.Icon]::FromHandle($h)
 }
 
 $icon = New-Object System.Windows.Forms.NotifyIcon
@@ -65,7 +68,7 @@ $timer.add_Tick({
     $script:last = $n
     $old = $icon.Icon
     $icon.Icon = New-BadgeIcon $n
-    if ($old) { $old.Dispose() }
+    if ($old) { $h = $old.Handle; $old.Dispose(); [Win32.Native]::DestroyIcon($h) | Out-Null }
     $icon.Text = "Jobs - $n unread thread(s)"
   }
 })

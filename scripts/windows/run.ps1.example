@@ -10,3 +10,4 @@ $env:CANDIDATE_NAME = "Your Name"
 New-Item -ItemType Directory -Force -Path logs | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 node check.mjs *>> "logs\check_$stamp.log"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
