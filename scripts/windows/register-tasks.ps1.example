@@ -33,7 +33,7 @@ Register-Job "linkedin-assistant discovery-linkedin" "-File `"$Win\run-jobs.ps1`
   (New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(45) -RepetitionInterval (New-TimeSpan -Hours 3) -RepetitionDuration $forever)
 
 # Follow-up reminders - daily at 09:30 (mirror of com.*.jobs-followup.plist)
-Register-Job "linkedin-assistant followup" "-Command `"`$env:Path = 'C:\Program Files\nodejs;' + `$env:Path; Set-Location '$Repo'; node followup.mjs *>> logs\followup.log; exit `$LASTEXITCODE`"" `
+Register-Job "linkedin-assistant followup" "-Command `"New-Item -ItemType Directory -Force -Path '$Repo\logs' | Out-Null; `$env:Path = 'C:\Program Files\nodejs;' + `$env:Path; Set-Location '$Repo'; node followup.mjs *>> logs\followup.log; exit `$LASTEXITCODE`"" `
   (New-ScheduledTaskTrigger -Daily -At 09:30)
 
 # Tray badge - at logon (mirror of com.*.jobs-badge.plist)
