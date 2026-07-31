@@ -311,7 +311,7 @@ Linux: notify-send) і завжди best-effort.
 
 Опційна Windows-обгортка живе у `scripts\windows\`:
 
-- **Тости** — використовуються автоматично (`toast.ps1` викликає
+- **Тости** — використовуються автоматично (`toast.ps1` викликається з
   `lib/notify.mjs` на win32). Перевірити:
   `powershell -ExecutionPolicy Bypass -File scripts\windows\toast.ps1 -Title Hi -Message "працює"`.
 - **Трей-бейдж непрочитаного** (аналог Dock-бейджа) —
