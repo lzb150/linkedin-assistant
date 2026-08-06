@@ -254,6 +254,10 @@ entirely in config. To hunt, say, developer jobs instead:
 3. **Resume** — replace `resume.txt` (drives LLM scoring and letters).
 4. **Attachment** — update `RESUME_PATH` in `run.sh` / `run-jobs.sh`.
 
+The full walkthrough — from a job title like "Senior Fullstack Developer" to a
+working config, including seniority handling and the profile-coupled tests —
+lives in [docs/specialization.md](docs/specialization.md).
+
 ## Tuning relevance — `skills.json`
 
 - `skills` — keyword → weight. Higher weight = stronger match.
