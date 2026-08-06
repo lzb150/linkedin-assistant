@@ -303,38 +303,6 @@ launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 Пошук вакансій має власні шаблони: `com.example.job-discovery-dou.plist.example`
 і `com.example.job-discovery-linkedin.plist.example`.
 
-## Windows
-
-Node-ядро — пошук, скоринг, LLM-листи, пакети, дашборд із сервером стану —
-кросплатформене і не потребує нічого додаткового: одноразове налаштування
-вище працює як є (`npm install`, `npx playwright install chromium`,
-`node login.mjs`), далі `node jobs.mjs` / `node check.mjs` /
-`node dashboard.mjs --open` поводяться так само, як на macOS. Сповіщення
-самі обирають платформу (macOS: банер osascript, Windows: WinRT-тост,
-Linux: notify-send) і завжди best-effort.
-
-Опційна Windows-обгортка живе у `scripts\windows\`:
-
-- **Тости** — використовуються автоматично (`toast.ps1` викликається з
-  `lib/notify.mjs` на win32). Перевірити:
-  `powershell -ExecutionPolicy Bypass -File scripts\windows\toast.ps1 -Title Hi -Message "працює"`.
-- **Трей-бейдж непрочитаного** (аналог Dock-бейджа) —
-  `powershell -ExecutionPolicy Bypass -File scripts\windows\tray-badge.ps1`:
-  іконка в треї з сумою непрочитаних LinkedIn+Djinni, лівий клік відкриває
-  дашборд. Реєструється на логоні скриптом розкладу нижче.
-- **Ярлик дашборда** — `scripts\windows\open-dashboard.ps1` перебудовує
-  сторінку, за потреби стартує сервер стану, відкриває браузер.
-- **Розклад** — скопіюйте `run.ps1.example` / `run-jobs.ps1.example` /
-  `register-tasks.ps1.example` без суфікса `.example`, заповніть свої шляхи
-  і запустіть `register-tasks.ps1` з **підвищеної** PowerShell. Реєструється
-  той самий розклад, що й у launchd: скринька щогодини, DOU щогодини,
-  LinkedIn кожні 3 год о :45, фолоу-апи щодня, трей-бейдж на логоні.
-  Заповнені копії — у gitignore.
-
-Обмеження: оверлей-бейджа на панелі задач немає (аналог — іконка в треї), а
-тост/трей — best-effort: CI парсить скрипти на справжньому Windows-раннері,
-але банери за природою візуальні; ручна перевірка — команда тосту вище.
-
 ## Коли щось ламається
 
 LinkedIn часто змінює свій HTML. Якщо `check.mjs` знаходить 0 карток або не

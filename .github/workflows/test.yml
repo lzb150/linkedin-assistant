@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -36,14 +36,3 @@ jobs:
           mkdir -p applications
           node dashboard.mjs
           grep -q "statusOfEntry" applications/index.html
-      - name: Parse PowerShell scripts
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $bad = @()
-          Get-ChildItem scripts/windows -File | ForEach-Object {
-            $tokens = $null; $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors) { $bad += $_.Name; $errors | ForEach-Object { Write-Host "$($_.Extent.File): $($_.Message)" } }
-          }
-          if ($bad) { throw "PowerShell parse errors in: $($bad -join ', ')" }
