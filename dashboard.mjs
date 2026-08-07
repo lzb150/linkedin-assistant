@@ -71,7 +71,7 @@ function scoreColor(s) {
 }
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#e8453c", djinni: "#3d3bd4", jooble: "#0a8f6c" };
+const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#e8453c", djinni: "#3d3bd4", jooble: "#0a8f6c", robota: "#d6304b", workua: "#1c7ed6" };
 function badge(source) {
   const c = SOURCE_COLORS[source] || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
@@ -226,6 +226,8 @@ const html = `<!doctype html>
       <button data-src="dou" onclick="setSource('dou')">DOU</button>
       <button data-src="djinni" onclick="setSource('djinni')">Djinni</button>
       <button data-src="jooble" onclick="setSource('jooble')">Jooble</button>
+      <button data-src="robota" onclick="setSource('robota')">Robota</button>
+      <button data-src="workua" onclick="setSource('workua')">Work.ua</button>
     </div>
     <div class="min-seg" role="group" aria-label="Minimum score">
       <button data-min="0" class="active" onclick="setMin(this,0)">All</button>

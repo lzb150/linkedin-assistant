@@ -52,6 +52,29 @@
     ]
   },
 
+  "workua": {
+    "_comment": "Work.ua public jobs board, server-rendered — read with a plain fetch (no login, no browser). Each search is a full jobs-search URL, e.g. https://www.work.ua/jobs-<query>/ (copy from your browser). fullDescription (default true) follows each job link for the complete text.",
+    "enabled": true,
+    "fullDescription": true,
+    "maxResults": 15,
+    "searches": [
+      "https://www.work.ua/jobs-qa+automation/",
+      "https://www.work.ua/jobs-sdet/",
+      "https://www.work.ua/jobs-playwright/"
+    ]
+  },
+
+  "robota": {
+    "_comment": "Robota.ua sits behind Cloudflare, which hard-blocks headless Chrome — this source only yields results when jobs.mjs runs with HEADFUL=1 (it is skipped with a log hint otherwise). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL, e.g. https://robota.ua/zapros/<query>/ukraine (copy from your browser). fullDescription (default true) opens each vacancy page for the complete text — slower, keep maxResults modest.",
+    "enabled": true,
+    "fullDescription": true,
+    "maxResults": 10,
+    "searches": [
+      "https://robota.ua/zapros/qa-automation/ukraine",
+      "https://robota.ua/zapros/sdet/ukraine"
+    ]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,
