@@ -24,6 +24,8 @@ import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
+import { fetchWorkua } from "./lib/sources/workua.mjs";
+import { fetchRobota } from "./lib/sources/robota.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as osaNotify } from "./lib/notify.mjs";
 import { launchBrowser } from "./lib/browser.mjs";
@@ -103,6 +105,7 @@ const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: true, fetch: fetchDou },
   { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
   { name: "jooble", enabled: config.jooble?.enabled, fetch: fetchJooble },
+  { name: "workua", enabled: config.workua?.enabled, fetch: fetchWorkua },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   if (!s.enabled) continue;
@@ -114,23 +117,34 @@ for (const s of BROWSERLESS_SOURCES) {
   } catch (e) { log(`${s.name} error:`, e.message); }
 }
 
-// 4) LinkedIn via the logged-in browser (optional)
-if (!DOU_ONLY && config.linkedin?.enabled) {
+// 4–5) Browser sources: LinkedIn (needs login) and Robota.ua (Cloudflare-gated,
+// no login) share one Playwright context.
+if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
   const ctx = await launchBrowser(PROFILE);
   try {
     const page = ctx.pages()[0] || (await ctx.newPage());
-    // bail early if logged out
-    await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
-    if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
-      log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
-    } else {
-      log("Gathering LinkedIn jobs (scraping, modest)...");
-      const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
-      recordFound(summary, "linkedin", liJobs.length);
-      jobs.push(...liJobs);
+    if (config.linkedin?.enabled) {
+      // bail early if logged out
+      await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
+      if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
+        log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
+      } else {
+        log("Gathering LinkedIn jobs (scraping, modest)...");
+        const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
+        recordFound(summary, "linkedin", liJobs.length);
+        jobs.push(...liJobs);
+      }
+    }
+    if (config.robota?.enabled) {
+      log("Gathering Robota.ua...");
+      try {
+        const rJobs = await fetchRobota(page, config.robota, log);
+        recordFound(summary, "robota", rJobs.length);
+        jobs.push(...rJobs);
+      } catch (e) { log("Robota.ua error:", e.message); }
     }
   } catch (e) {
-    log("LinkedIn error:", e.message);
+    log("Browser sources error:", e.message);
   } finally {
     await ctx.close();
   }
