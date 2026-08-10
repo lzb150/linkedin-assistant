@@ -10,7 +10,7 @@
 //                                     seen.json still prevents duplicate drafts.)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
@@ -21,6 +21,7 @@ import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
+mkdirSync(DRAFTS, { recursive: true }); // fresh clones lack drafts/ (gitignored output)
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 // Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`

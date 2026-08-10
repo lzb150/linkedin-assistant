@@ -7,7 +7,7 @@
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -31,6 +31,7 @@ import { launchBrowser } from "./lib/browser.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
+mkdirSync(APPS, { recursive: true }); // fresh clones lack applications/ (gitignored output)
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
 const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
