@@ -71,3 +71,52 @@ test("the cover note routes through skills.json's profile block", () => {
   const { markdown } = buildApplication(job, scored);
   assert.ok(markdown.includes(`solid experience in ${profile.en},`), "en cover must embed profile.en");
 });
+
+// --- appendAltLink (cross-run dedup) ---
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { appendAltLink } from "../lib/application.mjs";
+
+function tmpPackage(content) {
+  const dir = mkdtempSync(join(tmpdir(), "app-test-"));
+  const file = join(dir, "pkg.md");
+  writeFileSync(file, content);
+  return { file, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+const FM = `---\nsource: dou\ntitle: Senior AQA\ncompany: Acme\n---\n\n## Body\nuntouched\n`;
+
+test("appendAltLink creates the alt_links line when absent", () => {
+  const { file, cleanup } = tmpPackage(FM);
+  try {
+    assert.equal(appendAltLink(file, "linkedin", "https://li/1"), true);
+    const md = readFileSync(file, "utf8");
+    assert.match(md, /^alt_links: linkedin\|https:\/\/li\/1$/m);
+    assert.ok(md.endsWith("## Body\nuntouched\n"), "body must stay byte-identical");
+  } finally { cleanup(); }
+});
+
+test("appendAltLink appends to an existing alt_links line", () => {
+  const { file, cleanup } = tmpPackage(FM.replace("\n---\n", "\nalt_links: djinni|https://dj/1\n---\n"));
+  try {
+    assert.equal(appendAltLink(file, "linkedin", "https://li/1"), true);
+    assert.match(readFileSync(file, "utf8"), /^alt_links: djinni\|https:\/\/dj\/1, linkedin\|https:\/\/li\/1$/m);
+  } finally { cleanup(); }
+});
+
+test("appendAltLink is idempotent for an already-recorded url", () => {
+  const { file, cleanup } = tmpPackage(FM.replace("\n---\n", "\nalt_links: linkedin|https://li/1\n---\n"));
+  try {
+    const before = readFileSync(file, "utf8");
+    assert.equal(appendAltLink(file, "linkedin", "https://li/1"), false);
+    assert.equal(readFileSync(file, "utf8"), before);
+  } finally { cleanup(); }
+});
+
+test("appendAltLink refuses a file without frontmatter", () => {
+  const { file, cleanup } = tmpPackage("no frontmatter here");
+  try {
+    assert.equal(appendAltLink(file, "linkedin", "https://li/1"), false);
+  } finally { cleanup(); }
+});

@@ -26,6 +26,8 @@ click is always yours.
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
 - **Jooble** — via the official Jooble API (free key, structured JSON)
+- **Work.ua** — via the public jobs board (plain fetch, no login, no browser)
+- **Robota.ua** — via the shared browser session (Cloudflare-gated, needs `HEADFUL=1`)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
   into one package (the other source links are kept on the card)
@@ -151,7 +153,9 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
 - **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
-- **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Searches are `{ keywords, location }` pairs in `jobs.config.json`. Set `jooble.enabled=false` to disable.
+- **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Keys are market-bound — the config pins `apiHost: "ua.jooble.org"` (the Ukrainian market, every vacancy applyable from Ukraine), so register the key there. Searches are `{ keywords, location }` pairs in `jobs.config.json`: `''` = all of Ukraine, `"віддалено"` = remote only, or a city. Set `jooble.enabled=false` to disable.
+- **Work.ua** — public jobs board (`work.ua`), server-rendered and read with a plain fetch, same shape as Djinni. Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=false` to disable.
+- **Robota.ua** — sits behind Cloudflare, which hard-blocks headless Chrome, so this source only yields results on `HEADFUL=1` runs (otherwise it is skipped with a log hint). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (e.g. `https://robota.ua/zapros/qa-automation/ukraine`). Set `robota.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
 - Cold applications use a **high bar**: `minScore` (default 25) + `requireRole`.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
@@ -205,7 +209,7 @@ counters and lets you filter by stage.
 ![Card expanded — cover letter, private note, Applied state](docs/card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
-keywords. Source chips (LinkedIn / DOU / Djinni / Jooble) and min-score presets
+keywords. Source chips (LinkedIn / DOU / Djinni / Jooble / Robota / Work.ua) and min-score presets
 (≥ 30 / ≥ 40) narrow the list further. Cards that arrived since your last visit
 are highlighted with a 🆕 badge and can be isolated with the "New since last
 visit" filter.
@@ -311,7 +315,7 @@ Session expired? Re-run `node login.mjs`.
 ├── followup.mjs       follow-up reminder script (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
 ├── prune-applications.mjs  remove stale duplicate packages from applications/
-├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/LinkedIn sources)
+├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── job-state.json     per-card state (status, applied-date, notes, last-visit) — gitignored

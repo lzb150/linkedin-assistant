@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeCompany, normalizeTitle, identityKey, dedupeJobs } from "../lib/dedup.mjs";
+import { normalizeCompany, normalizeTitle, identityKey, canonicalKey, dedupeJobs } from "../lib/dedup.mjs";
 
 test("normalizeCompany strips a company suffix so SoftServe LLC == SoftServe", () => {
   assert.equal(normalizeCompany("SoftServe LLC"), normalizeCompany("SoftServe"));
@@ -77,4 +77,77 @@ test("dedupeJobs leaves a unique job without an altLinks entry or with an empty 
   assert.equal(deduped.length, 1);
   assert.equal(mergedCount, 0);
   assert.ok(!deduped[0].altLinks || deduped[0].altLinks.length === 0);
+});
+
+test("canonicalKey drops req-number tokens so board suffixes match", () => {
+  assert.equal(
+    canonicalKey({ company: "Ciklum", title: "Senior Automation QA Engineer (3310)" }),
+    canonicalKey({ company: "Ciklum", title: "Senior Automation QA Engineer" }),
+  );
+});
+
+test("canonicalKey keeps 1-2 digit level numbers as part of the role", () => {
+  assert.notEqual(
+    canonicalKey({ company: "Acme", title: "Test Engineer 2" }),
+    canonicalKey({ company: "Acme", title: "Test Engineer" }),
+  );
+});
+
+test("canonicalKey ignores token order", () => {
+  assert.equal(
+    canonicalKey({ company: "Acme", title: "Automation QA Engineer" }),
+    canonicalKey({ company: "Acme", title: "QA Automation Engineer" }),
+  );
+});
+
+test("canonicalKey expands the AQA alias", () => {
+  assert.equal(
+    canonicalKey({ company: "Acme", title: "AQA Engineer" }),
+    canonicalKey({ company: "Acme", title: "Automation QA Engineer" }),
+  );
+});
+
+test("canonicalKey keeps seniority distinct — Lead never merges with Senior", () => {
+  assert.notEqual(
+    canonicalKey({ company: "Ciklum", title: "Lead Automation QA Engineer (3282)" }),
+    canonicalKey({ company: "Ciklum", title: "Senior Automation QA Engineer (3310)" }),
+  );
+});
+
+test("dedupeJobs merges a reworded cross-source duplicate (req suffix)", () => {
+  const jobs = [
+    { source: "dou", company: "Ciklum", title: "Senior Automation QA Engineer (3310)", url: "u-dou", text: "long full description text" },
+    { source: "linkedin", company: "Ciklum", title: "Senior Automation QA Engineer", url: "u-li", text: "short" },
+  ];
+  const { deduped, mergedCount } = dedupeJobs(jobs);
+  assert.equal(deduped.length, 1);
+  assert.equal(mergedCount, 1);
+  assert.equal(deduped[0].source, "dou");
+  assert.deepEqual(deduped[0].altLinks, [{ source: "linkedin", url: "u-li" }]);
+});
+
+test("dedupeJobs keeps same-source req variants separate and folds the other source in", () => {
+  const jobs = [
+    { source: "dou", company: "Ciklum", title: "Senior AQA Engineer (3310)", url: "u-3310", text: "text one long enough" },
+    { source: "dou", company: "Ciklum", title: "Senior AQA Engineer (3650)", url: "u-3650", text: "text two" },
+    { source: "linkedin", company: "Ciklum", title: "Senior Automation QA Engineer", url: "u-li", text: "short" },
+  ];
+  const { deduped, mergedCount } = dedupeJobs(jobs);
+  assert.equal(deduped.length, 2);
+  assert.equal(mergedCount, 1);
+  assert.ok(deduped.every((j) => j.source === "dou"));
+  const alt = deduped.flatMap((j) => j.altLinks || []);
+  assert.deepEqual(alt, [{ source: "linkedin", url: "u-li" }]);
+});
+
+test("dedupeJobs copies the group's longest text onto a keeper for scoring", () => {
+  const jobs = [
+    { source: "dou", company: "Acme", title: "SDET (1234)", url: "u-dou", text: "tiny" },
+    { source: "djinni", company: "Acme", title: "SDET (5678)", url: "u-dj", text: "tiny2" },
+    { source: "linkedin", company: "Acme", title: "SDET", url: "u-li", text: "the longest description of them all, rich and detailed" },
+  ];
+  const { deduped } = dedupeJobs(jobs);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0].source, "linkedin");
+  assert.ok(deduped[0].text.startsWith("the longest"));
 });

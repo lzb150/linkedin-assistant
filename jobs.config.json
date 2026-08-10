@@ -40,16 +40,40 @@
   },
 
   "jooble": {
-    "_comment": "Jooble via its official API (jooble.org/api/about). The site is behind Cloudflare so scraping is blocked; the API needs a FREE key, read from the JOOBLE_API_KEY env var (set it in run-jobs.sh, which is gitignored — never put the key here). Each search is { keywords, location }. NOTE: location='Ukraine' returns almost nothing (the API treats it as a city); use 'remote' for remote roles or '' for any location. The score gate + excludeTitle still filter results.",
+    "_comment": "Jooble via its official API on the Ukrainian market (apiHost ua.jooble.org — every vacancy is applyable from Ukraine). Keys are market-bound: the FREE key from ua.jooble.org/api/about goes into the JOOBLE_API_KEY env var (set it in run-jobs.sh, which is gitignored — never put the key here). Each search is { keywords, location }: ''=all of Ukraine, 'віддалено'=remote only, or a city like 'Київ'. The score gate + excludeTitle still filter results.",
     "_minScoreComment": "Per-source override of the global minScore. Jooble's API returns only short snippets, which score ~5-8 points lower than full descriptions, so it gets a lower bar.",
     "enabled": true,
+    "apiHost": "ua.jooble.org",
     "minScore": 18,
     "maxResults": 15,
     "searches": [
-      { "keywords": "React developer", "location": "remote" },
-      { "keywords": "Frontend developer", "location": "remote" },
-      { "keywords": "Next.js developer", "location": "remote" },
-      { "keywords": "Full Stack JavaScript developer", "location": "remote" }
+      { "keywords": "React developer", "location": "віддалено" },
+      { "keywords": "Frontend developer", "location": "віддалено" },
+      { "keywords": "Next.js developer", "location": "віддалено" },
+      { "keywords": "Full Stack JavaScript developer", "location": "віддалено" }
+    ]
+  },
+
+  "workua": {
+    "_comment": "Work.ua public jobs board, server-rendered — read with a plain fetch (no login, no browser). Each search is a full jobs-search URL; jobs-remote-<query> filters to remote-only, e.g. https://www.work.ua/jobs-remote-react/ (copy from your browser). fullDescription (default true) follows each job link for the complete text.",
+    "enabled": true,
+    "fullDescription": true,
+    "maxResults": 15,
+    "searches": [
+      "https://www.work.ua/jobs-remote-react/",
+      "https://www.work.ua/jobs-remote-frontend/",
+      "https://www.work.ua/jobs-remote-full+stack/"
+    ]
+  },
+
+  "robota": {
+    "_comment": "Robota.ua sits behind Cloudflare, which hard-blocks headless Chrome — this source only yields results when jobs.mjs runs with HEADFUL=1 (it is skipped with a log hint otherwise). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (copy from your browser); params;scheduleIds=3 filters to remote — verify the filter in the browser, it changes occasionally. fullDescription (default true) opens each vacancy page for the complete text — slower, keep maxResults modest.",
+    "enabled": true,
+    "fullDescription": true,
+    "maxResults": 10,
+    "searches": [
+      "https://robota.ua/zapros/react/ukraine/params;scheduleIds=3",
+      "https://robota.ua/zapros/frontend/ukraine/params;scheduleIds=3"
     ]
   },
 
