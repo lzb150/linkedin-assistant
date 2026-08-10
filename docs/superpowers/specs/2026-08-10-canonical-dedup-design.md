@@ -29,8 +29,13 @@ digit) → expand aliases (`aqa` → `automation qa`; extendable map) → sort
 tokens → join. Key = `normalizeCompany(company)::sortedTokens`.
 
 Seniority tokens (senior/middle/lead/junior) are **kept** — different seniority
-never merges. `identityKey` is replaced by `canonicalKey` everywhere (it has no
-other callers than dedupeJobs/tests).
+never merges.
+
+`identityKey` **stays** for its other callers — the `seen` set (jobs.mjs), the
+dashboard card collapse, and prune grouping. Keying those by `canonicalKey`
+would (a) collapse same-source req-variants, violating decision 2, and
+(b) invalidate every stored seen key. `canonicalKey` is used only by
+`dedupeJobs` and the cross-run package check.
 
 ### 2. Same-run merge rule in `dedupeJobs`
 
@@ -45,13 +50,15 @@ Group by `canonicalKey`. Within a group:
 
 ### 3. Cross-run check in `jobs.mjs`
 
-Before writing a new package: build the canonical-key set of existing
-`applications/*.md` (company/title/source live in frontmatter; ~550 files, read
-once per run). If the new job's key matches an existing package →
+Before writing a new package: build a map of canonical key → {file, source} for
+existing `applications/*.md` (company/title/source live in frontmatter, parsed
+with the shared `lib/frontmatter.mjs`; ~550 files, read once per run). If the
+new job's key matches an existing package **from a different source** (same
+source = a distinct req per decision 2) →
 - do **not** create a new package;
 - append the new `source|url` pair to the existing package's `alt_links`
   frontmatter line (create the line if absent) unless that url is already there;
-- log `· dup-of-existing: <file>` and mark the url as seen.
+- log `· dup-of-existing: <file>` and mark the job's identity as seen.
 
 Package status (`applied`, `answered`, …) is untouched — the point is not to
 re-apply to a vacancy already tracked.

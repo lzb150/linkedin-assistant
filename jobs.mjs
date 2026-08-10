@@ -7,15 +7,16 @@
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
-import { buildApplication } from "./lib/application.mjs";
+import { buildApplication, appendAltLink } from "./lib/application.mjs";
 import { llmJSON, buildJobPrompt } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
-import { dedupeJobs, identityKey } from "./lib/dedup.mjs";
+import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
+import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatNotification, topMatches, formatTopMatches,
@@ -170,6 +171,20 @@ function excludedByTitle(title) {
   );
 }
 
+// Canonical-key index of existing packages (cross-run dedup): the same vacancy
+// resurfacing on ANOTHER board must not spawn a second package — its link is
+// appended to the existing one instead. Same source = a distinct req, allowed.
+const packageIndex = new Map();
+if (existsSync(APPS)) {
+  for (const f of readdirSync(APPS)) {
+    if (!f.endsWith(".md")) continue;
+    try {
+      const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8"));
+      if (fm?.title && fm?.company) packageIndex.set(canonicalKey(fm), { file: f, source: fm.source || "" });
+    } catch { log(`  · unreadable package skipped: ${f}`); }
+  }
+}
+
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Gate unchanged: per-source/global minScore + requireRole. LLM never gates.
 let written = 0, considered = 0;
@@ -177,6 +192,14 @@ const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
   if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); continue; }
+  const existing = packageIndex.get(canonicalKey(job));
+  if (existing && existing.source !== job.source) {
+    try { appendAltLink(join(APPS, existing.file), job.source, job.url); } catch {}
+    log(`  · dup-of-existing (${existing.file}) ${job.source}: ${job.title}`);
+    recordOutcome(summary, job.source, "seen");
+    seen.add(id);
+    continue;
+  }
   considered++;
   const excluded = excludedByTitle(job.title);
   if (excluded) {
