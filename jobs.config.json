@@ -39,16 +39,16 @@
   },
 
   "jooble": {
-    "_comment": "Jooble via its official API (jooble.org/api/about). The site is behind Cloudflare so scraping is blocked; the API needs a FREE key, read from the JOOBLE_API_KEY env var (set it in run-jobs.sh, which is gitignored — never put the key here). Each search is { keywords, location }. NOTE: location='Ukraine' returns almost nothing (the API treats it as a city); use 'remote' for remote roles or '' for any location. The score gate + excludeTitle still filter results.",
+    "_comment": "Jooble via its official API (jooble.org/api/about). The site is behind Cloudflare so scraping is blocked; the API needs a FREE key, read from the JOOBLE_API_KEY env var (set it in run-jobs.sh, which is gitignored — never put the key here). Each search is { keywords, location }. location='Ukraine' keeps only vacancies applyable from Ukraine — 'remote'/'' pull the worldwide (mostly US) market you cannot apply to. Few but relevant results are expected; for the richer UA market register a separate free key at ua.jooble.org/api/about and set \"apiHost\": \"ua.jooble.org\" (keys are market-bound). The score gate + excludeTitle still filter results.",
     "_minScoreComment": "Per-source override of the global minScore. Jooble's API returns only short snippets, which score ~5-8 points lower than full descriptions, so it gets a lower bar.",
     "enabled": true,
     "minScore": 18,
     "maxResults": 15,
     "searches": [
-      { "keywords": "QA Automation", "location": "remote" },
-      { "keywords": "Automation QA", "location": "remote" },
-      { "keywords": "SDET", "location": "remote" },
-      { "keywords": "test automation engineer", "location": "remote" }
+      { "keywords": "QA Automation", "location": "Ukraine" },
+      { "keywords": "Automation QA", "location": "Ukraine" },
+      { "keywords": "SDET", "location": "Ukraine" },
+      { "keywords": "test automation engineer", "location": "Ukraine" }
     ]
   },
 
