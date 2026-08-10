@@ -55,8 +55,8 @@
   },
 
   "workua": {
-    "_comment": "Work.ua public jobs board, server-rendered — read with a plain fetch (no login, no browser). Each search is a full jobs-search URL; jobs-remote-<query> filters to remote-only, e.g. https://www.work.ua/jobs-remote-react/ (copy from your browser). fullDescription (default true) follows each job link for the complete text.",
-    "enabled": true,
+    "_comment": "Work.ua public jobs board, server-rendered — read with a plain fetch (no login, no browser). Each search is a full jobs-search URL; jobs-remote-<query> filters to remote-only, e.g. https://www.work.ua/jobs-remote-react/ (copy from your browser). fullDescription (default true) follows each job link for the complete text. Disabled: general-market board, local-SMB tail — DOU/Djinni cover the UA tech market.",
+    "enabled": false,
     "fullDescription": true,
     "maxResults": 15,
     "searches": [
@@ -67,8 +67,8 @@
   },
 
   "robota": {
-    "_comment": "Robota.ua sits behind Cloudflare, which hard-blocks headless Chrome — this source only yields results when jobs.mjs runs with HEADFUL=1 (it is skipped with a log hint otherwise). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (copy from your browser); params;scheduleIds=3 filters to remote — verify the filter in the browser, it changes occasionally. fullDescription (default true) opens each vacancy page for the complete text — slower, keep maxResults modest.",
-    "enabled": true,
+    "_comment": "Robota.ua sits behind Cloudflare, which hard-blocks headless Chrome — this source only yields results when jobs.mjs runs with HEADFUL=1 (it is skipped with a log hint otherwise). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (copy from your browser); params;scheduleIds=3 filters to remote — verify the filter in the browser, it changes occasionally. fullDescription (default true) opens each vacancy page for the complete text — slower, keep maxResults modest. Disabled: same general-market tail as Work.ua, plus needs manual HEADFUL runs.",
+    "enabled": false,
     "fullDescription": true,
     "maxResults": 10,
     "searches": [
