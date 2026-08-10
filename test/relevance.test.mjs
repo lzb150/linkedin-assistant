@@ -51,7 +51,7 @@ test("mentionsStem handles a mixed Latin+Cyrillic phrase", () => {
 import { scoreMessage, profile } from "../lib/relevance.mjs";
 
 test("scoreMessage matches a UA role-worded vacancy and clears the jobs.mjs gate", () => {
-  const text = "Шукаємо інженера з автоматизації тестування. Досвід: Playwright, TypeScript, автоматизація тестування, CI/CD, API.";
+  const text = "Шукаємо фронтенд розробника. Досвід: React, Next.js, TypeScript, Node.js, WebSockets, CI/CD.";
   const r = scoreMessage(text);
   assert.ok(r.matchedRole, "UA role should be matched");
   assert.ok(r.score >= 25, `score ${r.score} should clear minScore 25`);
@@ -59,42 +59,44 @@ test("scoreMessage matches a UA role-worded vacancy and clears the jobs.mjs gate
 });
 
 test("scoreMessage matches a RU role-worded vacancy", () => {
-  const text = "Требуется инженер по автоматизации тестирования. Стек: автоматизация тестирования, Selenium, Java, Python, REST, CI/CD.";
+  const text = "Требуется фронтенд разработчик. Стек: React, Redux, TypeScript, JavaScript, Node.js, REST, CI/CD.";
   const r = scoreMessage(text);
   assert.ok(r.matchedRole, "RU role should be matched");
   assert.ok(r.score >= 25, `score ${r.score} should clear minScore 25`);
 });
 
 test("scoreMessage keeps the English baseline unchanged (no regression)", () => {
-  const text = "Looking for a QA Automation Engineer with Playwright, TypeScript, API testing, CI/CD.";
+  const text = "Looking for a Senior Frontend Engineer with React, Next.js, TypeScript, Node.js.";
   const r = scoreMessage(text);
-  assert.equal(r.matchedRole, "qa automation");
-  assert.equal(r.score, 27);
+  assert.equal(r.matchedRole, "frontend engineer");
+  // 6 role + react 5 + next.js 5 + typescript 5 + node.js 4 + frontend 3
+  assert.equal(r.score, 28);
 });
 
 test("scoreMessage counts a concept once when English key and UA synonym both appear", () => {
-  // "test automation" (5, once) + "automation" (4, once) = 9, not doubled.
-  const r = scoreMessage("test automation автоматизація тестування");
+  // "frontend" (3) counts once even though the key, a spelling variant, and the UA synonym all appear.
+  const r = scoreMessage("frontend front-end фронтенд");
   assert.equal(r.matchedRole, null);
-  assert.equal(r.score, 9);
+  assert.equal(r.score, 3);
 });
 
-test("scoreMessage does not double-count a concept shared between two skill keys", () => {
-  // "наскрізне тестування" is an e2e synonym (4) only — not also end-to-end.
-  const r = scoreMessage("наскрізне тестування продукту");
-  assert.equal(r.score, 4);
+test("scoreMessage does not double-count a concept matched via key and synonym", () => {
+  // "WebSockets" matches the "websocket" concept via its synonym only (3) — not twice.
+  const r = scoreMessage("real-time feed over WebSockets");
+  assert.equal(r.score, 3);
 });
 
-test("scoreMessage matches a UA 'спеціаліст' role phrasing", () => {
-  const r = scoreMessage("Потрібен спеціаліст з автоматизованого тестування, написання автотестів.");
-  assert.ok(r.matchedRole, "UA 'спеціаліст' role should be matched");
+test("scoreMessage matches a UA hyphenated role phrasing", () => {
+  const r = scoreMessage("Потрібен фронтенд-розробник зі знанням React та TypeScript.");
+  assert.ok(r.matchedRole, "UA hyphenated role should be matched");
   assert.equal(r.verdict, "relevant");
 });
 
 test("scoreMessage caps skill contribution at maxSkills (saturation)", () => {
   const stuffed =
-    "QA Automation Engineer. typescript playwright selenium cypress webdriverio java python sql " +
-    "api testing rest soap cucumber bdd jenkins ci/cd microservices e2e regression test framework";
+    "Frontend Developer. react next.js typescript node.js javascript websocket module federation " +
+    "micro-frontend sse ssr mobx zustand redux express tailwind postgresql prisma jest cloudflare " +
+    "docker ci/cd rest canvas";
   const r = scoreMessage(stuffed);
   const cap = profile.maxSkills ?? 8;
   assert.ok(r.matchedSkills.length > cap, `case must overflow the cap (${r.matchedSkills.length} matched)`);
@@ -105,23 +107,23 @@ test("scoreMessage caps skill contribution at maxSkills (saturation)", () => {
     .reduce((a, b) => a + b, 0);
   assert.equal(r.score, 6 + topN); // role bonus + capped skill sum
   assert.equal(r.score, 40); // pinned: 6 role + top-8 weights of the current profile
-  assert.ok(r.score < 50, `stuffed score ${r.score} should be well below the old uncapped 72`);
+  assert.ok(r.score < 50, `stuffed score ${r.score} should be well below the uncapped sum`);
 });
 
 test("scoreMessage still reports every matched skill despite the cap", () => {
   const stuffed =
-    "QA Automation Engineer. typescript playwright selenium cypress webdriverio java python sql " +
-    "api testing rest soap cucumber bdd jenkins ci/cd microservices e2e regression test framework";
+    "Frontend Developer. react next.js typescript node.js javascript websocket module federation " +
+    "micro-frontend sse ssr mobx zustand redux express tailwind postgresql prisma jest cloudflare " +
+    "docker ci/cd rest canvas";
   const r = scoreMessage(stuffed);
   assert.ok(r.matchedSkills.includes("typescript"));
-  assert.ok(r.matchedSkills.includes("regression"), "low-weight matches stay in matchedSkills");
+  assert.ok(r.matchedSkills.includes("canvas"), "low-weight matches stay in matchedSkills");
 });
 
 test("scoreMessage keeps a rich real vacancy above the cold-application gate", () => {
   const rich =
-    "Senior AQA Engineer. Playwright, TypeScript, API testing, REST, CI/CD, Jenkins, e2e, " +
-    "test framework design, microservices.";
+    "Senior Frontend Engineer. React, Next.js, TypeScript, MobX, WebSockets, SSR, " +
+    "Module Federation, Jest, CI/CD.";
   const r = scoreMessage(rich);
-  // 9 skills matched, no role; the cap drops the lowest weight: expected ≈30.
   assert.ok(r.score >= 25, `rich vacancy score ${r.score} must clear minScore 25`);
 });

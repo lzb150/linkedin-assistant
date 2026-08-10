@@ -1,7 +1,7 @@
 {
-  "_comment": "Where to look for jobs. Edit feeds/searches freely.",
+  "_comment": "Where to look for jobs. Edit feeds/searches freely. Remote-only: every search below carries the source's own remote filter; antiKeywords in skills.json push down on-site/hybrid postings that slip through.",
 
-  "_minScoreComment": "Cold applications must clear a HIGH bar (much stricter than inbound replies) so you only apply to strong automation matches, not spray-and-pray. Raise to be pickier, lower for more results.",
+  "_minScoreComment": "Cold applications must clear a HIGH bar (much stricter than inbound replies) so you only apply to strong frontend matches, not spray-and-pray. Raise to be pickier, lower for more results.",
   "minScore": 25,
   "requireRole": true,
 
@@ -11,30 +11,31 @@
   "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). The LLM NEVER gates: keyword minScore/requireRole decide what gets a package; the LLM only ranks, explains, and writes the letter. Any CLI failure silently falls back to keyword-only packages. maxPerRun caps CLI calls per run.",
   "llm": {
     "enabled": true,
-    "model": "haiku",
+    "model": "claude-fable-5",
     "maxPerRun": 15
   },
 
   "dou": {
+    "_comment": "Official DOU RSS feeds. ?remote keeps only remote-friendly postings; category/search mirror the site's filters.",
     "enabled": true,
     "feeds": [
-      "https://jobs.dou.ua/vacancies/feeds/?category=QA",
-      "https://jobs.dou.ua/vacancies/feeds/?search=automation",
-      "https://jobs.dou.ua/vacancies/feeds/?search=SDET",
-      "https://jobs.dou.ua/vacancies/feeds/?search=playwright"
+      "https://jobs.dou.ua/vacancies/feeds/?remote&category=Front%20End",
+      "https://jobs.dou.ua/vacancies/feeds/?remote&category=Node.js",
+      "https://jobs.dou.ua/vacancies/feeds/?remote&search=React",
+      "https://jobs.dou.ua/vacancies/feeds/?remote&search=Next.js"
     ]
   },
 
   "djinni": {
-    "_comment": "Public Djinni jobs board, read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Use primary_keyword=QA+Automation or primary_keyword=QA (Manual) for categories, or all_keywords=TERM for free-text. fullDescription (default true) follows each job link for the complete text so scoring is accurate; set false to score on the listing snippet only.",
+    "_comment": "Public Djinni jobs board, read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters (set 'Remote' there and copy the URL if the employment param ever changes). primary_keyword=JavaScript is Djinni's front-end category; Fullstack and Node.js widen the net. fullDescription (default true) follows each job link for the complete text so scoring is accurate; set false to score on the listing snippet only.",
     "enabled": true,
     "fullDescription": true,
     "maxResults": 15,
     "searches": [
-      "https://djinni.co/jobs/?primary_keyword=QA+Automation",
-      "https://djinni.co/jobs/?primary_keyword=QA",
-      "https://djinni.co/jobs/?all_keywords=SDET",
-      "https://djinni.co/jobs/?all_keywords=playwright"
+      "https://djinni.co/jobs/?primary_keyword=JavaScript&employment=remote",
+      "https://djinni.co/jobs/?primary_keyword=Fullstack&employment=remote",
+      "https://djinni.co/jobs/?primary_keyword=Node.js&employment=remote",
+      "https://djinni.co/jobs/?all_keywords=Next.js&employment=remote"
     ]
   },
 
@@ -45,20 +46,21 @@
     "minScore": 18,
     "maxResults": 15,
     "searches": [
-      { "keywords": "QA Automation", "location": "remote" },
-      { "keywords": "Automation QA", "location": "remote" },
-      { "keywords": "SDET", "location": "remote" },
-      { "keywords": "test automation engineer", "location": "remote" }
+      { "keywords": "React developer", "location": "remote" },
+      { "keywords": "Frontend developer", "location": "remote" },
+      { "keywords": "Next.js developer", "location": "remote" },
+      { "keywords": "Full Stack JavaScript developer", "location": "remote" }
     ]
   },
 
   "linkedin": {
-    "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
+    "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. remote:true adds the f_WT=2 filter. Locations cover the target markets: Ukrainian companies, EU, US — all remote. Set enabled=false to turn off.",
     "enabled": true,
     "maxResults": 8,
     "searches": [
-      { "keywords": "SDET", "location": "Ukraine", "remote": true },
-      { "keywords": "QA Automation TypeScript", "location": "Ukraine", "remote": true }
+      { "keywords": "Senior Frontend Engineer React", "location": "Ukraine", "remote": true },
+      { "keywords": "Frontend Developer React Next.js", "location": "European Union", "remote": true },
+      { "keywords": "Senior Frontend Engineer React", "location": "United States", "remote": true }
     ]
   }
 }

@@ -47,6 +47,8 @@ resume.txt
 # Local Claude Code settings (machine-specific)
 .claude/
 
+.idea
+
 # Djinni browser session (contains your logged-in cookies — never commit)
 .djinni-profile/
 
