@@ -45,6 +45,11 @@
     "apiHost": "ua.jooble.org",
     "minScore": 18,
     "maxResults": 15,
+    "_excludeLocationComment": "The UA market also lists relocation vacancies physically abroad. Jobs whose location contains any of these substrings (case-insensitive) are dropped before scoring.",
+    "excludeLocation": [
+      "за кордоном", "Польща", "Кіпр", "Німеччина", "Чехія",
+      "Словаччина", "Румунія", "Угорщина", "Литва", "Болгарія"
+    ],
     "searches": [
       { "keywords": "QA Automation", "location": "" },
       { "keywords": "Automation QA", "location": "" },

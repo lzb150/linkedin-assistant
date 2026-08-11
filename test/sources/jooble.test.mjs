@@ -31,3 +31,24 @@ test("mapJoobleJobs drops jobs missing a title or a link", () => {
 test("mapJoobleJobs applies the max slice before filtering", () => {
   assert.equal(mapJoobleJobs(data, 1).length, 1);
 });
+
+// --- filterByLocation (foreign relocation vacancies on the UA market) ---
+import { filterByLocation } from "../../lib/sources/jooble.mjs";
+
+test("filterByLocation drops foreign locations case-insensitively", () => {
+  const jobs = [
+    { title: "A", location: "Київ" },
+    { title: "B", location: "Краків, Польща" },
+    { title: "C", location: "Віддалено" },
+    { title: "D", location: "за кордоном" },
+    { title: "E", location: "ПОЛЬЩА" },
+  ];
+  const kept = filterByLocation(jobs, ["Польща", "за кордоном"]);
+  assert.deepEqual(kept.map((j) => j.title), ["A", "C"]);
+});
+
+test("filterByLocation is a no-op without an exclude list", () => {
+  const jobs = [{ title: "A", location: "Польща" }];
+  assert.deepEqual(filterByLocation(jobs, undefined), jobs);
+  assert.deepEqual(filterByLocation(jobs, []), jobs);
+});
