@@ -32,8 +32,8 @@ test("mapJoobleJobs applies the max slice before filtering", () => {
   assert.equal(mapJoobleJobs(data, 1).length, 1);
 });
 
-// --- filterByLocation (foreign relocation vacancies on the UA market) ---
-import { filterByLocation } from "../../lib/sources/jooble.mjs";
+// --- filterByLocation (foreign relocation vacancies, applied globally in jobs.mjs) ---
+import { filterByLocation } from "../../lib/filters.mjs";
 
 test("filterByLocation drops foreign locations case-insensitively", () => {
   const jobs = [

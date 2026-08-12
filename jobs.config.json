@@ -8,6 +8,13 @@
   "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles. Matched in the title only, so senior roles that merely mention these words in the description are kept.",
   "excludeTitle": ["junior", "intern", "internship", "trainee"],
 
+  "_excludeLocationComment": "Boards also list vacancies physically located abroad (DOU marks them 'за кордоном', Jooble UA carries 'Краків, Польща' etc). Jobs whose location contains any of these substrings (case-insensitive) are dropped across ALL sources before scoring.",
+  "excludeLocation": [
+    "за кордоном", "Польща", "Poland", "Кіпр", "Cyprus", "Німеччина", "Germany",
+    "Чехія", "Словаччина", "Румунія", "Угорщина", "Литва", "Болгарія",
+    "Грузія", "Georgia", "Тбілісі", "Tbilisi"
+  ],
+
   "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). The LLM NEVER gates: keyword minScore/requireRole decide what gets a package; the LLM only ranks, explains, and writes the letter. Any CLI failure silently falls back to keyword-only packages. maxPerRun caps CLI calls per run.",
   "llm": {
     "enabled": true,
@@ -45,11 +52,6 @@
     "apiHost": "ua.jooble.org",
     "minScore": 18,
     "maxResults": 15,
-    "_excludeLocationComment": "The UA market also lists relocation vacancies physically abroad. Jobs whose location contains any of these substrings (case-insensitive) are dropped before scoring.",
-    "excludeLocation": [
-      "за кордоном", "Польща", "Кіпр", "Німеччина", "Чехія",
-      "Словаччина", "Румунія", "Угорщина", "Литва", "Болгарія"
-    ],
     "searches": [
       { "keywords": "QA Automation", "location": "" },
       { "keywords": "Automation QA", "location": "" },
