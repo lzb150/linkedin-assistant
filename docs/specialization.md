@@ -11,7 +11,7 @@ in four places.
 | `skills.json` | Scoring profile: `roles`, `skills`, `synonyms`, `antiKeywords`, `profile` | yes |
 | `jobs.config.json` | Where to search: per-source feeds and queries | yes |
 | `resume.txt` | Plain-text resume — grounds LLM re-scoring and cover letters | no (gitignored) |
-| `run.sh` / `run-jobs.sh` | `RESUME_PATH` — the PDF/DOCX attached to drafts | no (gitignored) |
+| `run.sh` / `run-jobs.sh` | `RESUME_PATH` — the PDF/DOCX attached to drafts; `CANDIDATE_NAME` — the signature on cover letters | no (gitignored) |
 
 ## From a job title to config
 
@@ -86,15 +86,23 @@ genitive position — they complete "досвід в …" / "опыт в …":
 
 ### 5. Searches — `jobs.config.json`
 
-Point every enabled source at the new field. Copy real URLs from your
+Point **every** enabled source at the new field — there are six (`dou`,
+`djinni`, `jooble`, `workua`, `robota`, `linkedin`); a source left on the old
+searches keeps fetching the old profession. Copy real URLs from your
 browser's filters — that keeps parameters valid:
 
 ```json
 "dou":      { "feeds": ["https://jobs.dou.ua/vacancies/feeds/?search=fullstack"] },
 "djinni":   { "searches": ["https://djinni.co/jobs/?primary_keyword=Fullstack"] },
-"jooble":   { "searches": [{ "keywords": "fullstack developer", "location": "remote" }] },
+"jooble":   { "searches": [{ "keywords": "fullstack developer", "location": "віддалено" }] },
+"workua":   { "searches": ["https://www.work.ua/jobs-fullstack/"] },
+"robota":   { "searches": ["https://robota.ua/zapros/fullstack/ukraine"] },
 "linkedin": { "searches": [{ "keywords": "Fullstack TypeScript React", "location": "Ukraine", "remote": true }] }
 ```
+
+Jooble runs on the Ukrainian market (`ua.jooble.org`), so `location` takes
+`""` (all of Ukraine), `"віддалено"` (remote only), or a city name — an
+English `"remote"` is not a location it recognizes.
 
 The global `minScore` (25) gates cold applications; Jooble has a per-source
 override (18) because its API returns short snippets that score lower.
@@ -102,8 +110,9 @@ override (18) because its API returns short snippets that score lower.
 ### 6. Resume
 
 Replace `resume.txt` with your plain-text resume (it drives LLM re-scoring
-and letters), and point `RESUME_PATH` in `run.sh` / `run-jobs.sh` at the
-PDF/DOCX to attach. All three files are gitignored.
+and letters), and in `run.sh` / `run-jobs.sh` point `RESUME_PATH` at the
+PDF/DOCX to attach and set `CANDIDATE_NAME` to the name that signs your
+cover letters. All three files are gitignored.
 
 ## Seniority
 
@@ -123,9 +132,11 @@ to your resume.
 ## Checklist
 
 1. `skills.json` — roles, skills, synonyms, antiKeywords, profile updated.
-2. `jobs.config.json` — searches repointed; `excludeTitle` still fits.
-3. `resume.txt` replaced; `RESUME_PATH` updated in `run.sh` / `run-jobs.sh`.
-4. ⚠️ `test/relevance.test.mjs` — the `scoreMessage` tests pin the active
-   profile's scores; update them **in the same commit** as `skills.json`.
-5. Verify: `node --test test/`, then one `node jobs.mjs` run — the newest
-   file in `applications/` should read like your new specialization.
+2. `jobs.config.json` — searches repointed for **all six** sources;
+   `excludeTitle` still fits.
+3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
+   `run.sh` / `run-jobs.sh`.
+4. Verify: `node --test test/` (the suite runs on a frozen fixture profile,
+   so it stays green regardless of your `skills.json`), then one
+   `node jobs.mjs` run — the newest file in `applications/` should read
+   like your new specialization.
