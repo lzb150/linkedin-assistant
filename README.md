@@ -73,6 +73,9 @@ sources that are naturally low-volume) — this catches a slow selector decay
 
 ## One-time setup
 
+> **Requires macOS** — scheduling (launchd), notifications, and the Dock apps
+> are Mac-only. Node.js 20+.
+
 ```bash
 cd ~/linkedin-assistant
 npm install                      # installs playwright
