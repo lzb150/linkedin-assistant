@@ -17,6 +17,7 @@ import { llmJSON, buildJobPrompt } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
+import { filterByLocation } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatNotification, topMatches, formatTopMatches,
@@ -153,6 +154,14 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
 }
 
 log(`Total jobs gathered: ${jobs.length}`);
+
+// Drop vacancies physically located abroad — applies to every source (DOU
+// marks them "за кордоном", Jooble UA carries "Краків, Польща", etc).
+{
+  const before = jobs.length;
+  jobs = filterByLocation(jobs, config.excludeLocation);
+  if (jobs.length < before) log(`Location filter: dropped ${before - jobs.length} foreign-location job(s)`);
+}
 
 // Collapse the same vacancy arriving from multiple sources into one record
 // (keeps the longest description, records the other source links in altLinks).

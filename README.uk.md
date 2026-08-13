@@ -79,6 +79,9 @@ keyword-бал ≥ 40, якщо LLM його не оцінював) — щоб �
 
 ## Одноразове налаштування
 
+> **Потрібен macOS** — розклад (launchd), сповіщення та Dock-застосунки
+> працюють лише на Mac. Node.js 20+.
+
 ```bash
 cd ~/linkedin-assistant
 npm install                      # встановлює playwright
