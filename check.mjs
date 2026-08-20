@@ -71,6 +71,10 @@ const ctx = await launchBrowser(PROFILE);
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
+// Only overwrite the badge state when the scan actually counted the inbox —
+// a navigation failure would otherwise reset the badge to 0 and hide unread
+// messages until the next successful run.
+let counted = false;
 
 try {
   const page = ctx.pages()[0] || (await ctx.newPage());
@@ -99,6 +103,7 @@ try {
     if (await cardIsUnread(card)) unreadCount++;
   }
   log(`Unread threads: ${unreadCount}`);
+  counted = true;
 
   for (const card of cards) {
     if (drafted + scanned >= MAX) break;
@@ -159,10 +164,14 @@ try {
   log("ERROR:", err?.message || err);
 } finally {
   saveSeen(seen);
-  try {
-    writeState(STATE_FILE, { count: unreadCount });
-  } catch (e) {
-    log("notify: writeState failed:", e?.message);
+  if (counted) {
+    try {
+      writeState(STATE_FILE, { count: unreadCount });
+    } catch (e) {
+      log("notify: writeState failed:", e?.message);
+    }
+  } else {
+    log("notify: scan failed before counting — keeping previous badge state");
   }
   await ctx.close();
 }
