@@ -68,6 +68,7 @@ function loadSeen() {
   } catch { return new Set(); }
 }
 const seen = loadSeen();
+const saveSeen = () => writeFileSync(SEEN_FILE, JSON.stringify([...seen], null, 0));
 
 // source-health.json keeps the last 10 runs' `found` counts per source so we
 // can warn when a source degrades well below its recent norm (a likely sign
@@ -235,10 +236,13 @@ for (const { id, job, scored } of matches) {
   recordTop(summary, scored.score, label);
   writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label });
   seen.add(id);
+  // Persist after every package: a crash mid-run must not forget written
+  // packages (the next run would re-score and re-pay the LLM for them).
+  saveSeen();
   written++;
 }
 
-writeFileSync(SEEN_FILE, JSON.stringify([...seen], null, 0));
+saveSeen();
 log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
 
 // Per-source digest of this run (scraper health + the day's catch).
