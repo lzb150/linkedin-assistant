@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
-import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
+import { log, notifyBanner, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -83,7 +83,7 @@ try {
   // Detect a logged-out session early and bail with a clear message.
   if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
     log("❌ Not logged in (session expired). Run:  node login.mjs");
-    notify("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
+    notifyBanner("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }
