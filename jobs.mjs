@@ -8,7 +8,7 @@
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
-import { spawn } from "node:child_process";
+
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
@@ -29,7 +29,7 @@ import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { fetchWorkua } from "./lib/sources/workua.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
-import { log, notify as osaNotify } from "./lib/notify.mjs";
+import { log, notifyBanner } from "./lib/notify.mjs";
 import { launchBrowser } from "./lib/browser.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +37,6 @@ const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
-const NOTIFIER_APP = join(__dir, "Notifier.app"); // built by build-notifier.sh
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
@@ -51,27 +50,8 @@ const LLM = config.llm || {};
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
-// Prefer Notifier.app (the green Messages icon, same banner as check.mjs) and
-// fall back to osascript (shows the Script Editor icon) if the app is missing.
-// Notifier.app MUST be launched via `open` so macOS treats it as a registered
-// app, detached + unref'd so the banner survives this process exiting.
-const notifyOsascript = (msg) => osaNotify("Job assistant", msg);
-function notify(msg) {
-  const body = (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready";
-  if (existsSync(NOTIFIER_APP)) {
-    try {
-      const p = spawn("open", ["-n", "-a", NOTIFIER_APP, "--args", "Job assistant", body],
-        { detached: true, stdio: "ignore" });
-      p.on("error", (e) => { log("notify: Notifier.app failed, osascript fallback:", e?.message); notifyOsascript(body); });
-      p.unref();
-      log("notify: via Notifier.app (green Messages icon)");
-      return;
-    } catch (e) { log("notify: spawn threw, osascript fallback:", e?.message); }
-  } else {
-    log("notify: Notifier.app missing at", NOTIFIER_APP, "— osascript fallback");
-  }
-  notifyOsascript(body);
-}
+const notify = (msg) =>
+  notifyBanner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
 
 // jobs-seen.json now stores identity keys (normalize(company)+title), not URLs,
 // so a vacancy is "seen" regardless of which source it came from. Older files

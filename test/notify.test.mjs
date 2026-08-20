@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { notify, notifyCommand } from "../lib/notify.mjs";
+import { notify, notifyBanner, notifyCommand } from "../lib/notify.mjs";
 
 test("notifyCommand: darwin uses osascript with the AppleScript body", () => {
   const [cmd, args] = notifyCommand("Job assistant", "3 new", "darwin");
@@ -19,4 +19,33 @@ test("notify passes the built command to exec and never throws", () => {
   assert.equal(seen.cmd, "notify-send");
   // synchronously-throwing exec is swallowed too
   notify("t", "m", { platform: "darwin", exec: () => { throw new Error("boom"); } });
+});
+
+test("notifyBanner: non-darwin falls back to notify (exec sees the platform command)", () => {
+  let seen;
+  notifyBanner("t", "m", { platform: "linux", exec: (cmd, args, cb) => { seen = { cmd, args }; cb(); } });
+  assert.deepEqual(seen, { cmd: "notify-send", args: ["t", "m"] });
+});
+
+test("notifyBanner: darwin with the app present launches it via open(1)", () => {
+  let seen;
+  const fakeChild = { on: () => {}, unref: () => {} };
+  notifyBanner("Job assistant", "3 new", {
+    platform: "darwin",
+    app: new URL("./notify.test.mjs", import.meta.url).pathname, // any existing path
+    spawnFn: (cmd, args) => { seen = { cmd, args }; return fakeChild; },
+  });
+  assert.equal(seen.cmd, "open");
+  assert.deepEqual(seen.args.slice(-2), ["Job assistant", "3 new"]);
+});
+
+test("notifyBanner: darwin with the app missing falls back to osascript", () => {
+  let seen;
+  notifyBanner("t", "m", {
+    platform: "darwin",
+    app: "/nonexistent/Notifier.app",
+    exec: (cmd, args, cb) => { seen = cmd; cb(); },
+    spawnFn: () => { throw new Error("must not spawn"); },
+  });
+  assert.equal(seen, "osascript");
 });
