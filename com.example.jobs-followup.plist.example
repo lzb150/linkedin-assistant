@@ -1,16 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: runs followup.mjs every morning at 09:30 to remind you about
+  applications that have gone quiet. Replace YOUR_USERNAME (and the node path)
+  with your own.
+  Install:
+    cp com.example.jobs-followup.plist.example ~/Library/LaunchAgents/com.example.jobs-followup.plist
+    launchctl load ~/Library/LaunchAgents/com.example.jobs-followup.plist
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.example.jobs-followup.plist
+-->
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.eugene.jobs-followup</string>
+  <key>Label</key><string>com.example.jobs-followup</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/eugenelazeba/.nvm/versions/node/v20.14.0/bin/node</string>
-    <string>/Users/eugenelazeba/linkedin-assistant/followup.mjs</string>
+    <string>/Users/YOUR_USERNAME/.nvm/versions/node/v20.14.0/bin/node</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/followup.mjs</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-  <key>StandardOutPath</key><string>/Users/eugenelazeba/linkedin-assistant/logs/followup.log</string>
-  <key>StandardErrorPath</key><string>/Users/eugenelazeba/linkedin-assistant/logs/followup.log</string>
+  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.log</string>
 </dict>
 </plist>
