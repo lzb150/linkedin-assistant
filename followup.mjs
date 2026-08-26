@@ -1,6 +1,6 @@
 // followup.mjs
 // Daily reminder: notify about jobs marked "applied" with no movement for N days.
-// Notifications go through osascript (terminal-notifier shows no banners on macOS 26).
+// Notifications go through lib/notify.mjs (Jobs.app banner, osascript fallback).
 import { readdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

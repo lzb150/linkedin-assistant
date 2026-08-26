@@ -11,10 +11,14 @@
 //     (node dashboard.mjs --open), preserving the old applet's behaviour.
 //   - Launched with --background (by the login LaunchAgent or check.mjs) it runs
 //     the badge daemon only and does NOT open the dashboard.
+//   - Posts macOS banners queued by lib/notify.mjs as banners/*.json
+//     ({title, message}); each file is deleted once posted. Clicking a banner
+//     behaves like a Dock-icon click (Djinni unread or the dashboard).
 //
 // Build with build-jobs.sh. Set JOBS_DEBUG=1 for stderr logging.
 
 import Cocoa
+import UserNotifications
 
 let bundlePath = Bundle.main.bundlePath                       // <project>/Jobs.app
 let projectDir = (bundlePath as NSString).deletingLastPathComponent
@@ -22,6 +26,7 @@ let statePath = (projectDir as NSString).appendingPathComponent("notify-state.js
 let djinniStatePath = (projectDir as NSString).appendingPathComponent("djinni-notify-state.json")
 // Resolve the dashboard launcher script next to the app bundle.
 let dashboardLauncher = (projectDir as NSString).appendingPathComponent("open-dashboard.sh")
+let bannersDir = (projectDir as NSString).appendingPathComponent("banners")
 let isBackground = CommandLine.arguments.contains("--background")
 
 func dbg(_ s: String) {
@@ -72,12 +77,17 @@ func handleActivation() {
     openDashboard()
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    let center = UNUserNotificationCenter.current()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
         dbg("launched; background=\(isBackground) state=\(statePath)")
+        center.delegate = self
+        center.requestAuthorization(options: [.alert]) { granted, err in
+            dbg("notifications granted=\(granted) error=\(String(describing: err))")
+        }
         poll()                                          // immediate first pass
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in self?.poll() }
         // A foreground (user) launch opens Djinni if there are unread messages,
@@ -104,6 +114,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
         NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
+        postQueuedBanners()
+    }
+
+    // Post every banners/*.json queued by lib/notify.mjs, then delete the file.
+    func postQueuedBanners() {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
+        for name in names.sorted() where name.hasSuffix(".json") {
+            let path = (bannersDir as NSString).appendingPathComponent(name)
+            defer { try? fm.removeItem(atPath: path) }
+            guard let data = fm.contents(atPath: path),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let message = obj["message"] as? String else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = (obj["title"] as? String) ?? "Вакансии"
+            content.body = message
+            center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
+                dbg("banner \(name) error=\(String(describing: err))")
+            }
+        }
+    }
+
+    // Show banners even while we are the "foreground" app (we own no windows).
+    func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification,
+                                withCompletionHandler h: @escaping (UNNotificationPresentationOptions) -> Void) {
+        h([.banner, .list])
+    }
+
+    // Banner click == Dock-icon click.
+    func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse,
+                                withCompletionHandler h: @escaping () -> Void) {
+        handleActivation()
+        h()
     }
 }
 

@@ -110,6 +110,9 @@ Each scan writes the number of unread LinkedIn message threads to
 in the Dock and reads that file every few seconds, showing the count as a red
 Dock badge (cleared once the threads are read on LinkedIn — the next scan
 reports a lower count). Clicking the Dock icon opens the dashboard as before.
+All macOS banners are posted by this app too (queued as `banners/*.json` by
+`lib/notify.mjs`), so they carry its icon and clicking one opens the dashboard.
+Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
 
 Build it with `./build-jobs.sh`, then start it at login by installing
 `com.eugene.jobs-badge.plist` into `~/Library/LaunchAgents/` (see
@@ -228,7 +231,7 @@ visit" filter.
 
 **Follow-up reminders (`followup.mjs`)** — a daily launchd job
 (`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
-notification (via `osascript`) for every job you marked **Applied** with no
+notification for every job you marked **Applied** with no
 status movement for 7+ days. Reminders auto-silence themselves the moment a
 card moves past Applied (Answered, Interview, or Rejected) — no more nagging
 about jobs that already got a reply. Tune the threshold with the

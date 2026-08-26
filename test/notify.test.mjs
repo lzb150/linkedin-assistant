@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { notify, notifyBanner, notifyCommand } from "../lib/notify.mjs";
 
 test("notifyCommand: darwin uses osascript with the AppleScript body", () => {
@@ -27,25 +30,27 @@ test("notifyBanner: non-darwin falls back to notify (exec sees the platform comm
   assert.deepEqual(seen, { cmd: "notify-send", args: ["t", "m"] });
 });
 
-test("notifyBanner: darwin with the app present launches it via open(1)", () => {
-  let seen;
-  const fakeChild = { on: () => {}, unref: () => {} };
+test("notifyBanner: darwin with Jobs.app present queues a banner file and pings the daemon", () => {
+  const dir = mkdtempSync(join(tmpdir(), "banners-"));
+  let ensured = 0;
   notifyBanner("Job assistant", "3 new", {
     platform: "darwin",
     app: new URL("./notify.test.mjs", import.meta.url).pathname, // any existing path
-    spawnFn: (cmd, args) => { seen = { cmd, args }; return fakeChild; },
+    dir, ensure: () => ensured++,
+    exec: () => { throw new Error("must not fall back"); },
   });
-  assert.equal(seen.cmd, "open");
-  assert.deepEqual(seen.args.slice(-2), ["Job assistant", "3 new"]);
+  const files = readdirSync(dir);
+  assert.equal(files.length, 1);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, files[0]), "utf8")), { title: "Job assistant", message: "3 new" });
+  assert.equal(ensured, 1);
 });
 
 test("notifyBanner: darwin with the app missing falls back to osascript", () => {
   let seen;
   notifyBanner("t", "m", {
     platform: "darwin",
-    app: "/nonexistent/Notifier.app",
+    app: "/nonexistent/Jobs.app",
     exec: (cmd, args, cb) => { seen = cmd; cb(); },
-    spawnFn: () => { throw new Error("must not spawn"); },
   });
   assert.equal(seen, "osascript");
 });

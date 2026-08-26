@@ -28,8 +28,8 @@ Jobs.app.orig/
 # Built Dock app bundle (machine-specific paths baked in; rebuild locally)
 Jobs.app/
 
-# Built notification helper — rebuild with ./build-notifier.sh
-Notifier.app/
+# Banner queue written by lib/notify.mjs, drained by Jobs.app
+banners/
 
 # Machine-specific run wrappers & launchd agents — use the *.example templates
 run.sh
