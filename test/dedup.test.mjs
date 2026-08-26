@@ -20,6 +20,21 @@ test("normalizeCompany treats the '—' frontmatter placeholder as empty", () =>
   assert.equal(identityKey({ company: "—", title: "QA" }), identityKey({ company: "", title: "QA" }));
 });
 
+test("normalizeCompany keeps a name that is only a legal-form token", () => {
+  assert.equal(normalizeCompany("Group"), "group");
+  assert.notEqual(normalizeCompany("Group"), normalizeCompany(""));
+});
+
+test("dedupeJobs does NOT merge blank-company jobs with the same title from different URLs", () => {
+  const jobs = [
+    { source: "jooble", company: "", title: "QA Automation Engineer", url: "https://a.example/jobs/1", text: "a" },
+    { source: "djinni", company: "—", title: "QA Automation Engineer", url: "https://b.example/jobs/2", text: "b" },
+  ];
+  const { deduped, mergedCount } = dedupeJobs(jobs);
+  assert.equal(deduped.length, 2);
+  assert.equal(mergedCount, 0);
+});
+
 test("normalizeTitle is case/punctuation/whitespace insensitive", () => {
   assert.equal(normalizeTitle("QA  Automation Engineer!"), normalizeTitle("qa automation engineer"));
 });
