@@ -33,6 +33,8 @@ jobs:
           # silent TypeError behind catch {} (bit us twice). Convention: a single
           # handle is either consumed via .then(Boolean) or bound to a *El name.
           ! grep -nE 'await [a-zA-Z_.]+\.\$\(' *.mjs lib/*.mjs lib/sources/*.mjs | grep -vE '[eE]l = await|\.then\(Boolean\)'
+          # …and never iterate/slice a single handle even when it IS bound to a *El name.
+          ! grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)|of [a-zA-Z_]+El\b' *.mjs lib/*.mjs lib/sources/*.mjs
       - name: Dashboard smoke build
         shell: bash
         run: |

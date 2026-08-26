@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -58,4 +58,27 @@ test("extractDivByClass stays linear when the opening div DOES match (depth scan
 
 test("stripHtml drops tags longer than the bounded scan (inline SVG / data: URI)", () => {
   assert.equal(stripHtml('<img src="' + "a".repeat(5000) + '">hello'), "hello");
+});
+
+test("stripBlocks: abrupt comments, mixed case, İ (length-changing lowercase), unterminated blocks", () => {
+  assert.equal(stripBlocks("İ<script>x</script>keep"), "İkeep");
+  assert.equal(stripBlocks("<!--><div>keep</div>"), "<div>keep</div>");
+  assert.equal(stripBlocks("<!---><b>k</b>"), "<b>k</b>");
+  assert.equal(stripBlocks('a<!-- <div> --><SCRIPT>var s="</div>";</SCRIPT><style>a{}</style>b'), "ab");
+  assert.equal(stripBlocks("x<!-- unterminated"), "x");
+});
+
+test("stripBlocks stays linear on many TERMINATED blocks", () => {
+  let t = Date.now(); stripBlocks("<!-- c -->".repeat(50_000)); assert.ok(Date.now() - t < 500, "comments");
+  t = Date.now(); stripBlocks("<script></script>".repeat(20_000)); assert.ok(Date.now() - t < 500, "scripts");
+});
+
+test("stripHtml second pass removes only tag-like tokens, keeping prose between stray < and >", () => {
+  assert.equal(stripHtml("salary < 5000 and more > 3 years"), "salary < 5000 and more > 3 years");
+  assert.equal(stripHtml('<img src="' + "a".repeat(5000) + '">hi'), "hi");
+});
+
+test("extractDiv counts a div with a >2 KB attribute list toward depth", () => {
+  const big = '<div data-x="' + "y".repeat(3000) + '">n</div>';
+  assert.equal(extractDivByClass(`<div class="job">A${big}B</div>T`, "job"), `A${big}B`);
 });
