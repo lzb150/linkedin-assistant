@@ -177,8 +177,9 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
   `alt_links` in the package and shown as an "also on:" row on the dashboard.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
-  regardless of which source it came from. Legacy URL-keyed files migrate
-  automatically on the next run (the old history is reset once).
+  regardless of which source it came from. Entries carry a last-seen date and
+  expire after 90 days, so the file stops growing forever. Legacy URL-keyed
+  files migrate automatically on the next run (the old history is reset once).
 
 ## Dashboard — `dashboard.mjs`
 
