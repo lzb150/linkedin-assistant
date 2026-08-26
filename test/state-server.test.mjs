@@ -102,3 +102,44 @@ test("oversize POST body is dropped without hanging the request", async (t) => {
     })
   );
 });
+
+test("rejects non-http(s) urls and oversized notes", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const post = (body) => fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }).then((r) => r.status);
+
+  assert.equal(await post({ url: "javascript:alert(1)", patch: { status: "viewed" } }), 400);
+  assert.equal(await post({ url: "__proto__", patch: { status: "viewed" } }), 400);
+  assert.equal(await post({ url: "https://x/", patch: { note: "n".repeat(10_001) } }), 400);
+  assert.equal(await post({ url: "https://x/", patch: { note: "n".repeat(10_000) } }), 200);
+});
+
+test("multi-byte body split across two chunks mid-character round-trips intact", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const statePath = join(dir, "job-state.json");
+  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const port = await listen(srv);
+
+  const note = "Київ — QA 🚀";
+  const body = Buffer.from(JSON.stringify({ url: "https://x/", patch: { note } }));
+  // Cut inside the multi-byte "К" (2 bytes) so per-chunk decoding would mangle it.
+  const cut = body.indexOf(Buffer.from("К")) + 1;
+  const { request } = await import("node:http");
+  const status = await new Promise((resolve, reject) => {
+    const r = request({ host: "127.0.0.1", port, path: "/state", method: "POST", headers: { "content-type": "application/json" } },
+      (res) => { res.resume(); resolve(res.statusCode); });
+    r.on("error", reject);
+    r.write(body.subarray(0, cut));
+    setTimeout(() => r.end(body.subarray(cut)), 20);
+  });
+  assert.equal(status, 200);
+  const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
+  assert.equal(state["https://x/"].note, note);
+});

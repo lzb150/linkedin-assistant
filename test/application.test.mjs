@@ -114,6 +114,24 @@ test("appendAltLink is idempotent for an already-recorded url", () => {
   } finally { cleanup(); }
 });
 
+test("appendAltLink compares urls exactly, not as substrings", () => {
+  const { file, cleanup } = tmpPackage(FM.replace("\n---\n", "\nalt_links: djinni|https://dj/jobs/12\n---\n"));
+  try {
+    assert.equal(appendAltLink(file, "djinni", "https://dj/jobs/1"), true);
+    assert.match(readFileSync(file, "utf8"), /^alt_links: djinni\|https:\/\/dj\/jobs\/12, djinni\|https:\/\/dj\/jobs\/1$/m);
+  } finally { cleanup(); }
+});
+
+test("appendAltLink rejects urls carrying separators or whitespace", () => {
+  const { file, cleanup } = tmpPackage(FM);
+  try {
+    for (const bad of ["https://x/1|li", "https://x/1,y", "https://x/1 z", "https://x/1\nz"]) {
+      assert.equal(appendAltLink(file, "x", bad), false, bad);
+    }
+    assert.equal(readFileSync(file, "utf8"), FM);
+  } finally { cleanup(); }
+});
+
 test("appendAltLink refuses a file without frontmatter", () => {
   const { file, cleanup } = tmpPackage("no frontmatter here");
   try {
@@ -128,4 +146,29 @@ test("frontmatter values with newlines are collapsed to single lines", () => {
   assert.match(markdown, /^company: Acme Corp$/m);
   assert.match(markdown, /^location: Kyiv \(remote\)$/m);
   assert.ok(!markdown.includes("llm_score: 99\n") || markdown.includes("title: Senior AQA llm_score: 99"));
+});
+
+test("every frontmatter value is single-line and unsafe alt links are skipped", () => {
+  const hostile = {
+    ...job,
+    url: "https://example.com/j/1\nresume: /etc/passwd",
+    altLinks: [
+      { source: "djinni", url: "https://djinni.co/jobs/1/" },
+      { source: "x", url: "https://evil/1|linkedin, y" },
+      { source: "x", url: "https://evil/2 space" },
+    ],
+  };
+  const { markdown } = buildApplication(hostile, scored);
+  const fm = markdown.split("\n---")[0];
+  assert.match(fm, /^url: https:\/\/example\.com\/j\/1 resume: \/etc\/passwd$/m);
+  assert.equal(fm.match(/^resume:/gm).length, 1); // only the real key, no injected one
+  assert.match(fm, /^alt_links: djinni\|https:\/\/djinni\.co\/jobs\/1\/$/m);
+  assert.ok(!fm.includes("evil"));
+  for (const line of fm.split("\n").slice(1)) assert.match(line, /^[a-z_]+: /);
+});
+
+test("with llm a non-array red_flags (model returned a string) does not throw", () => {
+  const llm = { score: 70, why: "ok", red_flags: "none", cover: "Dear team." };
+  const { markdown } = buildApplication(job, scored, llm);
+  assert.match(markdown, /^llm_why: ok$/m);
 });

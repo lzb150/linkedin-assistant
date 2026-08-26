@@ -9,23 +9,28 @@
 // Run:  node prune-applications.mjs           (dry run — shows what would go)
 //       node prune-applications.mjs --apply   (actually delete)
 
-import { readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
+import { readStore, statusOf } from "./lib/job-state.mjs";
 
 /**
  * Decide which package files to keep and which to remove.
- * Keeps the most recently `generated` package per identity (company+title);
- * ties are broken deterministically by the larger filename.
- * @param {{file:string, company:string, title:string, generated:string}[]} packages
+ * Groups by identityKey — the same strict key the dashboard collapses on, so
+ * prune never deletes a card the dashboard still shows separately — and keeps the most recently `generated` package per group; ties are broken
+ * deterministically by the larger filename. Packages with a status other than
+ * "new" (viewed/applied/...) are never removed.
+ * @param {{file:string, company:string, title:string, generated:string, status?:string}[]} packages
  * @returns {{ keep: string[], remove: string[] }}
  */
 export function planPrune(packages) {
+  const tracked = (p) => Boolean(p.status && p.status !== "new"); // viewed/applied/… → always keep
   const best = new Map();
   for (const p of packages) {
-    const key = identityKey({ company: p.company, title: p.title });
+    if (tracked(p)) continue;
+    const key = identityKey({ company: p.company, title: p.title, url: p.url }); // url scopes blank companies
     const cur = best.get(key);
     if (!cur) { best.set(key, p); continue; }
     const g = p.generated || "", cg = cur.generated || "";
@@ -33,18 +38,21 @@ export function planPrune(packages) {
   }
   const keepSet = new Set([...best.values()].map((p) => p.file));
   const keep = [], remove = [];
-  for (const p of packages) (keepSet.has(p.file) ? keep : remove).push(p.file);
+  for (const p of packages) (tracked(p) || keepSet.has(p.file) ? keep : remove).push(p.file);
   return { keep, remove };
 }
 
 // CLI: only runs when invoked directly, not when imported by tests.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const apply = process.argv.includes("--apply");
-  const APPS = join(dirname(fileURLToPath(import.meta.url)), "applications");
+  const ROOT = dirname(fileURLToPath(import.meta.url));
+  const APPS = join(ROOT, "applications");
+  mkdirSync(APPS, { recursive: true }); // fresh clone: nothing to prune, but don't crash
+  const state = readStore(join(ROOT, "job-state.json"));
   const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
   const packages = files.map((f) => {
     const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {};
-    return { file: f, company: fm.company || "", title: fm.title || "", generated: fm.generated || "" };
+    return { file: f, company: fm.company || "", title: fm.title || "", url: fm.url || "", generated: fm.generated || "", status: statusOf(state, fm.url) };
   });
 
   const { keep, remove } = planPrune(packages);

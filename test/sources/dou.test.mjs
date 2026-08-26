@@ -42,6 +42,18 @@ test("parseRss splits on the LAST ' в ' so a role containing ' в ' keeps its c
   assert.equal(job.location, "Kyiv");
 });
 
+test("parseRss keeps a comma inside the company: location is the LAST part", () => {
+  const xml = `<rss><channel><item>
+    <title>QA в Маніфай, ТОВ, Київ</title>
+    <link>https://jobs.dou.ua/x/3/</link>
+    <description>d</description>
+  </item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.title, "QA");
+  assert.equal(job.company, "Маніфай, ТОВ");
+  assert.equal(job.location, "Київ");
+});
+
 test("parseRss decodes HTML entities and unwraps CDATA in the description", () => {
   const xml = `<rss><channel><item>
     <title>QA в Acme</title>
@@ -51,4 +63,33 @@ test("parseRss decodes HTML entities and unwraps CDATA in the description", () =
   const [job] = parseRss(xml);
   assert.ok(job.text.includes("Build & ship quality"), "entity decoded, CDATA unwrapped");
   assert.ok(!job.text.includes("CDATA"));
+});
+
+test("parseRss leaves no HTML tags in text (description is XML-escaped HTML)", () => {
+  for (const j of parseRss(fixture)) assert.doesNotMatch(j.text, /<\/?[a-z][^>]*>/i, j.text.slice(0, 80));
+});
+
+test("parseRss drops a salary part from the company when the rest has 3+ parts", () => {
+  const xml = `<rss><channel><item>
+    <title>QA Engineer в Acme, $3000-5000, Київ</title>
+    <link>https://jobs.dou.ua/x/4/</link>
+    <description>d</description>
+  </item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.company, "Acme");
+  assert.equal(job.location, "Київ");
+});
+
+test("parseRss keeps the company to the FIRST part when DOU lists several cities", () => {
+  const xml = `<rss><channel><item><title>Senior Automation QA Engineer (4367) в Ciklum, Київ, Львів</title><link>https://jobs.dou.ua/companies/ciklum/vacancies/1/</link><description>x</description></item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.company, "Ciklum");
+  assert.equal(job.location, "Київ, Львів");
+});
+
+test("parseRss keeps 'за кордоном' in the location so the location filter sees it", () => {
+  const xml = `<rss><channel><item><title>QA Engineer в WinWin.Travel, за кордоном, віддалено</title><link>https://jobs.dou.ua/companies/w/vacancies/2/</link><description>x</description></item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.company, "WinWin.Travel");
+  assert.equal(job.location, "за кордоном, віддалено");
 });

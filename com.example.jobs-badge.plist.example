@@ -21,7 +21,7 @@
     <string>/usr/bin/open</string>
     <string>-g</string>
     <string>-a</string>
-    <string>/Users/example/linkedin-assistant/Jobs.app</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app</string>
     <string>--args</string>
     <string>--background</string>
   </array>
@@ -30,8 +30,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/example/linkedin-assistant/logs/jobs-badge.out.log</string>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/example/linkedin-assistant/logs/jobs-badge.err.log</string>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.err.log</string>
 </dict>
 </plist>

@@ -110,6 +110,9 @@ Each scan writes the number of unread LinkedIn message threads to
 in the Dock and reads that file every few seconds, showing the count as a red
 Dock badge (cleared once the threads are read on LinkedIn — the next scan
 reports a lower count). Clicking the Dock icon opens the dashboard as before.
+All macOS banners are posted by this app too (queued as `banners/*.json` by
+`lib/notify.mjs`), so they carry its icon and clicking one opens the dashboard.
+Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
 
 Build it with `./build-jobs.sh`, then start it at login by installing
 `com.eugene.jobs-badge.plist` into `~/Library/LaunchAgents/` (see
@@ -174,8 +177,10 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
   `alt_links` in the package and shown as an "also on:" row on the dashboard.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
-  regardless of which source it came from. Legacy URL-keyed files migrate
-  automatically on the next run (the old history is reset once).
+  regardless of which source it came from. Entries carry a last-seen date and
+  expire after 90 days, so the file stops growing forever. Legacy URL-keyed
+  files migrate automatically on the next run (the old history is reset once).
+- Only one `jobs.mjs` runs at a time (`jobs-run.lock/`); an overlapping run logs "another jobs.mjs run is active" and exits 0. Browser-profile locks record the holder's pid, so a crashed run is taken over immediately.
 
 ## Dashboard — `dashboard.mjs`
 
@@ -228,7 +233,7 @@ visit" filter.
 
 **Follow-up reminders (`followup.mjs`)** — a daily launchd job
 (`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
-notification (via `osascript`) for every job you marked **Applied** with no
+notification for every job you marked **Applied** with no
 status movement for 7+ days. Reminders auto-silence themselves the moment a
 card moves past Applied (Answered, Interview, or Rejected) — no more nagging
 about jobs that already got a reply. Tune the threshold with the

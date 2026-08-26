@@ -9,10 +9,11 @@
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
+import { writeJsonAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -28,13 +29,13 @@ const SEEN_FILE = join(__dir, "djinni-seen.json");
 // each thread is a link of the form /my/inbox/<id>/.
 const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 
-const ctx = await launchBrowser(PROFILE);
-
+let ctx;
 let unreadCount = 0;
 let scanned = false; // true once we have a real count from a loaded page
 let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 
 try {
+  ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs instead of an unhandled rejection
   const page = ctx.pages()[0] || (await ctx.newPage());
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.waitForTimeout(1500); // let the conversation list render
@@ -100,10 +101,11 @@ try {
   }
 
   try {
-    writeFileSync(SEEN_FILE, JSON.stringify(threads.map((t) => t.id)));
+    writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
   } catch (e) { log("notify: writing seen file failed:", e?.message); }
 } catch (err) {
   log("ERROR:", err?.message || err);
+  if (!ctx) notify("Djinni assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
   // Only overwrite the badge when we actually loaded the page. On a network
   // error (page never loaded) leave the last known count so the badge does not
@@ -123,7 +125,7 @@ try {
   } else {
     log("scan failed — keeping last known badge count (state not rewritten)");
   }
-  await ctx.close();
+  await ctx?.close();
 }
 
 log(

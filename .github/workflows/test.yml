@@ -28,11 +28,26 @@ jobs:
         shell: bash
         run: |
           set -e
-          for f in *.mjs lib/*.mjs lib/sources/*.mjs; do node --check "$f"; done
+          for f in *.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs; do node --check "$f"; done
+          # Playwright: page.$()/el.$() return ONE handle — iterating/slicing it is a
+          # silent TypeError behind catch {} (bit us twice). Convention: a single
+          # handle is either consumed via .then(Boolean) or bound to a *El name.
+          ! grep -nE 'await [a-zA-Z_.]+\.\$\(' *.mjs lib/*.mjs lib/sources/*.mjs | grep -vE '[eE]l = await|\.then\(Boolean\)'
+          # …and never iterate/slice a single handle even when it IS bound to a *El name.
+          ! grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)|of [a-zA-Z_]+El\b' *.mjs lib/*.mjs lib/sources/*.mjs
       - name: Dashboard smoke build
         shell: bash
         run: |
           set -e
-          mkdir -p applications
           node dashboard.mjs
-          grep -q "statusOfEntry" applications/index.html
+          grep -q "advanceLastVisit" applications/index.html
+      - name: Lint shell scripts
+        shell: bash
+        run: bash -n *.sh *.sh.example
+      - name: Lint Swift app and launchd templates (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -e
+          xcrun swiftc -typecheck jobs-app.swift
+          plutil -lint *.plist.example

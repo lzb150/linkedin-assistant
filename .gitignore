@@ -17,10 +17,6 @@ seen.json
 
 # Runtime Dock-badge state (written by check.mjs, read by Jobs.app)
 notify-state.json
-notify-state.json.tmp
-
-# Backup of the original AppleScript Jobs applet (kept local)
-Jobs.app.orig/
 
 # macOS
 .DS_Store
@@ -28,8 +24,8 @@ Jobs.app.orig/
 # Built Dock app bundle (machine-specific paths baked in; rebuild locally)
 Jobs.app/
 
-# Built notification helper — rebuild with ./build-notifier.sh
-Notifier.app/
+# Banner queue written by lib/notify.mjs, drained by Jobs.app
+banners/
 
 # Machine-specific run wrappers & launchd agents — use the *.example templates
 run.sh
@@ -54,7 +50,6 @@ resume.txt
 
 # Runtime Dock-badge state for Djinni (written by djinni-check.mjs, read by Jobs.app)
 djinni-notify-state.json
-djinni-notify-state.json.tmp
 
 # Ids of Djinni threads already notified about (written by djinni-check.mjs)
 djinni-seen.json
@@ -64,7 +59,22 @@ run-djinni.sh
 
 # Dashboard job state and follow-up notify dedupe (machine-local runtime state)
 job-state.json
-job-state.json.tmp
 followup-notify-state.json
 followup-notify-state.json.tmp
-banner-queue.json  # transient banner hand-off to Jobs.app
+
+# Stray applet backup from an old build-jobs.sh (committed by mistake once)
+Jobs.app.orig/
+
+# Browser-profile / run locks (lib/browser.mjs acquireProfileLock: `<name>.lock/` dirs)
+.browser-profile.lock/
+.djinni-profile.lock/
+jobs-run.lock/
+state-server.lock/
+
+# Local tooling scratch dirs
+.superpowers/
+.playwright-cli/
+
+# Atomic-write temp files and quarantined corrupt state files
+*.tmp
+*.corrupt

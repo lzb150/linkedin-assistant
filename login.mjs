@@ -24,6 +24,8 @@ const SITES = {
     nextStep: "node check.mjs",
     // Indicators that we are logged in (any one is enough).
     async isLoggedIn(page, ctx) {
+      // Still on /login or a 2FA /checkpoint → not done, whatever the cookies say.
+      if (/\/login|\/checkpoint/.test(page.url())) return false;
       // 1) A LinkedIn auth cookie is present.
       try {
         const cookies = await ctx.cookies("https://www.linkedin.com");
@@ -65,7 +67,15 @@ if (!site) {
 }
 const rerunCmd = `node login.mjs${siteKey === "linkedin" ? "" : ` ${siteKey}`}`;
 
-const ctx = await launchBrowser(join(__dir, site.profile), { headful: true });
+let ctx;
+try {
+  ctx = await launchBrowser(join(__dir, site.profile), { headful: true });
+} catch (e) {
+  // Typically "profile busy" (a scheduled run holds the lock) — a clean message
+  // beats an unhandled-rejection stack trace.
+  console.error(e.message);
+  process.exit(1);
+}
 const page = ctx.pages()[0] || (await ctx.newPage());
 await page.goto(site.loginUrl, { waitUntil: "domcontentloaded" });
 

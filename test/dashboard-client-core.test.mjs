@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mergeEntry } from "../lib/job-state.mjs";
 
 const require = createRequire(import.meta.url);
 const core = require("../lib/dashboard-client-core.cjs");
@@ -87,34 +86,22 @@ test("isNew: baseline rules", () => {
   assert.equal(core.isNew("junk", "2026-07-29T00:00:00Z"), false);
 });
 
-// The offline mirror must produce the same status/appliedAt/note as the
-// server's mergeEntry for the same patches — pins the two implementations
-// together so they cannot drift silently.
-test("parity: mergeEntryLocal matches server mergeEntry field-for-field", () => {
-  const patchSeqs = [
-    [{ status: "applied", appliedAt: "2026-07-01T00:00:00Z" }],
-    [{ status: "applied", appliedAt: "2026-07-01T00:00:00Z" }, { status: "answered" }],
-    [{ status: "answered", appliedAt: "2026-07-02T00:00:00Z" }, { status: "new", appliedAt: null }],
-    [{ note: "call Anna" }, { note: "" }],
-    [{ status: "viewed" }, { status: "new" }],
-  ];
-  const U = "https://example.com/j/1";
-  for (const seq of patchSeqs) {
-    let serverMap = {};
-    let localEntry = undefined;
-    for (const patch of seq) {
-      serverMap = mergeEntry(serverMap, U, patch);
-      localEntry = core.mergeEntryLocal(localEntry, patch);
-    }
-    const s = serverMap[U];
-    if (!s) {
-      assert.equal(localEntry, null, JSON.stringify(seq));
-    } else {
-      assert.deepEqual(
-        { status: localEntry.status, appliedAt: localEntry.appliedAt, note: localEntry.note },
-        { status: s.status, appliedAt: s.appliedAt, note: s.note },
-        JSON.stringify(seq),
-      );
-    }
-  }
+test("offlinePatches: dirty urls push full-override patches, deletions clear, legacy migrates missing only", () => {
+  const local = {
+    _meta: { lastVisit: "x" },
+    "https://a/": { status: "applied", appliedAt: "2026-07-01T00:00:00Z", note: "hi" },
+    "https://b/": { status: "viewed" },
+    "https://c/": { status: "viewed" },
+  };
+  const server = { _meta: {}, "https://a/": { status: "viewed" }, "https://d/": { status: "applied" } };
+  // Dirty tracking: only a (edited existing) and d (deleted offline) go out; b/c untouched.
+  assert.deepEqual(core.offlinePatches(local, ["https://a/", "https://d/"], server), [
+    { url: "https://a/", patch: { status: "applied", appliedAt: "2026-07-01T00:00:00Z", note: "hi" } },
+    { url: "https://d/", patch: { status: "new", appliedAt: null, note: "" } },
+  ]);
+  assert.deepEqual(core.offlinePatches(local, [], server), []);
+  // Legacy cache (no dirty list): one-time migration of what the server lacks.
+  assert.deepEqual(core.offlinePatches(local, null, server).map((p) => p.url), ["https://b/", "https://c/"]);
+  // The clearing patch really empties an entry via the shared merge.
+  assert.equal(core.mergeEntryLocal(server["https://d/"], core.entryToPatch(undefined)), null);
 });

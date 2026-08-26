@@ -10,18 +10,20 @@
 //                                     seen.json still prevents duplicate drafts.)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
-import { log, notifyBanner, ensureJobsApp } from "./lib/notify.mjs";
+import { loadSeenStore } from "./lib/seen-store.mjs";
+import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
-mkdirSync(DRAFTS, { recursive: true }); // fresh clones lack drafts/ (gitignored output)
+mkdirSync(DRAFTS, { recursive: true }); // fresh clone has no drafts/ yet
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 // Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`
@@ -57,18 +59,11 @@ async function cardIsUnread(card) {
   return false;
 }
 
-function loadSeen() {
-  try { return new Set(JSON.parse(readFileSync(SEEN_FILE, "utf8"))); }
-  catch { return new Set(); }
-}
-function saveSeen(set) {
-  writeFileSync(SEEN_FILE, JSON.stringify([...set], null, 0));
-}
+// Thread ids already processed; entries expire after 90 days so the file
+// stops growing forever (legacy array files migrate on load).
+const seen = loadSeenStore(SEEN_FILE);
 
-const seen = loadSeen();
-
-const ctx = await launchBrowser(PROFILE);
-
+let ctx;
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
@@ -78,13 +73,14 @@ let unreadCount = 0;
 let counted = false;
 
 try {
+  ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
   const page = ctx.pages()[0] || (await ctx.newPage());
   await page.goto("https://www.linkedin.com/messaging/", { waitUntil: "domcontentloaded", timeout: 30000 });
 
   // Detect a logged-out session early and bail with a clear message.
   if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
     log("❌ Not logged in (session expired). Run:  node login.mjs");
-    notifyBanner("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
+    notify("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }
@@ -100,51 +96,65 @@ try {
   // Keep the Dock-badge daemon (Jobs.app) alive, then count ALL unread threads
   // (independent of MAX and the job-relevance filter) — this drives the badge.
   ensureJobsApp();
-  for (const card of cards) {
-    if (await cardIsUnread(card)) unreadCount++;
-  }
+  // Computed once per card; reused by the scan loop below.
+  const unread = [];
+  for (const card of cards) unread.push(await cardIsUnread(card));
+  unreadCount = unread.filter(Boolean).length;
   log(`Unread threads: ${unreadCount}`);
   counted = true;
 
-  for (const card of cards) {
-    if (drafted + scanned >= MAX) break;
+  // LinkedIn auto-opens the first thread on load: seed with the current URL so
+  // a failed click on card 0 is detected instead of attributing that thread to it.
+  let lastOpened = page.url();
+  for (const [i, card] of cards.entries()) {
+    // MAX caps opened threads; drafted threads are already counted in scanned.
+    if (scanned >= MAX) break;
 
     // Is it unread? (best-effort, multi-strategy). SCAN_ALL bypasses this filter.
-    if (!SCAN_ALL) {
-      const isUnread = await cardIsUnread(card);
-      if (!isUnread) continue;
-    }
+    if (!SCAN_ALL && !unread[i]) continue;
 
-    scanned++;
     let name = "Recruiter";
     try {
       const nameEl = await card.$(SEL.participantName);
       if (nameEl) name = (await nameEl.innerText()).trim().split("\n")[0] || name;
     } catch {}
 
-    // Open the thread.
+    // Open the thread. If the URL still points at the PREVIOUS opened thread the
+    // click failed — skip rather than misattribute that thread to this card.
+    // (LinkedIn auto-opens the first thread, so only compare against our own.)
     await card.click().catch(() => {});
     await page.waitForTimeout(1500);
     const url = page.url();
-
-    // Stable-ish id from thread url; fallback to name+snippet hash.
-    const idMatch = url.match(/thread\/([^/]+)/);
-    const threadId = idMatch ? idMatch[1] : `name:${name}`;
+    if (url === lastOpened) { log(`· could not open thread, skipping: ${name}`); continue; }
+    lastOpened = url;
+    scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
-    let bubbles = [];
+    let bubbles = [], oldest = "", extractFailed = false;
     try {
       const els = await page.$$(SEL.messageBubble);
+      if (els.length) oldest = (await els[0].innerText()).trim();
       for (const el of els.slice(-12)) {
         const t = (await el.innerText()).trim();
         if (t) bubbles.push(t);
       }
-    } catch {}
+    } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
-    if (seen.has(threadId)) { log(`· already processed: ${name}`); continue; }
+    // Stable id from the thread url. URL-less fallback hashes name + the OLDEST
+    // bubble (not the first of the last-12 window, which shifts as replies arrive).
+    const idMatch = url.match(/thread\/([^/]+)/);
+    const threadId = idMatch
+      ? idMatch[1]
+      : `name:${createHash("sha1").update(`${name}\n${oldest}`).digest("hex").slice(0, 12)}`;
 
+    // Re-stamp so the TTL is "last seen" and a long-lived thread does not resurface.
+    if (seen.has(threadId)) { log(`· already processed: ${name}`); seen.add(threadId); continue; }
+
+    // An extraction failure is not "not a job message": leave the thread
+    // unseen so the next run retries instead of burying it for 90 days.
+    if (extractFailed) { log(`· skipping without marking seen: ${name}`); continue; }
     if (!fullText || !looksLikeJobMessage(fullText)) {
       log(`· not a job message, skipping: ${name}`);
       seen.add(threadId);
@@ -163,8 +173,11 @@ try {
   }
 } catch (err) {
   log("ERROR:", err?.message || err);
+  // "profile busy" = benign overlap with another run (jobs.mjs/login.mjs); log only.
+  if (!ctx && !/profile busy/.test(err?.message || "")) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
-  saveSeen(seen);
+  // Must not throw: writeState and ctx.close below still have to run.
+  try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); }
   if (counted) {
     try {
       writeState(STATE_FILE, { count: unreadCount });
@@ -174,7 +187,7 @@ try {
   } else {
     log("notify: scan failed before counting — keeping previous badge state");
   }
-  await ctx.close();
+  await ctx?.close();
 }
 
 log(`Done. Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);

@@ -50,6 +50,10 @@ test("mentionsStem handles a mixed Latin+Cyrillic phrase", () => {
 
 import { scoreMessage } from "../lib/relevance.mjs";
 
+test("scoreMessage tolerates a profile without roles/skills", () => {
+  assert.equal(scoreMessage("anything", {}).verdict, "ignore");
+});
+
 // Frozen QA profile fixture (a snapshot of the historical skills.json). Score
 // pins below are computed against THIS object, so editing the live skills.json
 // for your own profession never breaks these tests.

@@ -1,6 +1,6 @@
 // Jobs launcher + unread-LinkedIn-message Dock badge for linkedin-assistant.
 //
-// Replaces the former AppleScript applet (backed up to Jobs.app.orig). Behaviour:
+// Behaviour:
 //   - Stays running in the Dock with the "Вакансии" icon.
 //   - Polls notify-state.json AND djinni-notify-state.json every ~3s and shows
 //     the COMBINED unread count (LinkedIn messages + Djinni inbox) as a red Dock
@@ -11,6 +11,9 @@
 //     (node dashboard.mjs --open), preserving the old applet's behaviour.
 //   - Launched with --background (by the login LaunchAgent or check.mjs) it runs
 //     the badge daemon only and does NOT open the dashboard.
+//   - Posts macOS banners queued by lib/notify.mjs as banners/*.json
+//     ({title, message}); each file is deleted once posted. Clicking a banner
+//     behaves like a Dock-icon click (Djinni unread or the dashboard).
 //
 // Build with build-jobs.sh. Set JOBS_DEBUG=1 for stderr logging.
 
@@ -21,13 +24,9 @@ let bundlePath = Bundle.main.bundlePath                       // <project>/Jobs.
 let projectDir = (bundlePath as NSString).deletingLastPathComponent
 let statePath = (projectDir as NSString).appendingPathComponent("notify-state.json")
 let djinniStatePath = (projectDir as NSString).appendingPathComponent("djinni-notify-state.json")
-// Banner queue written by lib/notify.mjs: [{title, body}, ...]. Posting from
-// THIS long-lived app (rather than the short-lived Notifier.app helper) is what
-// makes a banner clickable — the system can only deliver the click to a
-// process that is still running.
-let bannerQueuePath = (projectDir as NSString).appendingPathComponent("banner-queue.json")
 // Resolve the dashboard launcher script next to the app bundle.
 let dashboardLauncher = (projectDir as NSString).appendingPathComponent("open-dashboard.sh")
+let bannersDir = (projectDir as NSString).appendingPathComponent("banners")
 let isBackground = CommandLine.arguments.contains("--background")
 
 func dbg(_ s: String) {
@@ -68,7 +67,9 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 func handleActivation() {
     let (count, ids) = djinniUnread()
     if count > 0 {
-        let url = ids.count == 1
+        // Only a purely numeric id is safe to splice into a path; anything else
+        // (junk in the state file) falls back to the unread bucket.
+        let url = ids.count == 1 && !ids[0].isEmpty && Int(ids[0]) != nil
             ? "https://djinni.co/my/inbox/\(ids[0])/"
             : "https://djinni.co/my/inbox?bucket=unread"
         dbg("activation -> Djinni (count=\(count), ids=\(ids.count)) \(url)")
@@ -80,14 +81,16 @@ func handleActivation() {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    var notifGranted = false
+    let center = UNUserNotificationCenter.current()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
         dbg("launched; background=\(isBackground) state=\(statePath)")
-        let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.requestAuthorization(options: [.alert]) { granted, error in
-            dbg("notification auth granted=\(granted) error=\(String(describing: error))")
+        center.requestAuthorization(options: [.alert]) { [weak self] granted, err in
+            DispatchQueue.main.async { self?.notifGranted = granted }
+            dbg("notifications granted=\(granted) error=\(String(describing: err))")
         }
         poll()                                          // immediate first pass
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in self?.poll() }
@@ -115,40 +118,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
         NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
-        drainBannerQueue()
+        pruneOldBanners()
+        postQueuedBanners()
     }
 
-    // Post (and remove) anything lib/notify.mjs left in banner-queue.json.
-    // Delete first: a post that fails must not loop the banner forever.
-    func drainBannerQueue() {
-        guard let data = FileManager.default.contents(atPath: bannerQueuePath),
-              let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
-              !items.isEmpty else { return }
-        try? FileManager.default.removeItem(atPath: bannerQueuePath)
-        for item in items {
-            let content = UNMutableNotificationContent()
-            content.title = (item["title"] as? String) ?? "Job assistant"
-            content.body = (item["body"] as? String) ?? ""
-            let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            UNUserNotificationCenter.current().add(req) { err in
-                if let err { dbg("banner post failed: \(err)") }
+    // Drop banners/*.json older than 7 days (nothing drains them without
+    // notification permission) and *.json.tmp older than 1 hour (a notify.mjs
+    // write that died before its atomic rename).
+    func pruneOldBanners() {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
+        let now = Date()
+        for name in names {
+            let maxAge: TimeInterval
+            if name.hasSuffix(".json.tmp") { maxAge = 3600 } else if name.hasSuffix(".json") { maxAge = 7 * 86400 } else { continue }
+            let path = (bannersDir as NSString).appendingPathComponent(name)
+            if let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, now.timeIntervalSince(mtime) > maxAge {
+                try? fm.removeItem(atPath: path)
             }
         }
-        dbg("posted \(items.count) queued banner(s)")
     }
 
-    // Show the banner even while this app is frontmost.
-    func userNotificationCenter(
-        _ c: UNUserNotificationCenter, willPresent n: UNNotification,
-        withCompletionHandler h: @escaping (UNNotificationPresentationOptions) -> Void
-    ) { h([.banner, .list]) }
+    // Files handed to center.add whose completion has not fired yet; poll()
+    // runs every 3 s and must not re-submit them meanwhile.
+    var inFlight = Set<String>()
 
-    // Banner click -> same destination as a Dock-icon click.
-    func userNotificationCenter(
-        _ c: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-        withCompletionHandler h: @escaping () -> Void
-    ) {
-        dbg("banner clicked action=\(response.actionIdentifier)")
+    // Post every banners/*.json queued by lib/notify.mjs; a file is deleted only
+    // once its banner was accepted. Without notification permission recent
+    // files are left so they can be inspected or drained once granted.
+    func postQueuedBanners() {
+        guard notifGranted else { return }
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
+        for name in names.sorted() where name.hasSuffix(".json") && !inFlight.contains(name) {
+            let path = (bannersDir as NSString).appendingPathComponent(name)
+            guard let data = fm.contents(atPath: path),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let message = obj["message"] as? String else {
+                try? fm.removeItem(atPath: path)   // unreadable/malformed: drop, never retry
+                continue
+            }
+            let content = UNMutableNotificationContent()
+            content.title = (obj["title"] as? String) ?? "Вакансии"
+            content.body = message
+            inFlight.insert(name)
+            center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
+                dbg("banner \(name) error=\(String(describing: err))")
+                if err == nil { try? fm.removeItem(atPath: path) }
+                DispatchQueue.main.async { self.inFlight.remove(name) }
+            }
+        }
+    }
+
+    // Show banners even while we are the "foreground" app (we own no windows).
+    func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification,
+                                withCompletionHandler h: @escaping (UNNotificationPresentationOptions) -> Void) {
+        h([.banner, .list])
+    }
+
+    // Banner click == Dock-icon click.
+    func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse,
+                                withCompletionHandler h: @escaping () -> Void) {
         handleActivation()
         h()
     }
