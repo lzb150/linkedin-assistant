@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 # launchd/Finder give us a bare PATH: prefer node on PATH, else the newest nvm one.
 if ! NODE="$(command -v node)"; then
-  NODE="$(ls -d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)"
+  NODE="$(ls -d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
 fi
 [ -x "${NODE:-}" ] || { echo "open-dashboard.sh: node not found (PATH or ~/.nvm)" >&2; exit 1; }
 

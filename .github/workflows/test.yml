@@ -44,5 +44,5 @@ jobs:
         shell: bash
         run: |
           set -e
-          xcrun swiftc -parse jobs-app.swift
+          xcrun swiftc -typecheck jobs-app.swift
           plutil -lint *.plist.example

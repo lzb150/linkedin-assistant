@@ -126,7 +126,7 @@ const cards = items
   </details>
   <details class="note-wrap">
     <summary>📝 Note <span class="note-has" hidden>●</span></summary>
-    <textarea class="note" rows="3" aria-label="Private note" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
+    <textarea class="note" rows="3" maxlength="10000" aria-label="Private note" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
   </details>
 </article>`;
   })
@@ -192,7 +192,11 @@ const html = `<!doctype html>
   .card.applied { border-left: 4px solid #1a7f37; }
   .card.rejected { background: #f6f8fa; border-left: 4px solid #cf222e; }
   .card.rejected .titles h2 { color: #57606a; }
-  .status-seg button:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .min-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }
+  .status-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }   /* blue on white: 5.9:1 */
+  /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
+     inset one extra px so it sits inside the fill rather than on the border. */
+  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .min-seg button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .applied-ago { font-size: 11px; color: #1a7f37; text-align: center; }
   .funnel { font-size: 12px; color: #cdd9e5; margin-top: 6px; }
   .note-wrap summary { color: #57606a; }
@@ -220,7 +224,7 @@ const html = `<!doctype html>
       <button data-filter="applied" aria-pressed="false" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
       <button data-filter="answered" aria-pressed="false" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
       <button data-filter="interview" aria-pressed="false" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
-      <button data-filter="rejected" aria-pressed="false" aria-label="Rejected" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
+      <button data-filter="rejected" aria-pressed="false" onclick="setFilter('rejected')"><span aria-hidden="true">✗</span><span class="sr-only">Rejected</span> <span class="cnt" id="cnt-rejected">0</span></button>
       <button data-filter="fresh" aria-pressed="false" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />

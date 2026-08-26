@@ -4,7 +4,7 @@
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
 # After building, start it once:  open -a ./Jobs.app
-# Autostart at login via com.eugene.jobs-badge.plist (see README).
+# Autostart at login via com.example.jobs-badge.plist.example (see README).
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

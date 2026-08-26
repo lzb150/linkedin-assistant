@@ -69,7 +69,7 @@ func handleActivation() {
     if count > 0 {
         // Only a purely numeric id is safe to splice into a path; anything else
         // (junk in the state file) falls back to the unread bucket.
-        let url = ids.count == 1 && !ids[0].isEmpty && ids[0].allSatisfy(\.isNumber)
+        let url = ids.count == 1 && !ids[0].isEmpty && Int(ids[0]) != nil
             ? "https://djinni.co/my/inbox/\(ids[0])/"
             : "https://djinni.co/my/inbox?bucket=unread"
         dbg("activation -> Djinni (count=\(count), ids=\(ids.count)) \(url)")
@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         dbg("launched; background=\(isBackground) state=\(statePath)")
         center.delegate = self
         center.requestAuthorization(options: [.alert]) { [weak self] granted, err in
-            self?.notifGranted = granted
+            DispatchQueue.main.async { self?.notifGranted = granted }
             dbg("notifications granted=\(granted) error=\(String(describing: err))")
         }
         poll()                                          // immediate first pass
@@ -121,11 +121,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         postQueuedBanners()
     }
 
+    // Without notification permission nothing drains banners/, so drop files
+    // older than 7 days to keep the directory from growing forever.
+    func pruneOldBanners() {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+        for name in names where name.hasSuffix(".json") {
+            let path = (bannersDir as NSString).appendingPathComponent(name)
+            if let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, mtime < cutoff {
+                try? fm.removeItem(atPath: path)
+            }
+        }
+    }
+
     // Post every banners/*.json queued by lib/notify.mjs; a file is deleted only
-    // once its banner was accepted. Without notification permission the queue
-    // is left untouched so it can be inspected or drained once granted.
+    // once its banner was accepted. Without notification permission recent
+    // files are left so they can be inspected or drained once granted.
     func postQueuedBanners() {
-        guard notifGranted else { return }
+        guard notifGranted else { pruneOldBanners(); return }
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
         for name in names.sorted() where name.hasSuffix(".json") {
