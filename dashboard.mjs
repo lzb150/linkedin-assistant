@@ -192,6 +192,7 @@ const html = `<!doctype html>
   .card.applied { border-left: 4px solid #1a7f37; }
   .card.rejected { background: #f6f8fa; border-left: 4px solid #cf222e; }
   .card.rejected .titles h2 { color: #57606a; }
+  .card.rejected .titles h2::after { content: " ✗"; color: #cf222e; }   /* non-colour cue next to the red border */
   .status-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }   /* blue on white: 5.9:1 */
   /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
      inset one extra px so it sits inside the fill rather than on the border. */

@@ -118,31 +118,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
         NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
+        pruneOldBanners()
         postQueuedBanners()
     }
 
-    // Without notification permission nothing drains banners/, so drop files
-    // older than 7 days to keep the directory from growing forever.
+    // Drop banners/*.json older than 7 days (nothing drains them without
+    // notification permission) and *.json.tmp older than 1 hour (a notify.mjs
+    // write that died before its atomic rename).
     func pruneOldBanners() {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
-        let cutoff = Date().addingTimeInterval(-7 * 86400)
-        for name in names where name.hasSuffix(".json") {
+        let now = Date()
+        for name in names {
+            let maxAge: TimeInterval
+            if name.hasSuffix(".json.tmp") { maxAge = 3600 } else if name.hasSuffix(".json") { maxAge = 7 * 86400 } else { continue }
             let path = (bannersDir as NSString).appendingPathComponent(name)
-            if let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, mtime < cutoff {
+            if let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, now.timeIntervalSince(mtime) > maxAge {
                 try? fm.removeItem(atPath: path)
             }
         }
     }
 
+    // Files handed to center.add whose completion has not fired yet; poll()
+    // runs every 3 s and must not re-submit them meanwhile.
+    var inFlight = Set<String>()
+
     // Post every banners/*.json queued by lib/notify.mjs; a file is deleted only
     // once its banner was accepted. Without notification permission recent
     // files are left so they can be inspected or drained once granted.
     func postQueuedBanners() {
-        guard notifGranted else { pruneOldBanners(); return }
+        guard notifGranted else { return }
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
-        for name in names.sorted() where name.hasSuffix(".json") {
+        for name in names.sorted() where name.hasSuffix(".json") && !inFlight.contains(name) {
             let path = (bannersDir as NSString).appendingPathComponent(name)
             guard let data = fm.contents(atPath: path),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -153,9 +161,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let content = UNMutableNotificationContent()
             content.title = (obj["title"] as? String) ?? "Вакансии"
             content.body = message
+            inFlight.insert(name)
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
                 dbg("banner \(name) error=\(String(describing: err))")
                 if err == nil { try? fm.removeItem(atPath: path) }
+                DispatchQueue.main.async { self.inFlight.remove(name) }
             }
         }
     }
