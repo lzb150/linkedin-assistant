@@ -15,6 +15,11 @@ test("normalizeCompany strips Cyrillic legal forms (ТОВ/ООО)", () => {
   assert.equal(normalizeCompany("ООО Грамарли"), normalizeCompany("Грамарли"));
 });
 
+test("normalizeCompany treats the '—' frontmatter placeholder as empty", () => {
+  assert.equal(normalizeCompany("—"), normalizeCompany(""));
+  assert.equal(identityKey({ company: "—", title: "QA" }), identityKey({ company: "", title: "QA" }));
+});
+
 test("normalizeTitle is case/punctuation/whitespace insensitive", () => {
   assert.equal(normalizeTitle("QA  Automation Engineer!"), normalizeTitle("qa automation engineer"));
 });
