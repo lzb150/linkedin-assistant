@@ -42,6 +42,18 @@ test("parseRss splits on the LAST ' в ' so a role containing ' в ' keeps its c
   assert.equal(job.location, "Kyiv");
 });
 
+test("parseRss keeps a comma inside the company: location is the LAST part", () => {
+  const xml = `<rss><channel><item>
+    <title>QA в Маніфай, ТОВ, Київ</title>
+    <link>https://jobs.dou.ua/x/3/</link>
+    <description>d</description>
+  </item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.title, "QA");
+  assert.equal(job.company, "Маніфай, ТОВ");
+  assert.equal(job.location, "Київ");
+});
+
 test("parseRss decodes HTML entities and unwraps CDATA in the description", () => {
   const xml = `<rss><channel><item>
     <title>QA в Acme</title>

@@ -129,3 +129,22 @@ test("frontmatter values with newlines are collapsed to single lines", () => {
   assert.match(markdown, /^location: Kyiv \(remote\)$/m);
   assert.ok(!markdown.includes("llm_score: 99\n") || markdown.includes("title: Senior AQA llm_score: 99"));
 });
+
+test("every frontmatter value is single-line and unsafe alt links are skipped", () => {
+  const hostile = {
+    ...job,
+    url: "https://example.com/j/1\nresume: /etc/passwd",
+    altLinks: [
+      { source: "djinni", url: "https://djinni.co/jobs/1/" },
+      { source: "x", url: "https://evil/1|linkedin, y" },
+      { source: "x", url: "https://evil/2 space" },
+    ],
+  };
+  const { markdown } = buildApplication(hostile, scored);
+  const fm = markdown.split("\n---")[0];
+  assert.match(fm, /^url: https:\/\/example\.com\/j\/1 resume: \/etc\/passwd$/m);
+  assert.equal(fm.match(/^resume:/gm).length, 1); // only the real key, no injected one
+  assert.match(fm, /^alt_links: djinni\|https:\/\/djinni\.co\/jobs\/1\/$/m);
+  assert.ok(!fm.includes("evil"));
+  for (const line of fm.split("\n").slice(1)) assert.match(line, /^[a-z_]+: /);
+});

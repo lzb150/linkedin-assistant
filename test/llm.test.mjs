@@ -32,6 +32,7 @@ test("llmJSON passes model and prompt to the CLI", async () => {
   assert.equal(seen.cmd, "claude");
   assert.deepEqual(seen.args, [
     "-p", "my prompt", "--model", "haiku",
+    "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
     "--disallowedTools", "Read,Glob,Grep,Bash,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,Task,Agent",
   ]);
 });
