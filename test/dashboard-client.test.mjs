@@ -81,3 +81,25 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
   assert.equal(offline, false);
   assert.equal(state["https://example.com/jobs/1/"].status, "applied");
 });
+
+// The offline branch of initState must restore the dirty list saved by an
+// earlier offline session, or those edits never reach the server.
+test("offline: dirty urls from a previous session survive a reload", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const store = new Map([
+    ["jobStatus", JSON.stringify({ _meta: {}, "https://old/": { status: "viewed" } })],
+    ["jobStatusDirty", JSON.stringify(["https://old/"])],
+  ]);
+  const ctx = vm.createContext({
+    setTimeout, Date, JSON, console,
+    fetch: () => Promise.reject(new Error("offline")),
+    localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
+    document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
+  });
+  vm.runInContext(readFileSync(new URL("../lib/dashboard-client-core.cjs", import.meta.url), "utf8"), ctx);
+  vm.runInContext(readFileSync(new URL("../lib/dashboard-client-dom.js", import.meta.url), "utf8"), ctx);
+  await vm.runInContext("ready", ctx);
+  await vm.runInContext("patchEntry('https://new/', { status: 'applied' })", ctx);
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirty")).sort(), ["https://new/", "https://old/"]);
+});

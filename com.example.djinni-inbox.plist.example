@@ -22,7 +22,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/example/linkedin-assistant/run-djinni.sh</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run-djinni.sh</string>
   </array>
 
   <!-- Runs every hour at minute 0 (00:00, 01:00, 02:00 ... 23:00). -->
@@ -30,9 +30,9 @@
   <dict><key>Minute</key><integer>0</integer></dict>
 
   <key>StandardOutPath</key>
-  <string>/Users/example/linkedin-assistant/logs/djinni.out.log</string>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/djinni.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/example/linkedin-assistant/logs/djinni.err.log</string>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/djinni.err.log</string>
 
   <key>RunAtLoad</key>
   <false/>

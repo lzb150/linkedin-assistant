@@ -13,15 +13,24 @@ fi
 
 "$NODE" dashboard.mjs   # regenerate applications/index.html (no --open)
 
-# Start the server only if port 7777 is not already listening.
+# Start the server only if port 7777 is not already listening. The nc check
+# alone is a race (two launchers can both see "not listening"), so the actual
+# start is guarded by an atomic mkdir lock: the winner starts the server and
+# drops the lock once the port is bound; everyone else just waits for the port.
 mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
+LOCK=state-server.lock
 if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
-  nohup "$NODE" state-server.mjs > "logs/state-server.log" 2>&1 &   # fresh log per (re)start
+  if mkdir "$LOCK" 2>/dev/null; then
+    nohup "$NODE" state-server.mjs > "logs/state-server.log" 2>&1 &   # fresh log per (re)start
+  fi
   # Give it a moment to bind before we open the browser.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 && break
     sleep 0.2
   done
+  # Winner or loser, the lock is only meant to cover the start window; removing
+  # it here also clears a stale lock left by a launcher that died mid-start.
+  rmdir "$LOCK" 2>/dev/null || true
   if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
     echo "open-dashboard.sh: state server did not start; see logs/state-server.log" >&2
     exit 1
