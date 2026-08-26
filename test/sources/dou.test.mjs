@@ -66,5 +66,5 @@ test("parseRss decodes HTML entities and unwraps CDATA in the description", () =
 });
 
 test("parseRss leaves no HTML tags in text (description is XML-escaped HTML)", () => {
-  for (const j of parseRss(xml)) assert.doesNotMatch(j.text, /<\/?[a-z][^>]*>/i, j.text.slice(0, 80));
+  for (const j of parseRss(fixture)) assert.doesNotMatch(j.text, /<\/?[a-z][^>]*>/i, j.text.slice(0, 80));
 });
