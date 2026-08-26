@@ -148,3 +148,9 @@ test("every frontmatter value is single-line and unsafe alt links are skipped", 
   assert.ok(!fm.includes("evil"));
   for (const line of fm.split("\n").slice(1)) assert.match(line, /^[a-z_]+: /);
 });
+
+test("with llm a non-array red_flags (model returned a string) does not throw", () => {
+  const llm = { score: 70, why: "ok", red_flags: "none", cover: "Dear team." };
+  const { markdown } = buildApplication(job, scored, llm);
+  assert.match(markdown, /^llm_why: ok$/m);
+});
