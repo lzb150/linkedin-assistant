@@ -5,6 +5,12 @@
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
 # After building, start it once:  open -a ./Jobs.app
+# and click Allow on the notification prompt (banners are posted by this app).
+#
+# NOTE: ad-hoc signing gives the app a new identity every build, which can leave
+# the notification permission stuck at "denied" (no prompt, "Notifications are
+# not allowed for this application"). Fix: bump CFBundleIdentifier below to a
+# fresh value and relaunch — macOS then prompts again.
 # Autostart at login via com.eugene.jobs-badge.plist (see README).
 set -euo pipefail
 
@@ -29,7 +35,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <dict>
   <key>CFBundleName</key><string>Вакансии</string>
   <key>CFBundleDisplayName</key><string>Вакансии</string>
-  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs</string>
+  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs.v2</string>
   <key>CFBundleExecutable</key><string>jobs</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
