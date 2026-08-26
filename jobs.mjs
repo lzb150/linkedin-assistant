@@ -29,7 +29,7 @@ import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { fetchWorkua } from "./lib/sources/workua.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
-import { log, notifyBanner } from "./lib/notify.mjs";
+import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser } from "./lib/browser.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -51,7 +51,7 @@ const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
 const notify = (msg) =>
-  notifyBanner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
+  banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
 
 // jobs-seen.json now stores identity keys (normalize(company)+title), not URLs,
 // so a vacancy is "seen" regardless of which source it came from. Older files

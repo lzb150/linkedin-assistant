@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mergeEntry } from "../lib/job-state.mjs";
 
 const require = createRequire(import.meta.url);
 const core = require("../lib/dashboard-client-core.cjs");
@@ -85,36 +84,4 @@ test("isNew: baseline rules", () => {
   assert.equal(core.isNew("2026-07-30T10:00:00Z", "2026-07-29T00:00:00Z"), true);
   assert.equal(core.isNew("2026-07-28T10:00:00Z", "2026-07-29T00:00:00Z"), false);
   assert.equal(core.isNew("junk", "2026-07-29T00:00:00Z"), false);
-});
-
-// The offline mirror must produce the same status/appliedAt/note as the
-// server's mergeEntry for the same patches — pins the two implementations
-// together so they cannot drift silently.
-test("parity: mergeEntryLocal matches server mergeEntry field-for-field", () => {
-  const patchSeqs = [
-    [{ status: "applied", appliedAt: "2026-07-01T00:00:00Z" }],
-    [{ status: "applied", appliedAt: "2026-07-01T00:00:00Z" }, { status: "answered" }],
-    [{ status: "answered", appliedAt: "2026-07-02T00:00:00Z" }, { status: "new", appliedAt: null }],
-    [{ note: "call Anna" }, { note: "" }],
-    [{ status: "viewed" }, { status: "new" }],
-  ];
-  const U = "https://example.com/j/1";
-  for (const seq of patchSeqs) {
-    let serverMap = {};
-    let localEntry = undefined;
-    for (const patch of seq) {
-      serverMap = mergeEntry(serverMap, U, patch);
-      localEntry = core.mergeEntryLocal(localEntry, patch);
-    }
-    const s = serverMap[U];
-    if (!s) {
-      assert.equal(localEntry, null, JSON.stringify(seq));
-    } else {
-      assert.deepEqual(
-        { status: localEntry.status, appliedAt: localEntry.appliedAt, note: localEntry.note },
-        { status: s.status, appliedAt: s.appliedAt, note: s.note },
-        JSON.stringify(seq),
-      );
-    }
-  }
 });

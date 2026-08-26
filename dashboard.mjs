@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
-import { openPath } from "./lib/open.mjs";
+import { execFile } from "node:child_process";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const APPS = join(__dir, "applications");
@@ -248,6 +248,7 @@ ${clientJs}
 writeFileSync(OUT, html);
 console.log(`Dashboard: ${OUT} (${items.length} jobs)`);
 
+// Best-effort: opening a browser is a convenience, not a requirement.
 if (process.argv.includes("--open")) {
-  openPath(OUT);
+  execFile(process.platform === "darwin" ? "open" : "xdg-open", [OUT], () => {});
 }
