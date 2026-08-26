@@ -114,6 +114,24 @@ test("appendAltLink is idempotent for an already-recorded url", () => {
   } finally { cleanup(); }
 });
 
+test("appendAltLink compares urls exactly, not as substrings", () => {
+  const { file, cleanup } = tmpPackage(FM.replace("\n---\n", "\nalt_links: djinni|https://dj/jobs/12\n---\n"));
+  try {
+    assert.equal(appendAltLink(file, "djinni", "https://dj/jobs/1"), true);
+    assert.match(readFileSync(file, "utf8"), /^alt_links: djinni\|https:\/\/dj\/jobs\/12, djinni\|https:\/\/dj\/jobs\/1$/m);
+  } finally { cleanup(); }
+});
+
+test("appendAltLink rejects urls carrying separators or whitespace", () => {
+  const { file, cleanup } = tmpPackage(FM);
+  try {
+    for (const bad of ["https://x/1|li", "https://x/1,y", "https://x/1 z", "https://x/1\nz"]) {
+      assert.equal(appendAltLink(file, "x", bad), false, bad);
+    }
+    assert.equal(readFileSync(file, "utf8"), FM);
+  } finally { cleanup(); }
+});
+
 test("appendAltLink refuses a file without frontmatter", () => {
   const { file, cleanup } = tmpPackage("no frontmatter here");
   try {
