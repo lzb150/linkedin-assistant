@@ -36,3 +36,13 @@ jobs:
           mkdir -p applications
           node dashboard.mjs
           grep -q "statusOfEntry" applications/index.html
+      - name: Lint shell scripts
+        shell: bash
+        run: bash -n *.sh *.sh.example
+      - name: Lint Swift app and launchd templates (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -e
+          xcrun swiftc -parse jobs-app.swift
+          plutil -lint *.plist.example

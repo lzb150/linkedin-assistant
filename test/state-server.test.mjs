@@ -102,3 +102,19 @@ test("oversize POST body is dropped without hanging the request", async (t) => {
     })
   );
 });
+
+test("rejects non-http(s) urls and oversized notes", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const post = (body) => fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }).then((r) => r.status);
+
+  assert.equal(await post({ url: "javascript:alert(1)", patch: { status: "viewed" } }), 400);
+  assert.equal(await post({ url: "__proto__", patch: { status: "viewed" } }), 400);
+  assert.equal(await post({ url: "https://x/", patch: { note: "n".repeat(10_001) } }), 400);
+  assert.equal(await post({ url: "https://x/", patch: { note: "n".repeat(10_000) } }), 200);
+});

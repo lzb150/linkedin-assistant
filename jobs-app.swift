@@ -67,7 +67,9 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 func handleActivation() {
     let (count, ids) = djinniUnread()
     if count > 0 {
-        let url = ids.count == 1
+        // Only a purely numeric id is safe to splice into a path; anything else
+        // (junk in the state file) falls back to the unread bucket.
+        let url = ids.count == 1 && !ids[0].isEmpty && ids[0].allSatisfy(\.isNumber)
             ? "https://djinni.co/my/inbox/\(ids[0])/"
             : "https://djinni.co/my/inbox?bucket=unread"
         dbg("activation -> Djinni (count=\(count), ids=\(ids.count)) \(url)")
@@ -79,13 +81,15 @@ func handleActivation() {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    var notifGranted = false
     let center = UNUserNotificationCenter.current()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
         dbg("launched; background=\(isBackground) state=\(statePath)")
         center.delegate = self
-        center.requestAuthorization(options: [.alert]) { granted, err in
+        center.requestAuthorization(options: [.alert]) { [weak self] granted, err in
+            self?.notifGranted = granted
             dbg("notifications granted=\(granted) error=\(String(describing: err))")
         }
         poll()                                          // immediate first pass
@@ -117,21 +121,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         postQueuedBanners()
     }
 
-    // Post every banners/*.json queued by lib/notify.mjs, then delete the file.
+    // Post every banners/*.json queued by lib/notify.mjs; a file is deleted only
+    // once its banner was accepted. Without notification permission the queue
+    // is left untouched so it can be inspected or drained once granted.
     func postQueuedBanners() {
+        guard notifGranted else { return }
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
         for name in names.sorted() where name.hasSuffix(".json") {
             let path = (bannersDir as NSString).appendingPathComponent(name)
-            defer { try? fm.removeItem(atPath: path) }
             guard let data = fm.contents(atPath: path),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  let message = obj["message"] as? String else { continue }
+                  let message = obj["message"] as? String else {
+                try? fm.removeItem(atPath: path)   // unreadable/malformed: drop, never retry
+                continue
+            }
             let content = UNMutableNotificationContent()
             content.title = (obj["title"] as? String) ?? "Вакансии"
             content.body = message
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
                 dbg("banner \(name) error=\(String(describing: err))")
+                if err == nil { try? fm.removeItem(atPath: path) }
             }
         }
     }

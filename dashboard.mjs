@@ -41,8 +41,8 @@ const parsed = files
   .filter(Boolean)
   .map((x) => ({
     ...x,
-    score: parseInt(x.fm.score || "0", 10),
-    llm: /^\d+$/.test(x.fm.llm_score || "") ? parseInt(x.fm.llm_score, 10) : null,
+    score: Number.isFinite(parseInt(x.fm.score, 10)) ? parseInt(x.fm.score, 10) : 0,
+    llm: /^\d+$/.test(x.fm.llm_score || "") && Number.isFinite(parseInt(x.fm.llm_score, 10)) ? parseInt(x.fm.llm_score, 10) : null,
     generated: x.fm.generated || "",
   }));
 
@@ -71,7 +71,8 @@ function scoreColor(s) {
 }
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#e8453c", djinni: "#3d3bd4", jooble: "#0a8f6c", robota: "#d6304b", workua: "#1c7ed6" };
+// All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
+const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3" };
 function badge(source) {
   const c = SOURCE_COLORS[source] || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
@@ -84,8 +85,9 @@ const cards = items
       .split(",").map((s) => s.trim()).filter(Boolean)
       .map((s) => `<span class="chip">${esc(s)}</span>`).join("");
     // Same vacancy on other boards (collected by dedupeJobs): "source|url, ...".
+    // Split only before the next "source|" so commas inside URLs survive.
     const alt = (f.alt_links || "")
-      .split(",").map((s) => s.trim()).filter(Boolean)
+      .split(/,\s*(?=[a-z]+\|)/).map((s) => s.trim()).filter(Boolean)
       .map((pair) => {
         const sep = pair.indexOf("|");
         const src = pair.slice(0, sep), url = pair.slice(sep + 1);
@@ -102,14 +104,14 @@ const cards = items
       ${it.llm != null ? `<div class="llm-row"><span class="llm">🤖 ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
-      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
+      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open ${esc(f.title || "—")} at ${esc(f.company || "—")}" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
       <div class="status-seg" role="group" aria-label="Status">
-        <button data-status="new" onclick="setStatus(this.closest('.card'),'new')">New</button>
-        <button data-status="viewed" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
-        <button data-status="applied" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
-        <button data-status="answered" onclick="setStatus(this.closest('.card'),'answered')">Answered</button>
-        <button data-status="interview" onclick="setStatus(this.closest('.card'),'interview')">Interview</button>
-        <button data-status="rejected" aria-label="Rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
+        <button data-status="new" aria-pressed="false" onclick="setStatus(this.closest('.card'),'new')">New</button>
+        <button data-status="viewed" aria-pressed="false" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
+        <button data-status="applied" aria-pressed="false" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
+        <button data-status="answered" aria-pressed="false" onclick="setStatus(this.closest('.card'),'answered')">Answered</button>
+        <button data-status="interview" aria-pressed="false" onclick="setStatus(this.closest('.card'),'interview')">Interview</button>
+        <button data-status="rejected" aria-pressed="false" aria-label="Rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
       </div>
       <span class="applied-ago" hidden></span>
     </div>
@@ -118,13 +120,13 @@ const cards = items
   ${altRow}
   <details ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')">
     <summary>Cover letter</summary>
-    <pre id="cover${idx}">${esc(it.cover)}</pre>
-    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter</button>
+    <pre id="cover${idx}" lang="${esc(f.cover_language || "en")}">${esc(it.cover)}</pre>
+    <button class="copy" aria-live="polite" onclick="copyCover(${idx}, this)">Copy letter</button>
     <span class="resume">📎 resume: ${esc(f.resume || "")}</span>
   </details>
   <details class="note-wrap">
     <summary>📝 Note <span class="note-has" hidden>●</span></summary>
-    <textarea class="note" rows="3" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
+    <textarea class="note" rows="3" aria-label="Private note" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
   </details>
 </article>`;
   })
@@ -188,7 +190,9 @@ const html = `<!doctype html>
   .status-seg button.active[data-status="interview"] { background: #8250df; color: #fff; }
   .status-seg button.active[data-status="rejected"] { background: #cf222e; color: #fff; }
   .card.applied { border-left: 4px solid #1a7f37; }
-  .card.rejected { opacity: .45; }
+  .card.rejected { background: #f6f8fa; border-left: 4px solid #cf222e; }
+  .card.rejected .titles h2 { color: #57606a; }
+  .status-seg button:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .min-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }
   .applied-ago { font-size: 11px; color: #1a7f37; text-align: center; }
   .funnel { font-size: 12px; color: #cdd9e5; margin-top: 6px; }
   .note-wrap summary { color: #57606a; }
@@ -210,29 +214,29 @@ const html = `<!doctype html>
   <div class="meta">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
-      <button data-filter="all" onclick="setFilter('all')">All <span class="cnt" id="cnt-all">0</span></button>
-      <button data-filter="new" class="active" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
-      <button data-filter="viewed" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
-      <button data-filter="applied" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
-      <button data-filter="answered" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
-      <button data-filter="interview" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
-      <button data-filter="rejected" aria-label="Rejected" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
-      <button data-filter="fresh" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
+      <button data-filter="all" aria-pressed="false" onclick="setFilter('all')">All <span class="cnt" id="cnt-all">0</span></button>
+      <button data-filter="new" class="active" aria-pressed="true" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
+      <button data-filter="viewed" aria-pressed="false" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      <button data-filter="applied" aria-pressed="false" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
+      <button data-filter="answered" aria-pressed="false" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
+      <button data-filter="interview" aria-pressed="false" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
+      <button data-filter="rejected" aria-pressed="false" aria-label="Rejected" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
+      <button data-filter="fresh" aria-pressed="false" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
-      <button data-src="all" class="active" onclick="setSource('all')">All</button>
-      <button data-src="linkedin" onclick="setSource('linkedin')">LinkedIn</button>
-      <button data-src="dou" onclick="setSource('dou')">DOU</button>
-      <button data-src="djinni" onclick="setSource('djinni')">Djinni</button>
-      <button data-src="jooble" onclick="setSource('jooble')">Jooble</button>
-      <button data-src="robota" onclick="setSource('robota')">Robota</button>
-      <button data-src="workua" onclick="setSource('workua')">Work.ua</button>
+      <button data-src="all" class="active" aria-pressed="true" onclick="setSource('all')">All</button>
+      <button data-src="linkedin" aria-pressed="false" onclick="setSource('linkedin')">LinkedIn</button>
+      <button data-src="dou" aria-pressed="false" onclick="setSource('dou')">DOU</button>
+      <button data-src="djinni" aria-pressed="false" onclick="setSource('djinni')">Djinni</button>
+      <button data-src="jooble" aria-pressed="false" onclick="setSource('jooble')">Jooble</button>
+      <button data-src="robota" aria-pressed="false" onclick="setSource('robota')">Robota</button>
+      <button data-src="workua" aria-pressed="false" onclick="setSource('workua')">Work.ua</button>
     </div>
     <div class="min-seg" role="group" aria-label="Minimum score">
-      <button data-min="0" class="active" onclick="setMin(this,0)">All</button>
-      <button data-min="30" onclick="setMin(this,30)">≥30</button>
-      <button data-min="40" onclick="setMin(this,40)">≥40</button>
+      <button data-min="0" class="active" aria-pressed="true" onclick="setMin(this,0)">All</button>
+      <button data-min="30" aria-pressed="false" onclick="setMin(this,30)">≥30</button>
+      <button data-min="40" aria-pressed="false" onclick="setMin(this,40)">≥40</button>
     </div>
   </div>
   <div class="funnel" id="funnel"></div>
