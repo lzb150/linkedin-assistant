@@ -122,6 +122,9 @@ SCAN_ALL=1 node check.mjs   # сканувати останні треди не�
 встановивши `com.eugene.jobs-badge.plist` у `~/Library/LaunchAgents/` (див.
 `com.example.jobs-badge.plist.example`). `check.mjs` також перезапускає його
 про всяк випадок при кожному скануванні.
+Усі macOS-банери також показує цей застосунок (черга `banners/*.json` від
+`lib/notify.mjs`), тож вони мають його іконку, а клік відкриває дешборд. Без
+зібраного `Jobs.app` — fallback на `osascript` (іконка Script Editor).
 
 ## Скринька Djinni (спільний бейдж у Dock)
 
@@ -241,7 +244,7 @@ rejected і розбивка за джерелами). До будь-якої к
 
 **Нагадування про фолоу-ап (`followup.mjs`)** — щоденне launchd-завдання
 (`com.eugene.jobs-followup.plist`, постачається як `.example`) показує
-macOS-сповіщення (через `osascript`) для кожної вакансії зі статусом
+macOS-сповіщення для кожної вакансії зі статусом
 **Applied** без руху 7+ днів. Нагадування замовкають самі, щойно картка
 рухається далі за Applied (Answered, Interview чи Rejected) — жодного
 смикання про вакансії, що вже отримали відповідь. Поріг налаштовується
