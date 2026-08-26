@@ -79,3 +79,9 @@ test("buildJobPrompt strips nested / spaced vacancy delimiters until stable", ()
   assert.equal((p.match(/<\/?\s*vacancy\b[^>]*>/gi) || []).length, 3, "no injected delimiter survives");
   assert.match(p, /Description:\na  b  c  d\n<\/vacancy>/);
 });
+
+test("buildJobPrompt strip is linear on hostile description text", () => {
+  const t = Date.now();
+  buildJobPrompt("r", { title: "t", company: "c", location: "l", text: "<vacancy ".repeat(20_000) }, "en");
+  assert.ok(Date.now() - t < 500);
+});
