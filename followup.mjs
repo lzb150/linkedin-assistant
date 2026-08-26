@@ -37,7 +37,8 @@ function saveDedupe(today, urls) {
   renameSync(tmp, DEDUPE);
 }
 
-const today = new Date().toISOString().slice(0, 10);
+// Local calendar day (toISOString is UTC and rolls over at a different hour).
+const today = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD
 const already = loadDedupe(today);
 const due = dueReminders({ stateMap: readStore(STATE), now: new Date(), thresholdDays: THRESHOLD_DAYS, alreadyNotified: already });
 const idx = jobIndex();

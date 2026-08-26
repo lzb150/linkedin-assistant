@@ -10,12 +10,13 @@
 //                                     seen.json still prevents duplicate drafts.)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
+import { loadSeenStore } from "./lib/seen-store.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -56,18 +57,11 @@ async function cardIsUnread(card) {
   return false;
 }
 
-function loadSeen() {
-  try { return new Set(JSON.parse(readFileSync(SEEN_FILE, "utf8"))); }
-  catch { return new Set(); }
-}
-function saveSeen(set) {
-  writeFileSync(SEEN_FILE, JSON.stringify([...set], null, 0));
-}
+// Thread ids already processed; entries expire after 90 days so the file
+// stops growing forever (legacy array files migrate on load).
+const seen = loadSeenStore(SEEN_FILE);
 
-const seen = loadSeen();
-
-const ctx = await launchBrowser(PROFILE);
-
+let ctx;
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
@@ -77,6 +71,7 @@ let unreadCount = 0;
 let counted = false;
 
 try {
+  ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
   const page = ctx.pages()[0] || (await ctx.newPage());
   await page.goto("https://www.linkedin.com/messaging/", { waitUntil: "domcontentloaded", timeout: 30000 });
 
@@ -99,20 +94,20 @@ try {
   // Keep the Dock-badge daemon (Jobs.app) alive, then count ALL unread threads
   // (independent of MAX and the job-relevance filter) — this drives the badge.
   ensureJobsApp();
-  for (const card of cards) {
-    if (await cardIsUnread(card)) unreadCount++;
-  }
+  // Computed once per card; reused by the scan loop below.
+  const unread = [];
+  for (const card of cards) unread.push(await cardIsUnread(card));
+  unreadCount = unread.filter(Boolean).length;
   log(`Unread threads: ${unreadCount}`);
   counted = true;
 
-  for (const card of cards) {
-    if (drafted + scanned >= MAX) break;
+  let lastOpened = null;
+  for (const [i, card] of cards.entries()) {
+    // MAX caps opened threads; drafted threads are already counted in scanned.
+    if (scanned >= MAX) break;
 
     // Is it unread? (best-effort, multi-strategy). SCAN_ALL bypasses this filter.
-    if (!SCAN_ALL) {
-      const isUnread = await cardIsUnread(card);
-      if (!isUnread) continue;
-    }
+    if (!SCAN_ALL && !unread[i]) continue;
 
     scanned++;
     let name = "Recruiter";
@@ -121,14 +116,19 @@ try {
       if (nameEl) name = (await nameEl.innerText()).trim().split("\n")[0] || name;
     } catch {}
 
-    // Open the thread.
+    // Open the thread. If the URL still points at the PREVIOUS opened thread the
+    // click failed — skip rather than misattribute that thread to this card.
+    // (LinkedIn auto-opens the first thread, so only compare against our own.)
     await card.click().catch(() => {});
     await page.waitForTimeout(1500);
     const url = page.url();
+    if (url === lastOpened) { log(`· could not open thread, skipping: ${name}`); continue; }
+    lastOpened = url;
 
-    // Stable-ish id from thread url; fallback to name+snippet hash.
+    // Stable-ish id from thread url; fallback includes the card index so two
+    // same-named recruiters do not collide.
     const idMatch = url.match(/thread\/([^/]+)/);
-    const threadId = idMatch ? idMatch[1] : `name:${name}`;
+    const threadId = idMatch ? idMatch[1] : `name:${name}:${i}`;
 
     // Read the message bubbles (most recent incoming text).
     let bubbles = [];
@@ -162,8 +162,9 @@ try {
   }
 } catch (err) {
   log("ERROR:", err?.message || err);
+  if (!ctx) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
-  saveSeen(seen);
+  seen.save();
   if (counted) {
     try {
       writeState(STATE_FILE, { count: unreadCount });
@@ -173,7 +174,7 @@ try {
   } else {
     log("notify: scan failed before counting — keeping previous badge state");
   }
-  await ctx.close();
+  await ctx?.close();
 }
 
 log(`Done. Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
