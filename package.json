@@ -8,6 +8,7 @@
     "login": "node login.mjs",
     "check": "node check.mjs",
     "jobs": "node jobs.mjs",
+    "notify:test": "open -n -a \"$PWD/Notifier.app\" --args \"Job assistant\" \"test banner — click me\"",
     "dashboard": "node dashboard.mjs && node state-server.mjs",
     "dashboard:bg": "./open-dashboard.sh",
     "test": "node --test"
