@@ -9,27 +9,28 @@
 // Run:  node prune-applications.mjs           (dry run — shows what would go)
 //       node prune-applications.mjs --apply   (actually delete)
 
-import { readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { canonicalKey } from "./lib/dedup.mjs";
+import { identityKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { readStore, statusOf } from "./lib/job-state.mjs";
 
 /**
  * Decide which package files to keep and which to remove.
- * Groups by canonicalKey — the same key jobs.mjs uses for cross-run dedup —
- * and keeps the most recently `generated` package per group; ties are broken
+ * Groups by identityKey — the same strict key the dashboard collapses on, so
+ * prune never deletes a card the dashboard still shows separately — and keeps the most recently `generated` package per group; ties are broken
  * deterministically by the larger filename. Packages with a status other than
  * "new" (viewed/applied/...) are never removed.
  * @param {{file:string, company:string, title:string, generated:string, status?:string}[]} packages
  * @returns {{ keep: string[], remove: string[] }}
  */
 export function planPrune(packages) {
+  const tracked = (p) => Boolean(p.status && p.status !== "new"); // viewed/applied/… → always keep
   const best = new Map();
   for (const p of packages) {
-    if (p.status && p.status !== "new") continue; // tracked by the user → keep as is
-    const key = canonicalKey({ company: p.company, title: p.title });
+    if (tracked(p)) continue;
+    const key = identityKey({ company: p.company, title: p.title });
     const cur = best.get(key);
     if (!cur) { best.set(key, p); continue; }
     const g = p.generated || "", cg = cur.generated || "";
@@ -37,7 +38,7 @@ export function planPrune(packages) {
   }
   const keepSet = new Set([...best.values()].map((p) => p.file));
   const keep = [], remove = [];
-  for (const p of packages) (keepSet.has(p.file) || (p.status && p.status !== "new") ? keep : remove).push(p.file);
+  for (const p of packages) (tracked(p) || keepSet.has(p.file) ? keep : remove).push(p.file);
   return { keep, remove };
 }
 
@@ -46,6 +47,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const apply = process.argv.includes("--apply");
   const ROOT = dirname(fileURLToPath(import.meta.url));
   const APPS = join(ROOT, "applications");
+  mkdirSync(APPS, { recursive: true }); // fresh clone: nothing to prune, but don't crash
   const state = readStore(join(ROOT, "job-state.json"));
   const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
   const packages = files.map((f) => {

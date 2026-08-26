@@ -48,3 +48,13 @@ test("acquireProfileLock does not take over an old lock whose pid is alive", (t)
   writeFileSync(join(`${p}.lock`, "pid"), String(process.pid));
   assert.throws(() => acquireProfileLock(p, { now: Date.now() + 3 * 3600_000 }), /profile busy/);
 });
+
+test("release() leaves a lock alone once another pid has taken it over", (t) => {
+  const p = tmp(t);
+  const release = acquireProfileLock(p);
+  // Simulate a takeover by another run (e.g. one that misjudged our pid dead).
+  writeFileSync(join(`${p}.lock`, "pid"), "999999");
+  release();
+  assert.ok(existsSync(`${p}.lock`));
+  assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), "999999");
+});

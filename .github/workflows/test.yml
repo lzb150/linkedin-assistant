@@ -28,14 +28,13 @@ jobs:
         shell: bash
         run: |
           set -e
-          for f in *.mjs lib/*.mjs lib/sources/*.mjs; do node --check "$f"; done
+          for f in *.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs; do node --check "$f"; done
       - name: Dashboard smoke build
         shell: bash
         run: |
           set -e
-          mkdir -p applications
           node dashboard.mjs
-          grep -q "statusOfEntry" applications/index.html
+          grep -q "advanceLastVisit" applications/index.html
       - name: Lint shell scripts
         shell: bash
         run: bash -n *.sh *.sh.example
