@@ -48,3 +48,14 @@ test("stripHtml / extractDivByClass stay linear on junk full of unclosed '<' (Re
   let t = Date.now(); stripHtml(junk); assert.ok(Date.now() - t < 500, "stripHtml too slow");
   t = Date.now(); extractDivByClass("<a ".repeat(50_000), "x"); assert.ok(Date.now() - t < 500, "extractDivByClass too slow");
 });
+
+test("extractDivByClass stays linear when the opening div DOES match (depth scan + comment strip)", () => {
+  const open = '<div class="job x">';
+  let t = Date.now(); extractDivByClass(open + "<div".repeat(50_000), "job"); assert.ok(Date.now() - t < 500, "depth scan too slow");
+  t = Date.now(); extractDivByClass(open + "<!--".repeat(50_000), "job"); assert.ok(Date.now() - t < 500, "comment strip too slow");
+  t = Date.now(); extractDivByClass(open + "<script>".repeat(20_000), "job"); assert.ok(Date.now() - t < 500, "script strip too slow");
+});
+
+test("stripHtml drops tags longer than the bounded scan (inline SVG / data: URI)", () => {
+  assert.equal(stripHtml('<img src="' + "a".repeat(5000) + '">hello'), "hello");
+});

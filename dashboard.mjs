@@ -58,7 +58,7 @@ for (const it of parsed) if (it.fm.salary) it.fm.salary = it.fm.salary.replace(/
 // generated package so the dashboard reflects the latest data.
 const byIdentity = new Map();
 for (const it of parsed) {
-  const key = identityKey({ company: it.fm.company, title: it.fm.title });
+  const key = identityKey({ company: it.fm.company, title: it.fm.title, url: it.fm.url }); // url scopes blank companies
   const prev = byIdentity.get(key);
   if (!prev || (it.fm.generated || "") > (prev.fm.generated || "")) byIdentity.set(key, it);
 }

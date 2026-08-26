@@ -30,8 +30,9 @@ jobs:
           set -e
           for f in *.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs; do node --check "$f"; done
           # Playwright: page.$()/el.$() return ONE handle — iterating/slicing it is a
-          # silent TypeError behind catch {} (bit us twice). Only $$ may be iterated.
-          ! grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)' *.mjs lib/*.mjs lib/sources/*.mjs
+          # silent TypeError behind catch {} (bit us twice). Convention: a single
+          # handle is either consumed via .then(Boolean) or bound to a *El name.
+          ! grep -nE 'await [a-zA-Z_.]+\.\$\(' *.mjs lib/*.mjs lib/sources/*.mjs | grep -vE '[eE]l = await|\.then\(Boolean\)'
       - name: Dashboard smoke build
         shell: bash
         run: |

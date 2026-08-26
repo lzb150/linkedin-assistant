@@ -74,3 +74,11 @@ test("planPrune keeps every tracked package and still prunes the older 'new' one
   assert.deepEqual(keep.sort(), ["new-newest.md", "viewed-old.md", "viewed-older.md"]);
   assert.deepEqual(remove, ["new-old.md"]);
 });
+
+test("planPrune keeps blank-company packages from different urls apart", () => {
+  const plan = planPrune([
+    { file: "a.md", company: "—", title: "QA Engineer", url: "https://a.example/jobs/1", generated: "2026-08-01" },
+    { file: "b.md", company: "—", title: "QA Engineer", url: "https://b.example/jobs/2", generated: "2026-08-02" },
+  ]);
+  assert.deepEqual(plan.remove, []);
+});

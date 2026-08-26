@@ -30,7 +30,7 @@ export function planPrune(packages) {
   const best = new Map();
   for (const p of packages) {
     if (tracked(p)) continue;
-    const key = identityKey({ company: p.company, title: p.title });
+    const key = identityKey({ company: p.company, title: p.title, url: p.url }); // url scopes blank companies
     const cur = best.get(key);
     if (!cur) { best.set(key, p); continue; }
     const g = p.generated || "", cg = cur.generated || "";
@@ -52,7 +52,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
   const packages = files.map((f) => {
     const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {};
-    return { file: f, company: fm.company || "", title: fm.title || "", generated: fm.generated || "", status: statusOf(state, fm.url) };
+    return { file: f, company: fm.company || "", title: fm.title || "", url: fm.url || "", generated: fm.generated || "", status: statusOf(state, fm.url) };
   });
 
   const { keep, remove } = planPrune(packages);
