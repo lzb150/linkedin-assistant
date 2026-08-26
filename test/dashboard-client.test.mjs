@@ -82,6 +82,49 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
   assert.equal(state["https://example.com/jobs/1/"].status, "applied");
 });
 
+// Boot the inlined client (core + dom) in a vm against a fake window.
+async function bootClient({ fetch, store }) {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const ctx = vm.createContext({
+    setTimeout, Date, JSON, console, fetch,
+    localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
+    document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
+  });
+  vm.runInContext(readFileSync(new URL("../lib/dashboard-client-core.cjs", import.meta.url), "utf8"), ctx);
+  vm.runInContext(readFileSync(new URL("../lib/dashboard-client-dom.js", import.meta.url), "utf8"), ctx);
+  await vm.runInContext("ready", ctx);
+  return { ctx, run: (code) => vm.runInContext(code, ctx) };
+}
+const fakeCard = (url) => ({ dataset: { url }, classList: { toggle() {} }, querySelectorAll: () => [], querySelector: () => null });
+
+// After an online session the cache stays as a read mirror of the server, so
+// an offline reload shows the real statuses; re-applying keeps appliedAt.
+test("online session mirrors server state to localStorage; offline reload keeps statuses and appliedAt", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "dash-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const port = await listen(srv);
+  const store = new Map();
+  const U = "https://example.com/jobs/1/";
+
+  const on = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  on.ctx.card = fakeCard(U);
+  await on.run("setStatus(card, 'applied')");
+  const appliedAt = JSON.parse(store.get("jobStatus"))[U].appliedAt;
+  assert.ok(appliedAt, "mirror holds the server-assigned appliedAt");
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), []);
+
+  const off = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  assert.equal(off.run(`statusOf(${JSON.stringify(U)})`), "applied");
+  off.ctx.card = fakeCard(U);
+  await off.run("setStatus(card, 'applied')");
+  assert.equal(off.run(`entryOf(${JSON.stringify(U)}).appliedAt`), appliedAt);
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), [U]);
+});
+
 // The offline branch of initState must restore the dirty list saved by an
 // earlier offline session, or those edits never reach the server.
 test("offline: dirty urls from a previous session survive a reload", async () => {

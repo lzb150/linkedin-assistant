@@ -19,18 +19,20 @@ fi
 # drops the lock once the port is bound; everyone else just waits for the port.
 mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
 LOCK=state-server.lock
+WON=0
 if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
   if mkdir "$LOCK" 2>/dev/null; then
-    nohup "$NODE" state-server.mjs > "logs/state-server.log" 2>&1 &   # fresh log per (re)start
+    WON=1
+    nohup "$NODE" state-server.mjs >> "logs/state-server.log" 2>&1 &   # append: keep earlier crash output
   fi
   # Give it a moment to bind before we open the browser.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 && break
     sleep 0.2
   done
-  # Winner or loser, the lock is only meant to cover the start window; removing
-  # it here also clears a stale lock left by a launcher that died mid-start.
-  rmdir "$LOCK" 2>/dev/null || true
+  # Only the mkdir winner drops the lock: a loser removing it would reopen the
+  # start window for a third launcher while the winner is still binding.
+  [ "$WON" = 1 ] && { rmdir "$LOCK" 2>/dev/null || true; }
   if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
     echo "open-dashboard.sh: state server did not start; see logs/state-server.log" >&2
     exit 1
