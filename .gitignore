@@ -66,6 +66,11 @@ followup-notify-state.json.tmp
 # Stray applet backup from an old build-jobs.sh (committed by mistake once)
 Jobs.app.orig/
 
+# Browser-profile / run locks (lib/browser.mjs acquireProfileLock: `<name>.lock/` dirs)
+.browser-profile.lock/
+.djinni-profile.lock/
+jobs-run.lock/
+
 # Local tooling scratch dirs
 .superpowers/
 .playwright-cli/

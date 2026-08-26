@@ -30,11 +30,23 @@ import { fetchWorkua } from "./lib/sources/workua.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
-import { launchBrowser } from "./lib/browser.mjs";
+import { launchBrowser, acquireProfileLock } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+
+// Run-wide lock (jobs-run.lock/): two overlapping runs (launchd + manual) would
+// both read jobs-seen.json, both write packages for the same vacancy, and the
+// last save would drop the other's entries. Second run exits quietly — 0 so
+// launchd does not flag it as a failure. Released on process exit.
+try {
+  acquireProfileLock(join(__dir, "jobs-run"));
+} catch (e) {
+  if (!/profile busy/.test(e.message)) throw e;
+  log("another jobs.mjs run is active — exiting");
+  process.exit(0);
+}
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 const SEEN_FILE = join(__dir, "jobs-seen.json");
@@ -115,6 +127,7 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
         await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
         if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
           log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
+          recordFound(summary, "linkedin", 0); // expired session is a hard failure for health monitoring
         } else {
           log("Gathering LinkedIn jobs (scraping, modest)...");
           const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
@@ -134,6 +147,11 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
   } catch (e) {
     log("Browser sources error:", e.message);
     if (!ctx) notify(`Browser launch failed: ${e.message}`);
+    // Launch/lock failure happens before the per-source catches: record 0 for
+    // every enabled browser source so health monitoring sees the outage.
+    for (const s of ["linkedin", "robota"]) {
+      if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
+    }
   } finally {
     await ctx?.close();
   }
@@ -189,7 +207,9 @@ let written = 0, considered = 0;
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
-  if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); continue; }
+  // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
+  // a vacancy still live after 90 days must not resurface as new.
+  if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
   const existing = packageIndex.get(canonicalKey(job));
   if (existing && existing.source !== job.source) {
     try { appendAltLink(join(APPS, existing.file), job.source, job.url); } catch {}

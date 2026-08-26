@@ -11,6 +11,7 @@
 
 import { launchBrowser } from "./lib/browser.mjs";
 import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
@@ -101,7 +102,9 @@ try {
   log(`Unread threads: ${unreadCount}`);
   counted = true;
 
-  let lastOpened = null;
+  // LinkedIn auto-opens the first thread on load: seed with the current URL so
+  // a failed click on card 0 is detected instead of attributing that thread to it.
+  let lastOpened = page.url();
   for (const [i, card] of cards.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
@@ -125,11 +128,6 @@ try {
     if (url === lastOpened) { log(`· could not open thread, skipping: ${name}`); continue; }
     lastOpened = url;
 
-    // Stable-ish id from thread url; fallback includes the card index so two
-    // same-named recruiters do not collide.
-    const idMatch = url.match(/thread\/([^/]+)/);
-    const threadId = idMatch ? idMatch[1] : `name:${name}:${i}`;
-
     // Read the message bubbles (most recent incoming text).
     let bubbles = [];
     try {
@@ -142,7 +140,15 @@ try {
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
-    if (seen.has(threadId)) { log(`· already processed: ${name}`); continue; }
+    // Stable id from the thread url. URL-less fallback hashes name + first
+    // bubble: the list index would shift as new threads arrive and re-draft.
+    const idMatch = url.match(/thread\/([^/]+)/);
+    const threadId = idMatch
+      ? idMatch[1]
+      : `name:${createHash("sha1").update(`${name}\n${bubbles[0] || ""}`).digest("hex").slice(0, 12)}`;
+
+    // Re-stamp so the TTL is "last seen" and a long-lived thread does not resurface.
+    if (seen.has(threadId)) { log(`· already processed: ${name}`); seen.add(threadId); continue; }
 
     if (!fullText || !looksLikeJobMessage(fullText)) {
       log(`· not a job message, skipping: ${name}`);
@@ -162,9 +168,11 @@ try {
   }
 } catch (err) {
   log("ERROR:", err?.message || err);
-  if (!ctx) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
+  // "profile busy" = benign overlap with another run (jobs.mjs/login.mjs); log only.
+  if (!ctx && !/profile busy/.test(err?.message || "")) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
-  seen.save();
+  // Must not throw: writeState and ctx.close below still have to run.
+  try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); }
   if (counted) {
     try {
       writeState(STATE_FILE, { count: unreadCount });
