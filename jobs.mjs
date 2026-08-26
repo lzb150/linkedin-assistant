@@ -198,7 +198,9 @@ const packageIndex = new Map();
     if (!f.endsWith(".md")) continue;
     try {
       const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8"));
-      if (fm?.title && fm?.company) packageIndex.set(canonicalKey(fm), { file: f, source: fm.source || "" });
+      // "—" is the blank-company placeholder; canonicalKey scopes those by url,
+      // so pass the url along instead of filtering on a truthy company.
+      if (fm?.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: f, source: fm.source || "" });
     } catch { log(`  · unreadable package skipped: ${f}`); }
   }
 }

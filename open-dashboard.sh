@@ -21,8 +21,12 @@ mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
 LOCK=state-server.lock
 WON=0
 if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
+  # A launcher killed between mkdir and rmdir would leave the lock forever;
+  # the start window is ~2s, so a lock older than a minute is stale.
+  find "$LOCK" -maxdepth 0 -type d -mmin +1 -exec rmdir {} \; 2>/dev/null || true
   if mkdir "$LOCK" 2>/dev/null; then
     WON=1
+    trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT   # released even on Ctrl-C / set -e abort
     nohup "$NODE" state-server.mjs >> "logs/state-server.log" 2>&1 &   # append: keep earlier crash output
   fi
   # Give it a moment to bind before we open the browser.
@@ -30,11 +34,10 @@ if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
     /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 && break
     sleep 0.2
   done
-  # Only the mkdir winner drops the lock: a loser removing it would reopen the
-  # start window for a third launcher while the winner is still binding.
-  [ "$WON" = 1 ] && { rmdir "$LOCK" 2>/dev/null || true; }
+  # Only the mkdir winner drops the lock (via the EXIT trap): a loser removing
+  # it would reopen the start window for a third launcher mid-bind.
   if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
-    echo "open-dashboard.sh: state server did not start; see logs/state-server.log" >&2
+    echo "open-dashboard.sh: state server did not start (lock: $LOCK, WON=$WON); see logs/state-server.log" >&2
     exit 1
   fi
 fi

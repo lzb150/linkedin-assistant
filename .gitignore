@@ -66,6 +66,7 @@ Jobs.app.orig/
 .browser-profile.lock/
 .djinni-profile.lock/
 jobs-run.lock/
+state-server.lock/
 
 # Local tooling scratch dirs
 .superpowers/

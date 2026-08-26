@@ -171,3 +171,17 @@ test("dedupeJobs copies the group's longest text onto a keeper for scoring", () 
   assert.equal(deduped[0].source, "linkedin");
   assert.ok(deduped[0].text.startsWith("the longest"));
 });
+
+test("identityKey/canonicalKey scope a blank company by url so unrelated postings stay apart", () => {
+  const a = { company: "", title: "QA Automation Engineer", url: "https://a.example/jobs/1" };
+  const b = { company: "—", title: "QA Automation Engineer", url: "https://b.example/jobs/2" };
+  assert.notEqual(identityKey(a), identityKey(b));
+  assert.notEqual(canonicalKey(a), canonicalKey(b));
+  assert.equal(identityKey(a), identityKey({ ...a, company: "—" })); // placeholder == blank
+});
+
+test("normalizeCompany is monotonic for suffix-only names", () => {
+  assert.equal(normalizeCompany("Group"), "group");
+  assert.equal(normalizeCompany("Group LLC"), "group");
+  assert.equal(normalizeCompany("Acme LLC"), "acme");
+});
