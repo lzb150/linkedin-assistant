@@ -9,6 +9,7 @@ export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr
 
 cd "$(dirname "$0")"
 mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
+find "$PWD/logs" -name '*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation
 STAMP="$(date +%Y%m%d_%H%M%S)"
 
 node djinni-check.mjs >> "logs/djinni_${STAMP}.log" 2>&1

@@ -31,6 +31,8 @@ import { fetchRobota } from "./lib/sources/robota.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser } from "./lib/browser.mjs";
+import { loadSeenStore } from "./lib/seen-store.mjs";
+import { writeJsonAtomic } from "./lib/json-file.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -53,22 +55,18 @@ if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is mi
 const notify = (msg) =>
   banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
 
-// jobs-seen.json now stores identity keys (normalize(company)+title), not URLs,
-// so a vacancy is "seen" regardless of which source it came from. Older files
-// hold URLs — detect that legacy format and start fresh (history is rebuilt
-// from the jobs processed in this run).
-function loadSeen() {
-  try {
-    const entries = JSON.parse(readFileSync(SEEN_FILE, "utf8"));
-    if (entries.some((e) => typeof e === "string" && e.startsWith("http"))) {
-      log("jobs-seen.json is in the legacy URL format — migrating to identity keys (starting fresh)");
-      return new Set();
-    }
-    return new Set(entries);
-  } catch { return new Set(); }
-}
-const seen = loadSeen();
-const saveSeen = () => writeFileSync(SEEN_FILE, JSON.stringify([...seen], null, 0));
+// jobs-seen.json stores identity keys (normalize(company)+title) with a
+// last-seen timestamp (90-day TTL), so a vacancy is "seen" regardless of
+// source and the file stops growing forever. Legacy array files migrate on
+// load; the oldest URL-keyed format starts fresh.
+const seen = loadSeenStore(SEEN_FILE, {
+  isLegacy: (arr) => {
+    const stale = arr.some((e) => typeof e === "string" && e.startsWith("http"));
+    if (stale) log("jobs-seen.json is in the legacy URL format — migrating to identity keys (starting fresh)");
+    return stale;
+  },
+});
+const saveSeen = () => seen.save();
 
 // source-health.json keeps the last 10 runs' `found` counts per source so we
 // can warn when a source degrades well below its recent norm (a likely sign
@@ -97,26 +95,33 @@ for (const s of BROWSERLESS_SOURCES) {
     const found = await s.fetch(config[s.name], log);
     recordFound(summary, s.name, found.length);
     jobs.push(...found);
-  } catch (e) { log(`${s.name} error:`, e.message); }
+  } catch (e) {
+    log(`${s.name} error:`, e.message);
+    recordFound(summary, s.name, 0); // a hard failure must count as 0 so health monitoring alerts
+  }
 }
 
 // 4–5) Browser sources: LinkedIn (needs login) and Robota.ua (Cloudflare-gated,
-// no login) share one Playwright context.
+// no login) share one Playwright context. Each source has its own try/catch so
+// one failing does not skip the other or hide from health monitoring.
 if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
-  const ctx = await launchBrowser(PROFILE);
+  let ctx;
   try {
+    ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
     const page = ctx.pages()[0] || (await ctx.newPage());
     if (config.linkedin?.enabled) {
-      // bail early if logged out
-      await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
-      if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
-        log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
-      } else {
-        log("Gathering LinkedIn jobs (scraping, modest)...");
-        const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
-        recordFound(summary, "linkedin", liJobs.length);
-        jobs.push(...liJobs);
-      }
+      try {
+        // bail early if logged out
+        await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
+        if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
+          log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
+        } else {
+          log("Gathering LinkedIn jobs (scraping, modest)...");
+          const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
+          recordFound(summary, "linkedin", liJobs.length);
+          jobs.push(...liJobs);
+        }
+      } catch (e) { log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
     }
     if (config.robota?.enabled) {
       log("Gathering Robota.ua...");
@@ -124,12 +129,13 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
         const rJobs = await fetchRobota(page, config.robota, log);
         recordFound(summary, "robota", rJobs.length);
         jobs.push(...rJobs);
-      } catch (e) { log("Robota.ua error:", e.message); }
+      } catch (e) { log("Robota.ua error:", e.message); recordFound(summary, "robota", 0); }
     }
   } catch (e) {
     log("Browser sources error:", e.message);
+    if (!ctx) notify(`Browser launch failed: ${e.message}`);
   } finally {
-    await ctx.close();
+    await ctx?.close();
   }
 }
 
@@ -153,12 +159,14 @@ log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length}
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
 // so a senior role whose description mentions "junior" (e.g. "mentor junior
 // engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
-const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => t.toLowerCase());
+// Regexes compiled once at load, not per job.
+const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => ({
+  term: t.toLowerCase(),
+  re: new RegExp(`(^|[^a-z0-9])${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
+}));
 function excludedByTitle(title) {
   const t = (title || "").toLowerCase();
-  return EXCLUDE_TITLE.find((term) =>
-    new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(t)
-  );
+  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
 }
 
 // Canonical-key index of existing packages (cross-run dedup): the same vacancy
@@ -252,12 +260,12 @@ log("\n" + formatTable(summary));
 // recent norm, then append this run's counts to the history.
 const degraded = detectDegradations(health, summary);
 if (degraded.length) notify(formatAlert(degraded));
-writeFileSync(HEALTH_FILE, JSON.stringify(appendHistory(health, currentCounts(summary)), null, 0));
+writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {
   const { execFileSync } = await import("node:child_process");
-  execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: "ignore" });
+  execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: "ignore", timeout: 60_000 });
 } catch (e) {
   log("dashboard refresh skipped:", e.message);
 }
