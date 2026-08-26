@@ -68,3 +68,14 @@ test("parseRss decodes HTML entities and unwraps CDATA in the description", () =
 test("parseRss leaves no HTML tags in text (description is XML-escaped HTML)", () => {
   for (const j of parseRss(fixture)) assert.doesNotMatch(j.text, /<\/?[a-z][^>]*>/i, j.text.slice(0, 80));
 });
+
+test("parseRss drops a salary part from the company when the rest has 3+ parts", () => {
+  const xml = `<rss><channel><item>
+    <title>QA Engineer в Acme, $3000-5000, Київ</title>
+    <link>https://jobs.dou.ua/x/4/</link>
+    <description>d</description>
+  </item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.company, "Acme");
+  assert.equal(job.location, "Київ");
+});

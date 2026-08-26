@@ -45,3 +45,11 @@ test("ceiling does not match non-salary 'up to N' phrases", () => {
 test("range followed by a sentence comma keeps the number clean", () => {
   assert.equal(extractSalary("Salary $2800–3500, fully remote"), "$2800–3500");
 });
+
+test("long digit/comma runs finish in linear time (no catastrophic backtracking)", () => {
+  for (const big of ["1".repeat(50_000), "111,".repeat(12_500), "1 1,".repeat(12_500)]) {
+    const t = performance.now();
+    extractSalary(big);
+    assert.ok(performance.now() - t < 100, "50 KB scan took too long");
+  }
+});

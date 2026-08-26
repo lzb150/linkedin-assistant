@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDiv } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -33,4 +33,12 @@ test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   assert.match(logs[0], /dou 404: https:\/\/x\/1/);
   const okFetch = async () => ({ ok: true, status: 200, text: async () => "body" });
   assert.equal(await fetchText("https://x/1", () => {}, "dou", undefined, okFetch), "body");
+});
+
+test("extractDiv ignores a '</div>' string inside <script> and a commented-out <div>", () => {
+  const re = /<div id="d">/;
+  const script = `<div id="d"><SCRIPT>var s = "</div>";</SCRIPT><p>body</p></div><p>after</p>`;
+  assert.equal(stripHtml(extractDiv(script, re)), "body");
+  const comment = `<div id="d"><!-- <div class="old"> --><p>body</p></div><p>after</p>`;
+  assert.equal(stripHtml(extractDiv(comment, re)), "body");
 });

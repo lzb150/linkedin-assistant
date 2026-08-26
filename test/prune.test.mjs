@@ -43,14 +43,14 @@ test("planPrune breaks a generated-time tie deterministically by filename", () =
   assert.deepEqual(remove, ["aaa.md"]);
 });
 
-test("planPrune groups by canonicalKey like jobs.mjs (req numbers and AQA alias collapse)", () => {
+test("planPrune groups by identityKey like the dashboard: distinct req numbers stay separate", () => {
   const pkgs = [
     { file: "a.md", company: "Ciklum", title: "AQA Engineer (3282)", generated: "2026-06-09T00:00" },
     { file: "b.md", company: "Ciklum", title: "Automation QA Engineer", generated: "2026-06-10T00:00" },
   ];
   const { keep, remove } = planPrune(pkgs);
-  assert.deepEqual(keep, ["b.md"]);
-  assert.deepEqual(remove, ["a.md"]);
+  assert.deepEqual(keep.sort(), ["a.md", "b.md"]);
+  assert.deepEqual(remove, []);
 });
 
 test("planPrune never removes a package with a non-new status", () => {
@@ -61,4 +61,16 @@ test("planPrune never removes a package with a non-new status", () => {
   const { keep, remove } = planPrune(pkgs);
   assert.deepEqual(keep.sort(), ["applied.md", "newer.md"]);
   assert.deepEqual(remove, []);
+});
+
+test("planPrune keeps every tracked package and still prunes the older 'new' ones", () => {
+  const pkgs = [
+    { file: "viewed-old.md", company: "X", title: "SDET", generated: "2026-06-01T00:00", status: "viewed" },
+    { file: "viewed-older.md", company: "X", title: "SDET", generated: "2026-05-01T00:00", status: "viewed" },
+    { file: "new-old.md", company: "X", title: "SDET", generated: "2026-06-09T00:00", status: "new" },
+    { file: "new-newest.md", company: "X", title: "SDET", generated: "2026-06-12T00:00" },
+  ];
+  const { keep, remove } = planPrune(pkgs);
+  assert.deepEqual(keep.sort(), ["new-newest.md", "viewed-old.md", "viewed-older.md"]);
+  assert.deepEqual(remove, ["new-old.md"]);
 });

@@ -1,6 +1,6 @@
 // Builds a single self-contained HTML dashboard of all application packages
 // in applications/, sorted by score. Run:  node dashboard.mjs [--open]
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
@@ -10,6 +10,8 @@ import { execFile } from "node:child_process";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const APPS = join(__dir, "applications");
 const OUT = join(APPS, "index.html");
+// Fresh clone has no applications/ yet; build an empty dashboard instead of crashing.
+mkdirSync(APPS, { recursive: true });
 
 // The client script ships as two standalone files inlined at build time:
 // the unit-tested pure core (.cjs so node:test can require it) and the DOM

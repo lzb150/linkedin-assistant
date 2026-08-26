@@ -17,13 +17,16 @@ function send(res, code, body, type = "application/json") {
 
 function readBody(req) {
   return new Promise((resolve) => {
-    let data = "";
+    // Buffer chunks and decode once: a multi-byte character split across two
+    // chunks would be mangled by per-chunk toString(). The cap counts bytes.
+    const chunks = [];
+    let bytes = 0;
     // resolve(null) alongside destroy(): destroy emits neither "end" nor
     // "error", so without it this promise would hang forever.
-    req.on("data", (c) => { data += c; if (data.length > 1e6) { req.destroy(); resolve(null); } });
+    req.on("data", (c) => { chunks.push(c); bytes += c.length; if (bytes > 1e6) { req.destroy(); resolve(null); } });
     req.on("error", () => resolve(null));
     req.on("close", () => resolve(null)); // client aborted mid-body
-    req.on("end", () => { try { resolve(JSON.parse(data || "{}")); } catch { resolve(null); } });
+    req.on("end", () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); } catch { resolve(null); } });
   });
 }
 

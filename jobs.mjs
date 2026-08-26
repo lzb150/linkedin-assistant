@@ -7,7 +7,7 @@
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -49,6 +49,8 @@ try {
 }
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
+// Fresh clone has no applications/ yet; readdirSync/writeFileSync below need it.
+mkdirSync(APPS, { recursive: true });
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
 const DOU_ONLY = process.env.DOU_ONLY === "1";
@@ -191,7 +193,7 @@ function excludedByTitle(title) {
 // resurfacing on ANOTHER board must not spawn a second package — its link is
 // appended to the existing one instead. Same source = a distinct req, allowed.
 const packageIndex = new Map();
-if (existsSync(APPS)) {
+{
   for (const f of readdirSync(APPS)) {
     if (!f.endsWith(".md")) continue;
     try {
@@ -212,7 +214,8 @@ for (const job of jobs) {
   if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
   const existing = packageIndex.get(canonicalKey(job));
   if (existing && existing.source !== job.source) {
-    try { appendAltLink(join(APPS, existing.file), job.source, job.url); } catch {}
+    try { appendAltLink(join(APPS, existing.file), job.source, job.url); }
+    catch (e) { log(`  · alt-link append failed (${existing.file}): ${e.message}`); }
     log(`  · dup-of-existing (${existing.file}) ${job.source}: ${job.title}`);
     recordOutcome(summary, job.source, "seen");
     seen.add(id);

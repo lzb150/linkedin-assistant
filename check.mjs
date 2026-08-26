@@ -10,7 +10,7 @@
 //                                     seen.json still prevents duplicate drafts.)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -23,6 +23,7 @@ import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
+mkdirSync(DRAFTS, { recursive: true }); // fresh clone has no drafts/ yet
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 // Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`
@@ -129,9 +130,10 @@ try {
     lastOpened = url;
 
     // Read the message bubbles (most recent incoming text).
-    let bubbles = [];
+    let bubbles = [], oldest = "";
     try {
-      const els = await page.$$(SEL.messageBubble);
+      const els = await page.$(SEL.messageBubble);
+      if (els.length) oldest = (await els[0].innerText()).trim();
       for (const el of els.slice(-12)) {
         const t = (await el.innerText()).trim();
         if (t) bubbles.push(t);
@@ -140,12 +142,12 @@ try {
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
-    // Stable id from the thread url. URL-less fallback hashes name + first
-    // bubble: the list index would shift as new threads arrive and re-draft.
+    // Stable id from the thread url. URL-less fallback hashes name + the OLDEST
+    // bubble (not the first of the last-12 window, which shifts as replies arrive).
     const idMatch = url.match(/thread\/([^/]+)/);
     const threadId = idMatch
       ? idMatch[1]
-      : `name:${createHash("sha1").update(`${name}\n${bubbles[0] || ""}`).digest("hex").slice(0, 12)}`;
+      : `name:${createHash("sha1").update(`${name}\n${oldest}`).digest("hex").slice(0, 12)}`;
 
     // Re-stamp so the TTL is "last seen" and a long-lived thread does not resurface.
     if (seen.has(threadId)) { log(`· already processed: ${name}`); seen.add(threadId); continue; }
