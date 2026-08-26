@@ -64,3 +64,7 @@ test("parseRss decodes HTML entities and unwraps CDATA in the description", () =
   assert.ok(job.text.includes("Build & ship quality"), "entity decoded, CDATA unwrapped");
   assert.ok(!job.text.includes("CDATA"));
 });
+
+test("parseRss leaves no HTML tags in text (description is XML-escaped HTML)", () => {
+  for (const j of parseRss(fixture)) assert.doesNotMatch(j.text, /<\/?[a-z][^>]*>/i, j.text.slice(0, 80));
+});
