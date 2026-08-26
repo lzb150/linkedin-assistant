@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Build Jobs.app — the "Вакансии" launcher that also shows the unread LinkedIn
-# message count as a red Dock badge. Replaces the former AppleScript applet
-# (the original is preserved at Jobs.app.orig). The built .app is git-ignored;
+# message count as a red Dock badge. The built .app is git-ignored;
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
 # After building, start it once:  open -a ./Jobs.app
@@ -12,12 +11,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP="$DIR/Jobs.app"
 
 echo "Building $APP …"
-
-# Preserve the original applet once, in case it is still the live Jobs.app.
-if [ -d "$APP" ] && [ ! -d "$DIR/Jobs.app.orig" ]; then
-  cp -R "$APP" "$DIR/Jobs.app.orig"
-  echo "  backed up original applet to Jobs.app.orig"
-fi
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -40,7 +33,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# Icon: reuse the original applet's icon (extracted to jobs.icns).
+# Icon: jobs.icns.
 if [ -f "$DIR/jobs.icns" ]; then
   cp "$DIR/jobs.icns" "$APP/Contents/Resources/AppIcon.icns"
   echo "  icon: copied jobs.icns"

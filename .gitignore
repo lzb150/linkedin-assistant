@@ -19,9 +19,6 @@ seen.json
 notify-state.json
 notify-state.json.tmp
 
-# Backup of the original AppleScript Jobs applet (kept local)
-Jobs.app.orig/
-
 # macOS
 .DS_Store
 

@@ -1,6 +1,6 @@
 // Jobs launcher + unread-LinkedIn-message Dock badge for linkedin-assistant.
 //
-// Replaces the former AppleScript applet (backed up to Jobs.app.orig). Behaviour:
+// Behaviour:
 //   - Stays running in the Dock with the "Вакансии" icon.
 //   - Polls notify-state.json AND djinni-notify-state.json every ~3s and shows
 //     the COMBINED unread count (LinkedIn messages + Djinni inbox) as a red Dock
