@@ -180,6 +180,7 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
   regardless of which source it came from. Entries carry a last-seen date and
   expire after 90 days, so the file stops growing forever. Legacy URL-keyed
   files migrate automatically on the next run (the old history is reset once).
+- Only one `jobs.mjs` runs at a time (`jobs-run.lock/`); an overlapping run logs "another jobs.mjs run is active" and exits 0. Browser-profile locks record the holder's pid, so a crashed run is taken over immediately.
 
 ## Dashboard — `dashboard.mjs`
 
