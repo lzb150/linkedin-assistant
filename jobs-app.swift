@@ -15,11 +15,17 @@
 // Build with build-jobs.sh. Set JOBS_DEBUG=1 for stderr logging.
 
 import Cocoa
+import UserNotifications
 
 let bundlePath = Bundle.main.bundlePath                       // <project>/Jobs.app
 let projectDir = (bundlePath as NSString).deletingLastPathComponent
 let statePath = (projectDir as NSString).appendingPathComponent("notify-state.json")
 let djinniStatePath = (projectDir as NSString).appendingPathComponent("djinni-notify-state.json")
+// Banner queue written by lib/notify.mjs: [{title, body}, ...]. Posting from
+// THIS long-lived app (rather than the short-lived Notifier.app helper) is what
+// makes a banner clickable — the system can only deliver the click to a
+// process that is still running.
+let bannerQueuePath = (projectDir as NSString).appendingPathComponent("banner-queue.json")
 // Resolve the dashboard launcher script next to the app bundle.
 let dashboardLauncher = (projectDir as NSString).appendingPathComponent("open-dashboard.sh")
 let isBackground = CommandLine.arguments.contains("--background")
@@ -72,12 +78,17 @@ func handleActivation() {
     openDashboard()
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
         dbg("launched; background=\(isBackground) state=\(statePath)")
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert]) { granted, error in
+            dbg("notification auth granted=\(granted) error=\(String(describing: error))")
+        }
         poll()                                          // immediate first pass
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in self?.poll() }
         // A foreground (user) launch opens Djinni if there are unread messages,
@@ -104,6 +115,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
         NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
+        drainBannerQueue()
+    }
+
+    // Post (and remove) anything lib/notify.mjs left in banner-queue.json.
+    // Delete first: a post that fails must not loop the banner forever.
+    func drainBannerQueue() {
+        guard let data = FileManager.default.contents(atPath: bannerQueuePath),
+              let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
+              !items.isEmpty else { return }
+        try? FileManager.default.removeItem(atPath: bannerQueuePath)
+        for item in items {
+            let content = UNMutableNotificationContent()
+            content.title = (item["title"] as? String) ?? "Job assistant"
+            content.body = (item["body"] as? String) ?? ""
+            let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(req) { err in
+                if let err { dbg("banner post failed: \(err)") }
+            }
+        }
+        dbg("posted \(items.count) queued banner(s)")
+    }
+
+    // Show the banner even while this app is frontmost.
+    func userNotificationCenter(
+        _ c: UNUserNotificationCenter, willPresent n: UNNotification,
+        withCompletionHandler h: @escaping (UNNotificationPresentationOptions) -> Void
+    ) { h([.banner, .list]) }
+
+    // Banner click -> same destination as a Dock-icon click.
+    func userNotificationCenter(
+        _ c: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler h: @escaping () -> Void
+    ) {
+        dbg("banner clicked action=\(response.actionIdentifier)")
+        handleActivation()
+        h()
     }
 }
 

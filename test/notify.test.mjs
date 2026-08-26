@@ -34,9 +34,22 @@ test("notifyBanner: darwin with the app present launches it via open(1)", () => 
     platform: "darwin",
     app: new URL("./notify.test.mjs", import.meta.url).pathname, // any existing path
     spawnFn: (cmd, args) => { seen = { cmd, args }; return fakeChild; },
+    queueFn: () => false, // Jobs.app not running (it would take precedence)
   });
   assert.equal(seen.cmd, "open");
   assert.deepEqual(seen.args.slice(-2), ["Job assistant", "3 new"]);
+});
+
+test("notifyBanner: prefers the Jobs.app queue when it accepts the banner", () => {
+  let spawned = false, queued;
+  notifyBanner("Job assistant", "3 new", {
+    platform: "darwin",
+    app: new URL("./notify.test.mjs", import.meta.url).pathname,
+    spawnFn: () => { spawned = true; return { on: () => {}, unref: () => {} }; },
+    queueFn: (title, body) => { queued = { title, body }; return true; },
+  });
+  assert.deepEqual(queued, { title: "Job assistant", body: "3 new" });
+  assert.equal(spawned, false, "the queue path must not also spawn Notifier.app");
 });
 
 test("notifyBanner: darwin with the app missing falls back to osascript", () => {
@@ -46,6 +59,7 @@ test("notifyBanner: darwin with the app missing falls back to osascript", () => 
     app: "/nonexistent/Notifier.app",
     exec: (cmd, args, cb) => { seen = cmd; cb(); },
     spawnFn: () => { throw new Error("must not spawn"); },
+    queueFn: () => false, // Jobs.app not running (it would take precedence)
   });
   assert.equal(seen, "osascript");
 });

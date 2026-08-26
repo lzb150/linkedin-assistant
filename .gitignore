@@ -67,3 +67,4 @@ job-state.json
 job-state.json.tmp
 followup-notify-state.json
 followup-notify-state.json.tmp
+banner-queue.json  # transient banner hand-off to Jobs.app
