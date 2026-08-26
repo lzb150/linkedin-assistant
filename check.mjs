@@ -130,15 +130,15 @@ try {
     lastOpened = url;
 
     // Read the message bubbles (most recent incoming text).
-    let bubbles = [], oldest = "";
+    let bubbles = [], oldest = "", extractFailed = false;
     try {
-      const els = await page.$(SEL.messageBubble);
+      const els = await page.$$(SEL.messageBubble);
       if (els.length) oldest = (await els[0].innerText()).trim();
       for (const el of els.slice(-12)) {
         const t = (await el.innerText()).trim();
         if (t) bubbles.push(t);
       }
-    } catch {}
+    } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
@@ -152,6 +152,9 @@ try {
     // Re-stamp so the TTL is "last seen" and a long-lived thread does not resurface.
     if (seen.has(threadId)) { log(`· already processed: ${name}`); seen.add(threadId); continue; }
 
+    // An extraction failure is not "not a job message": leave the thread
+    // unseen so the next run retries instead of burying it for 90 days.
+    if (extractFailed) { log(`· skipping without marking seen: ${name}`); continue; }
     if (!fullText || !looksLikeJobMessage(fullText)) {
       log(`· not a job message, skipping: ${name}`);
       seen.add(threadId);

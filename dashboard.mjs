@@ -76,7 +76,7 @@ function scoreColor(s) {
 // All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
 const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3" };
 function badge(source) {
-  const c = SOURCE_COLORS[source] || "#6e7781";
+  const c = (Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : undefined) || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
 }
 

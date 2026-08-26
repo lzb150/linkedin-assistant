@@ -29,6 +29,9 @@ jobs:
         run: |
           set -e
           for f in *.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs; do node --check "$f"; done
+          # Playwright: page.$()/el.$() return ONE handle — iterating/slicing it is a
+          # silent TypeError behind catch {} (bit us twice). Only $$ may be iterated.
+          ! grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)' *.mjs lib/*.mjs lib/sources/*.mjs
       - name: Dashboard smoke build
         shell: bash
         run: |
