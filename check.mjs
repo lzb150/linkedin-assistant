@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
-import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
+import { log, notifyBanner, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -72,6 +72,10 @@ const ctx = await launchBrowser(PROFILE);
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
+// Only overwrite the badge state when the scan actually counted the inbox —
+// a navigation failure would otherwise reset the badge to 0 and hide unread
+// messages until the next successful run.
+let counted = false;
 
 try {
   const page = ctx.pages()[0] || (await ctx.newPage());
@@ -80,7 +84,7 @@ try {
   // Detect a logged-out session early and bail with a clear message.
   if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
     log("❌ Not logged in (session expired). Run:  node login.mjs");
-    notify("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
+    notifyBanner("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }
@@ -100,6 +104,7 @@ try {
     if (await cardIsUnread(card)) unreadCount++;
   }
   log(`Unread threads: ${unreadCount}`);
+  counted = true;
 
   for (const card of cards) {
     if (drafted + scanned >= MAX) break;
@@ -160,10 +165,14 @@ try {
   log("ERROR:", err?.message || err);
 } finally {
   saveSeen(seen);
-  try {
-    writeState(STATE_FILE, { count: unreadCount });
-  } catch (e) {
-    log("notify: writeState failed:", e?.message);
+  if (counted) {
+    try {
+      writeState(STATE_FILE, { count: unreadCount });
+    } catch (e) {
+      log("notify: writeState failed:", e?.message);
+    }
+  } else {
+    log("notify: scan failed before counting — keeping previous badge state");
   }
   await ctx.close();
 }

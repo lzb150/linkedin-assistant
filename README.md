@@ -31,6 +31,8 @@ click is always yours.
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
   into one package (the other source links are kept on the card)
+- **Foreign-location filter** — vacancies physically located abroad are dropped
+  across all sources (the `excludeLocation` list in `jobs.config.json`)
 - Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
 - Builds an application package: cover letter + link + resume path
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
@@ -160,6 +162,11 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 - **Work.ua** — public jobs board (`work.ua`), server-rendered and read with a plain fetch, same shape as Djinni. Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=false` to disable.
 - **Robota.ua** — sits behind Cloudflare, which hard-blocks headless Chrome, so this source only yields results on `HEADFUL=1` runs (otherwise it is skipped with a log hint). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (e.g. `https://robota.ua/zapros/qa-automation/ukraine`). Set `robota.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
+- **Foreign-location filter** — boards also list vacancies physically located
+  abroad (DOU marks them "за кордоном"; Jooble UA carries "Краків, Польща").
+  Jobs whose location contains any substring from the top-level
+  `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
+  across **all** sources before scoring.
 - Cold applications use a **high bar**: `minScore` (default 25) + `requireRole`.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
   differs per board) is collapsed into one record before scoring. The record with
