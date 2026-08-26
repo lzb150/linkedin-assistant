@@ -113,7 +113,6 @@ try {
     // Is it unread? (best-effort, multi-strategy). SCAN_ALL bypasses this filter.
     if (!SCAN_ALL && !unread[i]) continue;
 
-    scanned++;
     let name = "Recruiter";
     try {
       const nameEl = await card.$(SEL.participantName);
@@ -128,6 +127,7 @@ try {
     const url = page.url();
     if (url === lastOpened) { log(`· could not open thread, skipping: ${name}`); continue; }
     lastOpened = url;
+    scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
     let bubbles = [], oldest = "", extractFailed = false;
