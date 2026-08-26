@@ -53,3 +53,31 @@ test("the state server round-trips the new funnel statuses", async () => {
   await new Promise((r) => srv.close(r));
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "dash-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const port = await listen(srv);
+  // Same postState as lib/dashboard-client-dom.js: a non-ok response throws with .status.
+  async function postState(body) {
+    const r = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error("post failed " + r.status); e.status = r.status; throw e; }
+    return r.json();
+  }
+  let state = {}, offline = false;
+  const patches = [
+    { url: "javascript:alert(1)", patch: { status: "viewed" } },          // 400
+    { url: "https://example.com/jobs/1/", patch: { status: "applied" } }, // ok
+  ];
+  try {
+    for (const body of patches) {
+      try { state = await postState(body); }
+      catch (e) { if (e.status >= 400 && e.status < 500) continue; throw e; }
+    }
+  } catch { offline = true; }
+  assert.equal(offline, false);
+  assert.equal(state["https://example.com/jobs/1/"].status, "applied");
+});
