@@ -79,3 +79,17 @@ test("parseRss drops a salary part from the company when the rest has 3+ parts",
   assert.equal(job.company, "Acme");
   assert.equal(job.location, "Київ");
 });
+
+test("parseRss keeps the company to the FIRST part when DOU lists several cities", () => {
+  const xml = `<rss><channel><item><title>Senior Automation QA Engineer (4367) в Ciklum, Київ, Львів</title><link>https://jobs.dou.ua/companies/ciklum/vacancies/1/</link><description>x</description></item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.company, "Ciklum");
+  assert.equal(job.location, "Київ, Львів");
+});
+
+test("parseRss keeps 'за кордоном' in the location so the location filter sees it", () => {
+  const xml = `<rss><channel><item><title>QA Engineer в WinWin.Travel, за кордоном, віддалено</title><link>https://jobs.dou.ua/companies/w/vacancies/2/</link><description>x</description></item></channel></rss>`;
+  const [job] = parseRss(xml);
+  assert.equal(job.company, "WinWin.Travel");
+  assert.equal(job.location, "за кордоном, віддалено");
+});
