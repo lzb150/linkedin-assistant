@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDiv } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -41,4 +41,10 @@ test("extractDiv ignores a '</div>' string inside <script> and a commented-out <
   assert.equal(stripHtml(extractDiv(script, re)), "body");
   const comment = `<div id="d"><!-- <div class="old"> --><p>body</p></div><p>after</p>`;
   assert.equal(stripHtml(extractDiv(comment, re)), "body");
+});
+
+test("stripHtml / extractDivByClass stay linear on junk full of unclosed '<' (ReDoS guard)", () => {
+  const junk = "<".repeat(200_000);
+  let t = Date.now(); stripHtml(junk); assert.ok(Date.now() - t < 500, "stripHtml too slow");
+  t = Date.now(); extractDivByClass("<a ".repeat(50_000), "x"); assert.ok(Date.now() - t < 500, "extractDivByClass too slow");
 });
