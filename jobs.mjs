@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
-import { llmJSON, buildJobPrompt } from "./lib/llm.mjs";
+import { llmJSON, buildJobPrompt, numericScore } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
@@ -148,11 +148,16 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
     }
   } catch (e) {
     log("Browser sources error:", e.message);
-    if (!ctx) notify(`Browser launch failed: ${e.message}`);
-    // Launch/lock failure happens before the per-source catches: record 0 for
-    // every enabled browser source so health monitoring sees the outage.
-    for (const s of ["linkedin", "robota"]) {
-      if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
+    // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
+    // no 0-counts either — leaving the sources out of the summary keeps a
+    // skipped run from looking like a scraper outage to health monitoring.
+    if (!/profile busy/.test(e.message)) {
+      if (!ctx) notify(`Browser launch failed: ${e.message}`);
+      // Launch/lock failure happens before the per-source catches: record 0 for
+      // every enabled browser source so health monitoring sees the outage.
+      for (const s of ["linkedin", "robota"]) {
+        if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
+      }
     }
   } finally {
     await ctx?.close();
@@ -259,7 +264,8 @@ for (const { id, job, scored } of matches) {
     const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
-    if (res && Number.isFinite(Number(res.score))) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(Number(res.score)))) };
+    const n = res ? numericScore(res.score) : null;
+    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))) };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
   const { filename, markdown } = buildApplication(job, scored, llm);

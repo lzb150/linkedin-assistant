@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../state-server.mjs";
@@ -142,4 +142,41 @@ test("multi-byte body split across two chunks mid-character round-trips intact",
   assert.equal(status, 200);
   const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
   assert.equal(state["https://x/"].note, note);
+});
+
+test("corrupt state file → GET /state 500, file left byte-identical", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const statePath = join(dir, "job-state.json");
+  const corrupt = '{"https://x/": {"status": "applied" ';
+  writeFileSync(statePath, corrupt);
+  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+
+  assert.equal((await fetch(`${base}/state`)).status, 500);
+  // A POST must not turn the failed read into a truncating write.
+  const post = await fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "https://y/", patch: { status: "viewed" } }),
+  });
+  assert.equal(post.status, 500);
+  assert.equal(readFileSync(statePath, "utf8"), corrupt);
+});
+
+test("unwritable state path → POST 500, server still alive", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "notadir"), "");
+  const statePath = join(dir, "notadir", "job-state.json"); // ENOTDIR on write
+  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+
+  const post = await fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ _meta: { lastVisit: "t" } }),
+  });
+  assert.equal(post.status, 500);
+  assert.deepEqual(await fetch(`${base}/health`).then((r) => r.json()), { ok: true });
 });

@@ -93,6 +93,17 @@ test("topMatches: llm-scored entries use the LLM threshold (70)", () => {
   assert.deepEqual(topMatches(w).map((m) => m.label), ["A", "C"]);
 });
 
+test("topMatches: keyword branch when llmScore is null (threshold 40)", () => {
+  const w = [
+    { score: 40, llmScore: null, label: "edge" },   // in: exactly 40
+    { score: 90, llmScore: null, label: "high" },   // in
+    { score: 39, llmScore: null, label: "low" },    // out
+    { score: 90, llmScore: 10, label: "llm-veto" }, // out: llm verdict wins even over keyword 90
+  ];
+  assert.deepEqual(topMatches(w).map((m) => m.label), ["edge", "high"]);
+  assert.deepEqual(topMatches(undefined), []);
+});
+
 test("formatTopMatches renders one line, caps at 3 labels", () => {
   assert.equal(formatTopMatches([]), "");
   assert.equal(formatTopMatches([{ label: "A @ X" }]), "🔥 Strong match: A @ X");

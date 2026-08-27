@@ -31,7 +31,14 @@ function readBody(req) {
 }
 
 export function createServer({ statePath, indexPath }) {
+  // Any throw (corrupt state file, unwritable dir) → 500. Never let a failed
+  // read turn into a truncating write, and never let it crash the server.
   return http.createServer(async (req, res) => {
+    try { await handle(req, res); }
+    catch (e) { console.error("state-server:", e?.message || e); send(res, 500, { error: "state unavailable" }); }
+  });
+
+  async function handle(req, res) {
     // Loopback-only guard: a browser on this machine can be induced to hit
     // 127.0.0.1 from any website (CSRF via no-preflight POST, DNS rebinding
     // with a foreign Host). Reject anything not addressed to loopback.
@@ -69,7 +76,7 @@ export function createServer({ statePath, indexPath }) {
     }
 
     send(res, 404, { error: "not found" });
-  });
+  }
 }
 
 // Run directly: start the long-lived server on 127.0.0.1:7777.

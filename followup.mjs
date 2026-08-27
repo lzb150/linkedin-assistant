@@ -22,7 +22,10 @@ function jobIndex() {
   const idx = {};
   // applications/ does not exist before the first jobs.mjs run — no packages, no index.
   for (const f of (existsSync(APPS) ? readdirSync(APPS) : []).filter((x) => x.endsWith(".md"))) {
-    const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {};
+    // One unreadable package must not kill the whole reminder run.
+    let fm;
+    try { fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {}; }
+    catch (e) { console.log(`followup: unreadable package skipped: ${f} (${e.message})`); continue; }
     if (fm.url) idx[fm.url] = { title: fm.title || "", company: fm.company || "" };
   }
   return idx;
@@ -30,7 +33,7 @@ function jobIndex() {
 
 // Dedupe per calendar day: { day: "YYYY-MM-DD", urls: [...] }.
 function loadDedupe(today) {
-  try { const d = JSON.parse(readFileSync(DEDUPE, "utf8")); if (d.day === today) return d.urls || []; } catch {}
+  try { const d = JSON.parse(readFileSync(DEDUPE, "utf8")); if (d.day === today) return Array.isArray(d.urls) ? d.urls : []; } catch {}
   return [];
 }
 const saveDedupe = (today, urls) => writeJsonAtomic(DEDUPE, { day: today, urls });

@@ -75,11 +75,11 @@ test("readStore returns an empty store for a missing file", () => {
   assert.deepEqual(readStore("/no/such/job-state.json"), { _meta: {} });
 });
 
-test("readStore tolerates malformed JSON", (t) => {
+test("readStore throws on malformed JSON (a corrupt store must never be silently emptied)", (t) => {
   const dir = tmp(t);
   const p = join(dir, "job-state.json");
   writeFileSync(p, "{ not json");
-  assert.deepEqual(readStore(p), { _meta: {} });
+  assert.throws(() => readStore(p), SyntaxError);
 });
 
 test("normalize keeps the new post-applied statuses", () => {

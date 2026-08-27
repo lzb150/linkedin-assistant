@@ -7,8 +7,9 @@
   "scripts": {
     "login": "node login.mjs",
     "check": "node check.mjs",
-    "test": "node --test"
+    "test": "node --test test/"
   },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "playwright": "^1.49.0"
   }

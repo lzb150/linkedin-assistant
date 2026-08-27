@@ -20,7 +20,7 @@
   </array>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.log</string>
-  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.log</string>
+  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.err.log</string>
 </dict>
 </plist>

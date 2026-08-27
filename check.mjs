@@ -103,9 +103,6 @@ try {
   log(`Unread threads: ${unreadCount}`);
   counted = true;
 
-  // LinkedIn auto-opens the first thread on load: seed with the current URL so
-  // a failed click on card 0 is detected instead of attributing that thread to it.
-  let lastOpened = page.url();
   for (const [i, card] of cards.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
@@ -119,14 +116,19 @@ try {
       if (nameEl) name = (await nameEl.innerText()).trim().split("\n")[0] || name;
     } catch {}
 
-    // Open the thread. If the URL still points at the PREVIOUS opened thread the
-    // click failed — skip rather than misattribute that thread to this card.
-    // (LinkedIn auto-opens the first thread, so only compare against our own.)
+    // Open the thread and verify we landed on THIS card's thread, else skip
+    // rather than misattribute the still-open previous thread to it. The card's
+    // own href is the ground truth; LinkedIn auto-opens the first thread on
+    // load, so for card 0 an unchanged URL is expected, not a failed click.
+    let href = null;
+    try { href = await card.$("a[href*='/messaging/thread/']").then((a) => a?.getAttribute("href")); } catch {}
+    const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
+    const before = page.url();
     await card.click().catch(() => {});
     await page.waitForTimeout(1500);
     const url = page.url();
-    if (url === lastOpened) { log(`· could not open thread, skipping: ${name}`); continue; }
-    lastOpened = url;
+    const opened = wantId ? url.includes(wantId) : (url !== before || i === 0);
+    if (!opened) { log(`· could not open thread, skipping: ${name}`); continue; }
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
