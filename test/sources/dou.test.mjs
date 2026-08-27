@@ -93,3 +93,13 @@ test("parseRss keeps 'за кордоном' in the location so the location fil
   assert.equal(job.company, "WinWin.Travel");
   assert.equal(job.location, "за кордоном, віддалено");
 });
+
+test("parseRss skips an item with no <link> so it cannot produce a blank '::title' identity", () => {
+  const xml = `<rss><channel>
+    <item><title>QA в Acme</title><description>d</description></item>
+    <item><title>QA в Acme</title><link>https://jobs.dou.ua/x/1/</link><description>d</description></item>
+  </channel></rss>`;
+  const items = parseRss(xml);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].url, "https://jobs.dou.ua/x/1/");
+});

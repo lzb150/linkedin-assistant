@@ -40,3 +40,11 @@ test("detail page description extracts from #job-description", () => {
   assert.ok(text.length > 500, `description too short: ${text.length}`);
   assert.ok(text.includes("Fullstack Senior PHP Developer"));
 });
+
+test("parseCard stays fast on a 1.5 MB card of unclosed openers (bounded captures)", () => {
+  const opener = '<a href="/jobs/1/">x</a><h2><a><div class="text-indent"><span class="glyphicon-company"><span class="strong-600"><span class=""><p class="ellipsis">';
+  const card = opener.repeat(Math.ceil(1.5e6 / opener.length));
+  const t0 = performance.now();
+  parseCard(card);
+  assert.ok(performance.now() - t0 < 500, "parseCard took too long on an unclosed-opener card");
+});
