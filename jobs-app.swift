@@ -115,6 +115,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func poll() {
+        // Permission can be granted/revoked in System Settings at any time: re-read
+        // it every tick instead of latching the launch-time answer.
+        center.getNotificationSettings { [weak self] st in
+            DispatchQueue.main.async { self?.notifGranted = st.authorizationStatus == .authorized }
+        }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
         NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
@@ -143,14 +148,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // runs every 3 s and must not re-submit them meanwhile.
     var inFlight = Set<String>()
 
-    // Post every banners/*.json queued by lib/notify.mjs; a file is deleted only
+    // Post banners/*.json queued by lib/notify.mjs (at most 5 per tick so a
+    // backlog trickles out instead of flooding the screen); a file is deleted only
     // once its banner was accepted. Without notification permission recent
     // files are left so they can be inspected or drained once granted.
     func postQueuedBanners() {
         guard notifGranted else { return }
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
-        for name in names.sorted() where name.hasSuffix(".json") && !inFlight.contains(name) {
+        let pending = names.sorted().filter { $0.hasSuffix(".json") && !inFlight.contains($0) }
+        for name in pending.prefix(5) {
             let path = (bannersDir as NSString).appendingPathComponent(name)
             guard let data = fm.contents(atPath: path),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
