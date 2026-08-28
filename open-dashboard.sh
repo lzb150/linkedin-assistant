@@ -11,7 +11,9 @@ if ! NODE="$(command -v node)"; then
 fi
 [ -x "${NODE:-}" ] || { echo "open-dashboard.sh: node not found (PATH or ~/.nvm)" >&2; exit 1; }
 
-"$NODE" dashboard.mjs   # regenerate applications/index.html (no --open)
+# Regenerate applications/index.html (no --open); one corrupt package must not
+# block opening the previous build.
+"$NODE" dashboard.mjs || echo "dashboard rebuild failed; opening previous build" >&2
 
 # Start the server only if port 7777 is not already listening. The nc check
 # alone is a race (two launchers can both see "not listening"), so the actual

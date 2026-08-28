@@ -39,8 +39,13 @@ jobs:
         shell: bash
         run: |
           set -e
+          # Hostile package: every scraped field must be escaped, urls http(s)-only.
+          mkdir -p applications
+          cp test/fixtures/hostile-package.md applications/
           node dashboard.mjs
           grep -q "advanceLastVisit" applications/index.html
+          ! grep -q '<img src=x onerror=' applications/index.html   # escaped form is &lt;img …
+          ! grep -q 'href="javascript:' applications/index.html
       - name: Lint shell scripts
         shell: bash
         run: bash -n *.sh *.sh.example
