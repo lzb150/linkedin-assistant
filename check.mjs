@@ -121,7 +121,7 @@ try {
     // own href is the ground truth; LinkedIn auto-opens the first thread on
     // load, so for card 0 an unchanged URL is expected, not a failed click.
     let href = null;
-    try { href = await card.$("a[href*='/messaging/thread/']").then((a) => a?.getAttribute("href")); } catch {}
+    try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
     const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
     const before = page.url();
     await card.click().catch(() => {});
@@ -146,7 +146,7 @@ try {
 
     // Stable id from the thread url. URL-less fallback hashes name + the OLDEST
     // bubble (not the first of the last-12 window, which shifts as replies arrive).
-    const idMatch = url.match(/thread\/([^/]+)/);
+    const idMatch = url.match(/thread\/([^/?#]+)/); // same shape as wantId: query/hash must not leak into the seen key
     const threadId = idMatch
       ? idMatch[1]
       : `name:${createHash("sha1").update(`${name}\n${oldest}`).digest("hex").slice(0, 12)}`;

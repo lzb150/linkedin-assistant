@@ -262,8 +262,9 @@ ${clientJs}
 </body></html>`;
 
 // Atomic: the state server serves this file, a half-written page must never be visible.
-writeFileSync(OUT + ".tmp", html);
-renameSync(OUT + ".tmp", OUT);
+const tmp = `${OUT}.${process.pid}.tmp`; // pid: two concurrent builds must not share a tmp
+writeFileSync(tmp, html);
+renameSync(tmp, OUT);
 console.log(`Dashboard: ${OUT} (${items.length} jobs)`);
 
 // Best-effort: opening a browser is a convenience, not a requirement.
