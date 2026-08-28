@@ -81,6 +81,7 @@ func handleActivation() {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    var lastBadge: String? = "unset"
     var notifGranted = false
     let center = UNUserNotificationCenter.current()
 
@@ -122,7 +123,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
-        NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
+        // Re-apply every tick (cheap): the Dock forgets badges when it restarts,
+        // and a background-launched .regular app does not always repaint its tile.
+        let label: String? = count > 0 ? String(count) : nil
+        NSApp.dockTile.badgeLabel = label
+        NSApp.dockTile.display()
+        if label != lastBadge { dbg("badge -> \(label ?? "nil")"); lastBadge = label }
         pruneOldBanners()
         postQueuedBanners()
     }
