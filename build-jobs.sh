@@ -22,7 +22,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <dict>
   <key>CFBundleName</key><string>Вакансии</string>
   <key>CFBundleDisplayName</key><string>Вакансии</string>
-  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs</string>
+  <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs.v2</string>
   <key>CFBundleExecutable</key><string>jobs</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
