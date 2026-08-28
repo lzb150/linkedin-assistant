@@ -41,7 +41,10 @@ const saveDedupe = (today, urls) => writeJsonAtomic(DEDUPE, { day: today, urls }
 // Local calendar day (toISOString is UTC and rolls over at a different hour).
 const today = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD
 const already = loadDedupe(today);
-const due = dueReminders({ stateMap: readStore(STATE), now: new Date(), thresholdDays: THRESHOLD_DAYS, alreadyNotified: already });
+let stateMap;
+try { stateMap = readStore(STATE); }
+catch (e) { console.error(`job-state.json unreadable (${e.message}) — skipping follow-up run`); process.exit(1); }
+const due = dueReminders({ stateMap, now: new Date(), thresholdDays: THRESHOLD_DAYS, alreadyNotified: already });
 const idx = jobIndex();
 
 for (const { url, daysSince } of due) {

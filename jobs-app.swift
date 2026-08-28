@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // it every tick instead of latching the launch-time answer.
         center.getNotificationSettings { [weak self] st in
             DispatchQueue.main.async {
-                self?.notifGranted = st.authorizationStatus == .authorized
+                self?.notifGranted = [.authorized, .provisional].contains(st.authorizationStatus) // .ephemeral is iOS-only
                 if self?.lastBadgeSetting != st.badgeSetting.rawValue {
                     self?.lastBadgeSetting = st.badgeSetting.rawValue
                     dbg("notification settings: auth=\(st.authorizationStatus.rawValue) alert=\(st.alertSetting.rawValue) badge=\(st.badgeSetting.rawValue)")
@@ -190,8 +190,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             content.body = message
             inFlight.insert(name)
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
-                dbg("banner \(name) error=\(String(describing: err))")
-                if err == nil { try? fm.removeItem(atPath: path) }
+                // Remove on success AND on error: a permanently failing file would
+                // otherwise sit in the oldest-first prefix(5) window and block the
+                // whole queue for 7 days, re-submitted every 3 s.
+                if let err = err { dbg("banner \(name) dropped: \(err)") }
+                try? fm.removeItem(atPath: path)
                 DispatchQueue.main.async { self.inFlight.remove(name) }
             }
         }

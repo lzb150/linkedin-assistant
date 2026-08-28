@@ -115,8 +115,8 @@ All macOS banners are posted by this app too (queued as `banners/*.json` by
 Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
 
 Build it with `./build-jobs.sh`, then start it at login by installing
-`com.eugene.jobs-badge.plist` into `~/Library/LaunchAgents/` (see
-`com.example.jobs-badge.plist.example`). `check.mjs` also relaunches it
+`com.example.jobs-badge.plist.example` as `com.example.jobs-badge.plist` into
+`~/Library/LaunchAgents/`. `check.mjs` also relaunches it
 defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)

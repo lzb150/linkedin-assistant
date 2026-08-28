@@ -33,7 +33,7 @@ jobs:
           # silent TypeError behind catch {} (bit us twice). Convention: a single
           # handle is either consumed via .then(Boolean) or bound to a *El name.
           # NOTE: `! cmd` is exempt from `set -e`, so each guard fails the step explicitly.
-          if grep -nE 'await [a-zA-Z_.]+\.\$\(' *.mjs lib/*.mjs lib/sources/*.mjs | grep -vE '[eE]l = await|\.then\(Boolean\)'; then
+          if grep -nE 'await [a-zA-Z_.]+\.\$\(' *.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs | grep -vE '[eE]l = await|\.then\(Boolean\)'; then
             echo "::error::single-handle page.\$() result used as a list (see above)"; exit 1; fi
           # …and never iterate/slice a single handle even when it IS bound to a *El name.
           if grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)|of [a-zA-Z_]+El\b' *.mjs lib/*.mjs lib/sources/*.mjs; then
@@ -47,6 +47,7 @@ jobs:
           cp test/fixtures/hostile-package.md applications/
           node dashboard.mjs
           grep -q "advanceLastVisit" applications/index.html
+          grep -q '&lt;img src=x onerror=' applications/index.html   # fixture rendered AND escaped (guards below are negative-only)
           if grep -q '<img src=x onerror=' applications/index.html; then echo "::error::unescaped markup in dashboard"; exit 1; fi   # escaped form is &lt;img …
           if grep -q 'href="javascript:' applications/index.html; then echo "::error::javascript: href in dashboard"; exit 1; fi
       - name: Lint shell scripts

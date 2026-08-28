@@ -205,3 +205,10 @@ test("dedupeJobs is idempotent: a second pass adds no altLinks and merges nothin
   const links = first.deduped.flatMap((j) => j.altLinks || []);
   assert.equal(links.length, 1);
 });
+
+test("identityKey keeps C++ / C# / C apart (+ and # are identity characters)", () => {
+  const k = (t) => identityKey({ company: "Acme", title: t, url: "https://a/1" });
+  assert.notEqual(k("Senior C++ Developer"), k("Senior C# Developer"));
+  assert.notEqual(k("Senior C# Developer"), k("Senior C Developer"));
+  assert.equal(normalizeCompany("Компанія «Люкс»"), normalizeCompany("Компанія Люкс")); // Unicode stripping still works
+});

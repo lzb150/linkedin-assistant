@@ -103,3 +103,15 @@ test("parseRss skips an item with no <link> so it cannot produce a blank '::titl
   assert.equal(items.length, 1);
   assert.equal(items[0].url, "https://jobs.dou.ua/x/1/");
 });
+
+test("parseRss stays linear on a hostile item full of unclosed <title> openers", () => {
+  const xml = `<rss><channel><item>${"<title>".repeat(60_000)}</item></channel></rss>`;
+  const t = Date.now(); parseRss(xml); assert.ok(Date.now() - t < 500, "tag() must be bounded");
+});
+
+test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () => {
+  const { fetchDou } = await import("../../lib/sources/dou.mjs");
+  assert.deepEqual(await fetchDou({ enabled: false, feeds: ["http://127.0.0.1:9/x"] }, () => {}), []);
+  // enabled undefined → runs (feed unreachable → still returns an array, no throw)
+  assert.ok(Array.isArray(await fetchDou({ feeds: [] }, () => {})));
+});

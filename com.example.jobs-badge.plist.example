@@ -19,6 +19,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/open</string>
+    <string>-W</string>
     <string>-g</string>
     <string>-a</string>
     <string>/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app</string>

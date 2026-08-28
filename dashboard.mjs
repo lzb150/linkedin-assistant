@@ -1,6 +1,6 @@
 // Builds a single self-contained HTML dashboard of all application packages
 // in applications/, sorted by score. Run:  node dashboard.mjs [--open]
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { readdirSync, readFileSync, mkdirSync, renameSync, openSync, writeSync, fsyncSync, closeSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
@@ -263,8 +263,10 @@ ${clientJs}
 
 // Atomic: the state server serves this file, a half-written page must never be visible.
 const tmp = `${OUT}.${process.pid}.tmp`; // pid: two concurrent builds must not share a tmp
-writeFileSync(tmp, html);
-renameSync(tmp, OUT);
+try {
+  const fd = openSync(tmp, "w"); writeSync(fd, html); fsyncSync(fd); closeSync(fd);
+  renameSync(tmp, OUT);
+} catch (e) { try { unlinkSync(tmp); } catch {} throw e; }
 console.log(`Dashboard: ${OUT} (${items.length} jobs)`);
 
 // Best-effort: opening a browser is a convenience, not a requirement.

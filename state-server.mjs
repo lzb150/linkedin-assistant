@@ -61,8 +61,11 @@ export function createServer({ statePath, indexPath }) {
       if (!body || typeof body !== "object") return send(res, 400, { error: "bad body" });
       let map = readStore(statePath);
       if (body._meta && typeof body._meta === "object") {
-        map = { ...map, _meta: { ...map._meta, ...body._meta } };
-      } else if (typeof body.url === "string" && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
+        // Only the one known key, and only a parseable timestamp — no junk accumulation.
+        const lv = String(body._meta.lastVisit ?? "").slice(0, 40);
+        if (!Number.isFinite(Date.parse(lv))) return send(res, 400, { error: "invalid _meta" });
+        map = { ...map, _meta: { ...map._meta, lastVisit: lv } };
+      } else if (typeof body.url === "string" && body.url.length <= 2048 && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
         map = mergeEntry(map, body.url, body.patch);
       } else {
         return send(res, 400, { error: "invalid patch" });
@@ -85,6 +88,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = createServer({
     statePath: join(dir, "job-state.json"),
     indexPath: join(dir, "applications", "index.html"),
+  });
+  server.on("error", (e) => {
+    console.error(e.code === "EADDRINUSE" ? `state-server: port ${PORT} already in use (another instance running?)` : `state-server: ${e.message}`);
+    process.exit(1);
   });
   server.listen(PORT, HOST, () => console.log(`state-server: http://${HOST}:${PORT}/`));
 }

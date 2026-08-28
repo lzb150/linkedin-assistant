@@ -55,13 +55,18 @@ LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServic
 # A running instance keeps executing the OLD binary: `open -a` on a running app
 # only re-opens it (and `launchctl kickstart -k` restarts just the `open -W`
 # wrapper). Kill it so launchd / the next ensureJobsApp() starts the fresh build.
-if pkill -f "Jobs.app/Contents/MacOS/jobs"; then
-  sleep 1
-  if launchctl print "gui/$(id -u)/com.eugene.jobs-badge" >/dev/null 2>&1; then
-    launchctl kickstart -k "gui/$(id -u)/com.eugene.jobs-badge" && echo "  relaunched via launchd (com.eugene.jobs-badge)"
-  else
-    open -g -a "$APP" --args --background && echo "  relaunched (badge daemon)"
-  fi
+# Label of the installed launchd agent (override: JOBS_BADGE_LABEL=... ./build-jobs.sh).
+LABEL="${JOBS_BADGE_LABEL:-}"
+if [ -z "$LABEL" ]; then
+  for cand in com.example.jobs-badge com.eugene.jobs-badge; do
+    launchctl print "gui/$(id -u)/$cand" >/dev/null 2>&1 && { LABEL="$cand"; break; }
+  done
+fi
+pkill -f "Jobs.app/Contents/MacOS/jobs" && sleep 1
+if [ -n "$LABEL" ]; then
+  launchctl kickstart -k "gui/$(id -u)/$LABEL" && echo "  relaunched via launchd ($LABEL)"
+else
+  open -g -a "$APP" --args --background && echo "  launched badge daemon (no launchd agent found)"
 fi
 
 echo "Done. Test:  open -a \"$APP\"   (badge daemon: open -g -a \"$APP\" --args --background)"

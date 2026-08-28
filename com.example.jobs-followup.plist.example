@@ -15,7 +15,7 @@
   <key>Label</key><string>com.example.jobs-followup</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/YOUR_USERNAME/.nvm/versions/node/v20.14.0/bin/node</string>
+    <string>/Users/YOUR_USERNAME/.nvm/versions/node/v20/bin/node</string>
     <string>/Users/YOUR_USERNAME/linkedin-assistant/followup.mjs</string>
   </array>
   <key>StartCalendarInterval</key>

@@ -119,8 +119,8 @@ SCAN_ALL=1 node check.mjs   # сканувати останні треди не�
 раніше.
 
 Зберіть його через `./build-jobs.sh`, потім увімкніть автозапуск при вході,
-встановивши `com.eugene.jobs-badge.plist` у `~/Library/LaunchAgents/` (див.
-`com.example.jobs-badge.plist.example`). `check.mjs` також перезапускає його
+встановивши `com.example.jobs-badge.plist.example` як `com.example.jobs-badge.plist`
+у `~/Library/LaunchAgents/`. `check.mjs` також перезапускає його
 про всяк випадок при кожному скануванні.
 Усі macOS-банери також показує цей застосунок (черга `banners/*.json` від
 `lib/notify.mjs`), тож вони мають його іконку, а клік відкриває дешборд. Без
