@@ -42,3 +42,11 @@ test("extractDivByClass captures the full nested description block, not truncate
 test("extractDivByClass returns empty string when the class is absent", () => {
   assert.equal(extractDivByClass(`<div class="other-thing">x</div>`, "job-post__description"), "");
 });
+
+test("parseCard stays fast on a 1.5 MB card of unclosed openers (bounded captures)", () => {
+  const opener = '<a href="/jobs/1/">x</a><h2 class="job-item__position"><span class="small text-gray-800"><span class="js-truncated-text">';
+  const card = opener.repeat(Math.ceil(1.5e6 / opener.length));
+  const t0 = performance.now();
+  parseCard(card);
+  assert.ok(performance.now() - t0 < 500, "parseCard took too long on an unclosed-opener card");
+});
