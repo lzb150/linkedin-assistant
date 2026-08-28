@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { normalizeMeta } from "../lib/job-state.mjs";
 import {
   normalize, mergeEntry, validatePatch, readStore, writeStore, statusOf,
 } from "../lib/job-state.mjs";
@@ -102,4 +103,10 @@ test("mergeEntry keeps appliedAt when moving applied → answered", () => {
   map = mergeEntry(map, U, { status: "answered" });
   assert.equal(map[U].status, "answered");
   assert.equal(map[U].appliedAt, "2026-07-01T00:00:00Z");
+});
+
+test("normalizeMeta keeps only lastVisit and canonicalizes it to toISOString() form", () => {
+  assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00Z", junk: 1 }), { lastVisit: "2026-06-20T09:00:00.000Z" });
+  assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00.123Z" }), { lastVisit: "2026-06-20T09:00:00.123Z" });
+  for (const bad of [{}, { lastVisit: "t" }, { lastVisit: "" }, [], null, "x"]) assert.equal(normalizeMeta(bad), null);
 });

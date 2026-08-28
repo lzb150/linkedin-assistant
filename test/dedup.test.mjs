@@ -212,3 +212,15 @@ test("identityKey keeps C++ / C# / C apart (+ and # are identity characters)", (
   assert.notEqual(k("Senior C# Developer"), k("Senior C Developer"));
   assert.equal(normalizeCompany("Компанія «Люкс»"), normalizeCompany("Компанія Люкс")); // Unicode stripping still works
 });
+
+test("identity keys do not depend on Unicode normalization form (NFD input == NFC input)", () => {
+  const nfc = "Тестувальник ПЗ (Київ)";
+  assert.equal(normalizeTitle(nfc.normalize("NFD")), normalizeTitle(nfc));
+  assert.equal(normalizeCompany("München Robotics".normalize("NFD")), normalizeCompany("München Robotics"));
+});
+
+test("canonicalKey drops a #-prefixed req number like a bare one", () => {
+  const k = (t) => canonicalKey({ company: "Ciklum", title: t, url: "https://a/1" });
+  assert.equal(k("QA Engineer (#3282)"), k("QA Engineer (3282)"));
+  assert.equal(k("QA Engineer (#3282)"), k("QA Engineer"));
+});

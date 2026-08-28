@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
-import { readStore } from "./lib/job-state.mjs";
+import { readStoreOrExit } from "./lib/job-state.mjs";
 import { dueReminders } from "./lib/followup.mjs";
 import { notify } from "./lib/notify.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
@@ -41,9 +41,7 @@ const saveDedupe = (today, urls) => writeJsonAtomic(DEDUPE, { day: today, urls }
 // Local calendar day (toISOString is UTC and rolls over at a different hour).
 const today = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD
 const already = loadDedupe(today);
-let stateMap;
-try { stateMap = readStore(STATE); }
-catch (e) { console.error(`job-state.json unreadable (${e.message}) — skipping follow-up run`); process.exit(1); }
+const stateMap = readStoreOrExit(STATE, "skipping follow-up run");
 const due = dueReminders({ stateMap, now: new Date(), thresholdDays: THRESHOLD_DAYS, alreadyNotified: already });
 const idx = jobIndex();
 

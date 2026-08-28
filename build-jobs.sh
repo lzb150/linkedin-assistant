@@ -62,11 +62,16 @@ if [ -z "$LABEL" ]; then
     launchctl print "gui/$(id -u)/$cand" >/dev/null 2>&1 && { LABEL="$cand"; break; }
   done
 fi
-pkill -f "Jobs.app/Contents/MacOS/jobs" && sleep 1
-if [ -n "$LABEL" ]; then
-  launchctl kickstart -k "gui/$(id -u)/$LABEL" && echo "  relaunched via launchd ($LABEL)"
-else
-  open -g -a "$APP" --args --background && echo "  launched badge daemon (no launchd agent found)"
+# Relaunch only what was running (a fresh clone stays quiet — see "Test:" below).
+if pkill -f "$APP/Contents/MacOS/jobs"; then
+  sleep 1
+  if [ -n "$LABEL" ]; then
+    launchctl kickstart -k "gui/$(id -u)/$LABEL" && echo "  relaunched via launchd ($LABEL)" \
+      || echo "  WARNING: launchctl kickstart failed — start it manually: open -g -a \"$APP\" --args --background"
+  else
+    open -g -a "$APP" --args --background && echo "  relaunched (badge daemon, no launchd agent found)" \
+      || echo "  WARNING: open failed — start it manually: open -g -a \"$APP\" --args --background"
+  fi
 fi
 
 echo "Done. Test:  open -a \"$APP\"   (badge daemon: open -g -a \"$APP\" --args --background)"

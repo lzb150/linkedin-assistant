@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // it every tick instead of latching the launch-time answer.
         center.getNotificationSettings { [weak self] st in
             DispatchQueue.main.async {
-                self?.notifGranted = [.authorized, .provisional].contains(st.authorizationStatus) // .ephemeral is iOS-only
+                self?.notifGranted = st.authorizationStatus == .authorized
                 if self?.lastBadgeSetting != st.badgeSetting.rawValue {
                     self?.lastBadgeSetting = st.badgeSetting.rawValue
                     dbg("notification settings: auth=\(st.authorizationStatus.rawValue) alert=\(st.alertSetting.rawValue) badge=\(st.badgeSetting.rawValue)")
@@ -167,11 +167,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // Files handed to center.add whose completion has not fired yet; poll()
     // runs every 3 s and must not re-submit them meanwhile.
     var inFlight = Set<String>()
+    // center.add failures per file. A transient error (permission race right
+    // after login — notifGranted is last tick's answer) is retried next tick; a
+    // poison file is dropped after 3 so it cannot block the oldest-first
+    // prefix(5) window for 7 days.
+    var failures = [String: Int]()
 
     // Post banners/*.json queued by lib/notify.mjs (at most 5 per tick so a
-    // backlog trickles out instead of flooding the screen); a file is deleted only
-    // once its banner was accepted. Without notification permission recent
-    // files are left so they can be inspected or drained once granted.
+    // backlog trickles out instead of flooding the screen); a file is deleted once
+    // its banner was accepted, or after 3 failed attempts. Without notification
+    // permission recent files are left so they can be drained once granted.
     func postQueuedBanners() {
         guard notifGranted else { return }
         let fm = FileManager.default
@@ -190,12 +195,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             content.body = message
             inFlight.insert(name)
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
-                // Remove on success AND on error: a permanently failing file would
-                // otherwise sit in the oldest-first prefix(5) window and block the
-                // whole queue for 7 days, re-submitted every 3 s.
-                if let err = err { dbg("banner \(name) dropped: \(err)") }
-                try? fm.removeItem(atPath: path)
-                DispatchQueue.main.async { self.inFlight.remove(name) }
+                DispatchQueue.main.async {
+                    if let err = err {
+                        let n = (self.failures[name] ?? 0) + 1
+                        self.failures[name] = n
+                        dbg("banner \(name) failed (\(n)/3): \(err)")
+                        if n >= 3 { try? fm.removeItem(atPath: path); self.failures[name] = nil }
+                    } else {
+                        try? fm.removeItem(atPath: path)
+                    }
+                    self.inFlight.remove(name)
+                }
             }
         }
     }
