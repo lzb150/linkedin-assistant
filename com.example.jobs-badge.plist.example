@@ -4,9 +4,11 @@
   launchd job: starts the Jobs.app badge daemon at login. `--background` means
   "show the unread Dock badge only, do NOT open the dashboard". Jobs.app stays
   open and polls notify-state.json. check.mjs also re-launches it defensively
-  (open -g) on each scan.
-  Install:
-    cp com.example.jobs-badge.plist.example ~/Library/LaunchAgents/com.example.jobs-badge.plist
+  (open -g) on each scan. `open -W` gives launchd a live pid to track; it exits
+  0 however the app ended, so KeepAlive below is unconditional.
+  Install (replace YOUR_USERNAME first — with a wrong path launchd respawns
+  `open` every 10 s forever):
+    sed "s/YOUR_USERNAME/$USER/g" com.example.jobs-badge.plist.example > ~/Library/LaunchAgents/com.example.jobs-badge.plist
     launchctl load ~/Library/LaunchAgents/com.example.jobs-badge.plist
   Uninstall:
     launchctl unload ~/Library/LaunchAgents/com.example.jobs-badge.plist
@@ -30,9 +32,10 @@
   <key>RunAtLoad</key>
   <true/>
 
-  <!-- Relaunch the badge daemon if it crashes, but not after a clean quit. -->
+  <!-- Relaunch whenever the daemon exits: `open -W` reports 0 even for a crash,
+       so SuccessfulExit=false would never fire. Stop it with launchctl unload. -->
   <key>KeepAlive</key>
-  <dict><key>SuccessfulExit</key><false/></dict>
+  <true/>
 
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.out.log</string>

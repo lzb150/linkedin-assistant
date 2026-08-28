@@ -38,7 +38,7 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ _meta: { lastVisit: "2026-06-20T09:00:00Z" } }),
   }).then((r) => r.json());
-  assert.equal(meta._meta.lastVisit, "2026-06-20T09:00:00Z");
+  assert.equal(meta._meta.lastVisit, "2026-06-20T09:00:00.000Z"); // stored canonical (normalizeMeta), not verbatim
 
   const bad = await fetch(`${base}/state`, {
     method: "POST",
@@ -194,4 +194,18 @@ test("POST /state accepts an upper-case scheme like the dashboard's safeUrl does
     body: JSON.stringify({ url: "HTTPS://djinni.co/jobs/1", patch: { status: "viewed" } }) });
   assert.equal(res.status, 200);
   server.close();
+});
+
+test("POST /state rejects an unparseable _meta.lastVisit with 400 on a healthy store", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const bad = await fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ _meta: { lastVisit: "t" } }),
+  });
+  assert.equal(bad.status, 400);
+  assert.deepEqual(await fetch(`${base}/state`).then((r) => r.json()), { _meta: {} }); // nothing written
 });

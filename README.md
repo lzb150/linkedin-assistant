@@ -116,7 +116,8 @@ Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
 
 Build it with `./build-jobs.sh`, then start it at login by installing
 `com.example.jobs-badge.plist.example` as `com.example.jobs-badge.plist` into
-`~/Library/LaunchAgents/`. `check.mjs` also relaunches it
+`~/Library/LaunchAgents/` (replace `YOUR_USERNAME` inside first — with a wrong
+path launchd respawns `open` every 10 s forever). `check.mjs` also relaunches it
 defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)

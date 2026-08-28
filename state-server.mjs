@@ -5,7 +5,7 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readStore, writeStore, mergeEntry, validatePatch } from "./lib/job-state.mjs";
+import { readStore, writeStore, mergeEntry, validatePatch, normalizeMeta } from "./lib/job-state.mjs";
 
 const PORT = 7777;
 const HOST = "127.0.0.1";
@@ -61,10 +61,11 @@ export function createServer({ statePath, indexPath }) {
       if (!body || typeof body !== "object") return send(res, 400, { error: "bad body" });
       let map = readStore(statePath);
       if (body._meta && typeof body._meta === "object") {
-        // Only the one known key, and only a parseable timestamp — no junk accumulation.
-        const lv = String(body._meta.lastVisit ?? "").slice(0, 40);
-        if (!Number.isFinite(Date.parse(lv))) return send(res, 400, { error: "invalid _meta" });
-        map = { ...map, _meta: { ...map._meta, lastVisit: lv } };
+        // Only the one known key, canonicalized (normalizeMeta). Keys already on
+        // disk are preserved as-is by normalize() — this branch adds none.
+        const meta = normalizeMeta(body._meta);
+        if (!meta) return send(res, 400, { error: "invalid _meta" });
+        map = { ...map, _meta: { ...map._meta, ...meta } };
       } else if (typeof body.url === "string" && body.url.length <= 2048 && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
         map = mergeEntry(map, body.url, body.patch);
       } else {

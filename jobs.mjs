@@ -216,9 +216,12 @@ let written = 0, considered = 0;
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
+  // ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
+  // accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
+  const legacyId = id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
   // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
   // a vacancy still live after 90 days must not resurface as new.
-  if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
+  if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
   const existing = packageIndex.get(canonicalKey(job));
   if (existing && existing.source !== job.source) {
     try { appendAltLink(join(APPS, existing.file), job.source, job.url); }

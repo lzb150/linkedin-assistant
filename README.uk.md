@@ -120,8 +120,9 @@ SCAN_ALL=1 node check.mjs   # сканувати останні треди не�
 
 Зберіть його через `./build-jobs.sh`, потім увімкніть автозапуск при вході,
 встановивши `com.example.jobs-badge.plist.example` як `com.example.jobs-badge.plist`
-у `~/Library/LaunchAgents/`. `check.mjs` також перезапускає його
-про всяк випадок при кожному скануванні.
+у `~/Library/LaunchAgents/` (спершу замініть `YOUR_USERNAME` усередині — з хибним
+шляхом launchd перезапускатиме `open` кожні 10 с без кінця). `check.mjs` також
+перезапускає його про всяк випадок при кожному скануванні.
 Усі macOS-банери також показує цей застосунок (черга `banners/*.json` від
 `lib/notify.mjs`), тож вони мають його іконку, а клік відкриває дешборд. Без
 зібраного `Jobs.app` — fallback на `osascript` (іконка Script Editor).

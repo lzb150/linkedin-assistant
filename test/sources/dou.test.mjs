@@ -111,7 +111,20 @@ test("parseRss stays linear on a hostile item full of unclosed <title> openers",
 
 test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () => {
   const { fetchDou } = await import("../../lib/sources/dou.mjs");
-  assert.deepEqual(await fetchDou({ enabled: false, feeds: ["http://127.0.0.1:9/x"] }, () => {}), []);
-  // enabled undefined → runs (feed unreachable → still returns an array, no throw)
-  assert.ok(Array.isArray(await fetchDou({ feeds: [] }, () => {})));
+  // Stub fetch: the assertions are about WHETHER a feed is requested — the old
+  // truthy guard passed a network-based version of this test unchanged.
+  const calls = [], realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { calls.push(url); return { ok: false, status: 599 }; };
+  try {
+    assert.deepEqual(await fetchDou({ enabled: false, feeds: ["http://x/1"] }, () => {}), []);
+    assert.equal(calls.length, 0, "disabled: no feed fetched");
+    await fetchDou({ feeds: ["http://x/1"] }, () => {});            // enabled absent → runs
+    assert.deepEqual(calls, ["http://x/1"]);
+    assert.deepEqual(await fetchDou(undefined, () => {}), []);      // no `dou` section at all → no throw
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("parseRss stays linear on a hostile feed full of unclosed <item> openers", () => {
+  const xml = `<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`;
+  const t = Date.now(); assert.deepEqual(parseRss(xml), []); assert.ok(Date.now() - t < 500, "item scan must be bounded");
 });
