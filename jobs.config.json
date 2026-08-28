@@ -86,10 +86,12 @@
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,
-    "maxResults": 8,
+    "maxResults": 15,
     "searches": [
       { "keywords": "SDET", "location": "Ukraine", "remote": true },
-      { "keywords": "QA Automation TypeScript", "location": "Ukraine", "remote": true }
+      { "keywords": "QA Automation TypeScript", "location": "Ukraine", "remote": true },
+      { "keywords": "Senior QA Automation Engineer", "location": "Ukraine", "remote": true },
+      { "keywords": "Senior Test Automation Engineer", "location": "Ukraine", "remote": true }
     ]
   }
 }
