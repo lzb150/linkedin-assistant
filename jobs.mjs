@@ -26,7 +26,7 @@ import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { fetchWorkua } from "./lib/sources/workua.mjs";
+import { fetchWorkua, pageHtml } from "./lib/sources/workua.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
@@ -100,7 +100,6 @@ const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
   { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
   { name: "jooble", enabled: config.jooble?.enabled, fetch: fetchJooble },
-  { name: "workua", enabled: config.workua?.enabled, fetch: fetchWorkua },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   if (!s.enabled) continue;
@@ -115,10 +114,11 @@ for (const s of BROWSERLESS_SOURCES) {
   }
 }
 
-// 4–5) Browser sources: LinkedIn (needs login) and Robota.ua (Cloudflare-gated,
-// no login) share one Playwright context. Each source has its own try/catch so
+// 4–6) Browser sources: LinkedIn (needs login), Robota.ua and Work.ua (both
+// Cloudflare-gated, no login) share one Playwright context. Each source has its own try/catch so
 // one failing does not skip the other or hide from health monitoring.
-if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
+const BROWSER_SOURCES = ["linkedin", "robota", "workua"];
+if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
   let ctx;
   try {
     ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
@@ -146,6 +146,14 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
         jobs.push(...rJobs);
       } catch (e) { log("Robota.ua error:", e.message); recordFound(summary, "robota", 0); }
     }
+    if (config.workua?.enabled) {
+      log("Gathering Work.ua (browser)...");
+      try {
+        const wJobs = await fetchWorkua(config.workua, log, pageHtml(page));
+        recordFound(summary, "workua", wJobs.length);
+        jobs.push(...wJobs);
+      } catch (e) { log("Work.ua error:", e.message); recordFound(summary, "workua", 0); }
+    }
   } catch (e) {
     log("Browser sources error:", e.message);
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
@@ -155,7 +163,7 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
       if (!ctx) notify(`Browser launch failed: ${e.message}`);
       // Launch/lock failure happens before the per-source catches: record 0 for
       // every enabled browser source so health monitoring sees the outage.
-      for (const s of ["linkedin", "robota"]) {
+      for (const s of BROWSER_SOURCES) {
         if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
       }
     }

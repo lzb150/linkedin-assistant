@@ -26,7 +26,7 @@ click is always yours.
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
 - **Jooble** — via the official Jooble API (free key, structured JSON)
-- **Work.ua** — via the public jobs board (plain fetch, no login, no browser)
+- **Work.ua** — via the shared browser session (Cloudflare-gated since Aug 2026, full runs only)
 - **Robota.ua** — via the shared browser session (Cloudflare-gated, needs `HEADFUL=1`)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
