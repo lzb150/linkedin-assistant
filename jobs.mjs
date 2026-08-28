@@ -28,6 +28,7 @@ import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { fetchWorkua, pageHtml } from "./lib/sources/workua.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
+import { fetchGlassdoor } from "./lib/sources/glassdoor.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser, acquireProfileLock } from "./lib/browser.mjs";
@@ -117,7 +118,7 @@ for (const s of BROWSERLESS_SOURCES) {
 // 4–6) Browser sources: LinkedIn (needs login), Robota.ua and Work.ua (both
 // Cloudflare-gated, no login) share one Playwright context. Each source has its own try/catch so
 // one failing does not skip the other or hide from health monitoring.
-const BROWSER_SOURCES = ["linkedin", "robota", "workua"];
+const BROWSER_SOURCES = ["linkedin", "robota", "workua", "glassdoor"];
 if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
   let ctx;
   try {
@@ -153,6 +154,14 @@ if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
         recordFound(summary, "workua", wJobs.length);
         jobs.push(...wJobs);
       } catch (e) { log("Work.ua error:", e.message); recordFound(summary, "workua", 0); }
+    }
+    if (config.glassdoor?.enabled) {
+      log("Gathering Glassdoor...");
+      try {
+        const gJobs = await fetchGlassdoor(page, config.glassdoor, log);
+        recordFound(summary, "glassdoor", gJobs.length);
+        jobs.push(...gJobs);
+      } catch (e) { log("Glassdoor error:", e.message); recordFound(summary, "glassdoor", 0); }
     }
   } catch (e) {
     log("Browser sources error:", e.message);
