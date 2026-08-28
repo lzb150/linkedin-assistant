@@ -82,14 +82,22 @@ func handleActivation() {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
     var lastBadge: String? = "unset"
+    var lastBadgeSetting: Int = -1
     var notifGranted = false
     let center = UNUserNotificationCenter.current()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
+        // A .regular app launched in the background (open -g from launchd) is never
+        // activated, and the Dock keeps showing the pinned static tile WITHOUT our
+        // badge until the first activation (verified: badge appeared only after
+        // `open -a`). Activate once and hand focus straight back; we own no windows,
+        // so this is a sub-second focus blip at launch only.
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { NSApp.hide(nil) }
         dbg("launched; background=\(isBackground) state=\(statePath)")
         center.delegate = self
-        center.requestAuthorization(options: [.alert]) { [weak self] granted, err in
+        center.requestAuthorization(options: [.alert, .badge]) { [weak self] granted, err in
             DispatchQueue.main.async { self?.notifGranted = granted }
             dbg("notifications granted=\(granted) error=\(String(describing: err))")
         }
@@ -119,7 +127,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Permission can be granted/revoked in System Settings at any time: re-read
         // it every tick instead of latching the launch-time answer.
         center.getNotificationSettings { [weak self] st in
-            DispatchQueue.main.async { self?.notifGranted = st.authorizationStatus == .authorized }
+            DispatchQueue.main.async {
+                self?.notifGranted = st.authorizationStatus == .authorized
+                if self?.lastBadgeSetting != st.badgeSetting.rawValue {
+                    self?.lastBadgeSetting = st.badgeSetting.rawValue
+                    dbg("notification settings: auth=\(st.authorizationStatus.rawValue) alert=\(st.alertSetting.rawValue) badge=\(st.badgeSetting.rawValue)")
+                }
+            }
         }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
