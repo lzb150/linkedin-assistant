@@ -20,6 +20,14 @@ test("writeJsonAtomic writes the value and leaves no temp file", (t) => {
   assert.deepEqual(readdirSync(dirname(p)), ["seen.json"]);
 });
 
+test("writeJsonAtomic leaves no temp file and no clobbered target when the write fails", (t) => {
+  const p = tmp(t);
+  writeJsonAtomic(p, { ok: 1 });
+  assert.throws(() => writeJsonAtomic(p, { big: 1n })); // BigInt is not serialisable
+  assert.deepEqual(readdirSync(dirname(p)), ["seen.json"]);
+  assert.deepEqual(JSON.parse(readFileSync(p, "utf8")), { ok: 1 });
+});
+
 test("seen-store add() on an existing key refreshes the stamp to last-seen", (t) => {
   const p = tmp(t);
   writeFileSync(p, JSON.stringify({ a: "2026-08-01T00:00:00.000Z" }));

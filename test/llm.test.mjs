@@ -1,6 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractJSON, llmJSON, buildJobPrompt } from "../lib/llm.mjs";
+import { extractJSON, numericScore, llmJSON, buildJobPrompt } from "../lib/llm.mjs";
+
+test("extractJSON tolerates trailing prose that contains braces", () => {
+  assert.deepEqual(extractJSON('{"score":5} Note: {x}'), { score: 5 });
+  assert.deepEqual(extractJSON('{"a":{"b":1}} tail }'), { a: { b: 1 } });
+});
+
+test("extractJSON is fast on a hostile brace flood", () => {
+  const t = Date.now();
+  assert.equal(extractJSON("{".repeat(78_000)), null);
+  assert.equal(extractJSON("{".repeat(78_000) + "}".repeat(50)), null);
+  assert.ok(Date.now() - t < 200);
+});
+
+test("numericScore: number or numeric string → Number, everything else → null", () => {
+  assert.equal(numericScore(42), 42);
+  assert.equal(numericScore("42"), 42);
+  assert.equal(numericScore("7.5"), 7.5);
+  for (const v of [null, undefined, true, [], {}, "", "high", "-1", NaN]) assert.equal(numericScore(v), null, String(v));
+});
 
 test("extractJSON parses a clean JSON object", () => {
   assert.deepEqual(extractJSON('{"score":80}'), { score: 80 });

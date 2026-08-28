@@ -29,6 +29,10 @@
   <key>RunAtLoad</key>
   <true/>
 
+  <!-- Relaunch the badge daemon if it crashes, but not after a clean quit. -->
+  <key>KeepAlive</key>
+  <dict><key>SuccessfulExit</key><false/></dict>
+
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.out.log</string>
   <key>StandardErrorPath</key>

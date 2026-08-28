@@ -7,8 +7,7 @@ node_modules/
 # Generated output
 logs/
 drafts/
-applications/*.md
-applications/index.html
+applications/
 
 # Tracked job state (machine-local)
 jobs-seen.json
