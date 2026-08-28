@@ -83,6 +83,13 @@
     ]
   },
 
+  "glassdoor": {
+    "_comment": "Glassdoor is Cloudflare-gated, so it is read through the shared Playwright browser (full runs only, like Robota.ua; no login). Each search is a keyword string; location is fixed to Ukraine. Clicking each card loads the full description — keep maxResults modest.",
+    "enabled": true,
+    "maxResults": 10,
+    "searches": ["QA Automation", "SDET", "Senior Test Automation Engineer", "Playwright"]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,

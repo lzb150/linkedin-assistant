@@ -28,6 +28,7 @@ click is always yours.
 - **Jooble** — via the official Jooble API (free key, structured JSON)
 - **Work.ua** — via the shared browser session (Cloudflare-gated since Aug 2026, full runs only)
 - **Robota.ua** — via the shared browser session (Cloudflare-gated, needs `HEADFUL=1`)
+- **Glassdoor** — via the shared browser session (Cloudflare-gated, full runs only; Ukraine, keyword searches)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
   into one package (the other source links are kept on the card)
@@ -165,6 +166,7 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 - **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Keys are market-bound — the config pins `apiHost: "ua.jooble.org"` (the Ukrainian market, every vacancy applyable from Ukraine), so register the key there. Searches are `{ keywords, location }` pairs in `jobs.config.json`: `''` = all of Ukraine, `"віддалено"` = remote only, or a city. Set `jooble.enabled=false` to disable.
 - **Work.ua** — public jobs board (`work.ua`), Cloudflare-gated, so it is read through the shared Playwright browser during full runs (like Robota.ua; no login). Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=false` to disable.
 - **Robota.ua** — sits behind Cloudflare, which hard-blocks headless Chrome, so this source only yields results on `HEADFUL=1` runs (otherwise it is skipped with a log hint). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (e.g. `https://robota.ua/zapros/qa-automation/ukraine`). Set `robota.enabled=false` to disable.
+- **Glassdoor** — Cloudflare-gated, so it is read through the shared Playwright browser during full runs (like Robota.ua; no login). Each search is a keyword string (location fixed to Ukraine); clicking a card loads the full description. Set `glassdoor.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
 - **Foreign-location filter** — boards also list vacancies physically located
   abroad (DOU marks them "за кордоном"; Jooble UA carries "Краків, Польща").
@@ -225,7 +227,7 @@ counters and lets you filter by stage.
 ![Card expanded — cover letter, private note, Applied state](docs/card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
-keywords. Source chips (LinkedIn / DOU / Djinni / Jooble / Robota / Work.ua) and min-score presets
+keywords. Source chips (LinkedIn / DOU / Djinni / Jooble / Robota / Work.ua / Glassdoor) and min-score presets
 (≥ 30 / ≥ 40) narrow the list further. Cards that arrived since your last visit
 are highlighted with a 🆕 badge and can be isolated with the "New since last
 visit" filter.
@@ -331,7 +333,7 @@ Session expired? Re-run `node login.mjs`.
 ├── followup.mjs       follow-up reminder script (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
 ├── prune-applications.mjs  remove stale duplicate packages from applications/
-├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/LinkedIn sources)
+├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── job-state.json     per-card state (status, applied-date, notes, last-visit) — gitignored
