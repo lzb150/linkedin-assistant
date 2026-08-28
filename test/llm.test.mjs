@@ -104,3 +104,12 @@ test("buildJobPrompt strip is linear on hostile description text", () => {
   buildJobPrompt("r", { title: "t", company: "c", location: "l", text: "<vacancy ".repeat(20_000) }, "en");
   assert.ok(Date.now() - t < 500);
 });
+
+test("extractJSON: linear string/escape-aware brace matching", () => {
+  assert.deepEqual(extractJSON('{"score":5} Note: {x}'), { score: 5 });
+  assert.deepEqual(extractJSON('junk {"a":{"b":"}"},"c":[1,{"d":2}]} tail'), { a: { b: "}" }, c: [1, { d: 2 }] });
+  assert.deepEqual(extractJSON('{"s":"esc \\" }"}'), { s: 'esc " }' });          // escaped quote then a brace inside the string
+  assert.deepEqual(extractJSON('{"s":"back\\\\"}'), { s: "back\\" });            // escaped backslash right before the closing quote
+  assert.equal(extractJSON("{broken"), null);
+  const t = Date.now(); extractJSON('{"a":"' + "}".repeat(1_000_000)); assert.ok(Date.now() - t < 200, "must be linear");
+});
