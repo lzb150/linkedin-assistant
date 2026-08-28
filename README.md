@@ -26,7 +26,7 @@ click is always yours.
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
 - **Jooble** — via the official Jooble API (free key, structured JSON)
-- **Work.ua** — via the public jobs board (plain fetch, no login, no browser)
+- **Work.ua** — via the shared browser session (Cloudflare-gated since Aug 2026, full runs only)
 - **Robota.ua** — via the shared browser session (Cloudflare-gated, needs `HEADFUL=1`)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
@@ -163,7 +163,7 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
 - **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
 - **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Keys are market-bound — the config pins `apiHost: "ua.jooble.org"` (the Ukrainian market, every vacancy applyable from Ukraine), so register the key there. Searches are `{ keywords, location }` pairs in `jobs.config.json`: `''` = all of Ukraine, `"віддалено"` = remote only, or a city. Set `jooble.enabled=false` to disable.
-- **Work.ua** — public jobs board (`work.ua`), server-rendered and read with a plain fetch, same shape as Djinni. Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=false` to disable.
+- **Work.ua** — public jobs board (`work.ua`), Cloudflare-gated, so it is read through the shared Playwright browser during full runs (like Robota.ua; no login). Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=false` to disable.
 - **Robota.ua** — sits behind Cloudflare, which hard-blocks headless Chrome, so this source only yields results on `HEADFUL=1` runs (otherwise it is skipped with a log hint). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (e.g. `https://robota.ua/zapros/qa-automation/ukraine`). Set `robota.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
 - **Foreign-location filter** — boards also list vacancies physically located

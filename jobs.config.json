@@ -61,7 +61,7 @@
   },
 
   "workua": {
-    "_comment": "Work.ua public jobs board, server-rendered — read with a plain fetch (no login, no browser). Each search is a full jobs-search URL, e.g. https://www.work.ua/jobs-<query>/ (copy from your browser). fullDescription (default true) follows each job link for the complete text.",
+    "_comment": "Work.ua public jobs board — Cloudflare-gated, so it is read through the shared Playwright browser (full runs only, like Robota.ua; no login). Each search is a full jobs-search URL, e.g. https://www.work.ua/jobs-<query>/ (copy from your browser). fullDescription (default true) follows each job link for the complete text.",
     "enabled": true,
     "fullDescription": true,
     "maxResults": 15,
