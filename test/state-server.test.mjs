@@ -180,3 +180,18 @@ test("unwritable state path → POST 500, server still alive", async (t) => {
   assert.equal(post.status, 500);
   assert.deepEqual(await fetch(`${base}/health`).then((r) => r.json()), { ok: true });
 });
+
+test("POST /state accepts an upper-case scheme like the dashboard's safeUrl does", async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createServer } = await import("../state-server.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "ss-"));
+  const server = createServer({ statePath: join(dir, "s.json"), indexPath: "/dev/null" });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const res = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "HTTPS://djinni.co/jobs/1", patch: { status: "viewed" } }) });
+  assert.equal(res.status, 200);
+  server.close();
+});

@@ -62,7 +62,7 @@ export function createServer({ statePath, indexPath }) {
       let map = readStore(statePath);
       if (body._meta && typeof body._meta === "object") {
         map = { ...map, _meta: { ...map._meta, ...body._meta } };
-      } else if (typeof body.url === "string" && /^https?:\/\//.test(body.url) && validatePatch(body.patch)) {
+      } else if (typeof body.url === "string" && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
         map = mergeEntry(map, body.url, body.patch);
       } else {
         return send(res, 400, { error: "invalid patch" });

@@ -97,7 +97,7 @@ const summary = newSummary();
 // 1–3) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
 // Jooble (official API — needs JOOBLE_API_KEY). Same gather/record/collect shape.
 const BROWSERLESS_SOURCES = [
-  { name: "dou", enabled: true, fetch: fetchDou },
+  { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
   { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
   { name: "jooble", enabled: config.jooble?.enabled, fetch: fetchJooble },
   { name: "workua", enabled: config.workua?.enabled, fetch: fetchWorkua },
