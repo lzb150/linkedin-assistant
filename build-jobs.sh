@@ -52,4 +52,16 @@ codesign --force --sign - "$APP"
 LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [ -x "$LSREG" ] && "$LSREG" -f "$APP" && echo "  registered with LaunchServices"
 
+# A running instance keeps executing the OLD binary: `open -a` on a running app
+# only re-opens it (and `launchctl kickstart -k` restarts just the `open -W`
+# wrapper). Kill it so launchd / the next ensureJobsApp() starts the fresh build.
+if pkill -f "Jobs.app/Contents/MacOS/jobs"; then
+  sleep 1
+  if launchctl print "gui/$(id -u)/com.eugene.jobs-badge" >/dev/null 2>&1; then
+    launchctl kickstart -k "gui/$(id -u)/com.eugene.jobs-badge" && echo "  relaunched via launchd (com.eugene.jobs-badge)"
+  else
+    open -g -a "$APP" --args --background && echo "  relaunched (badge daemon)"
+  fi
+fi
+
 echo "Done. Test:  open -a \"$APP\"   (badge daemon: open -g -a \"$APP\" --args --background)"
