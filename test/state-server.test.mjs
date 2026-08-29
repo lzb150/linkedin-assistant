@@ -20,7 +20,8 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
   const U = "https://example.com/jobs/9/";
 
   const health = await fetch(`${base}/health`).then((r) => r.json());
-  assert.deepEqual(health, { ok: true });
+  assert.equal(health.ok, true);
+  assert.equal(typeof health.build, 'number');   // index.html mtime, drives the stale-tab reload
 
   const post = await fetch(`${base}/state`, {
     method: "POST",
@@ -178,7 +179,7 @@ test("unwritable state path → POST 500, server still alive", async (t) => {
     body: JSON.stringify({ _meta: { lastVisit: "t" } }),
   });
   assert.equal(post.status, 500);
-  assert.deepEqual(await fetch(`${base}/health`).then((r) => r.json()), { ok: true });
+  assert.equal(await fetch(`${base}/health`).then((r) => r.json()).then((h) => h.ok), true);
 });
 
 test("POST /state accepts an upper-case scheme like the dashboard's safeUrl does", async () => {

@@ -2,7 +2,7 @@
 // applications/index.html and a /state JSON API backed by job-state.json.
 // Never bind anything but 127.0.0.1. Run:  node state-server.mjs
 import http from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStore, writeStore, mergeEntry, validatePatch, normalizeMeta } from "./lib/job-state.mjs";
@@ -47,7 +47,14 @@ export function createServer({ statePath, indexPath }) {
       return send(res, 403, { error: "forbidden host" });
     }
 
-    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true });
+    // `build` is index.html's mtime: the page polls it to notice that a run
+    // regenerated the dashboard underneath an already-open tab (the HTML is
+    // static, so nothing would show the new cards otherwise).
+    if (req.method === "GET" && req.url === "/health") {
+      let build = 0;
+      try { build = statSync(indexPath).mtimeMs; } catch {}
+      return send(res, 200, { ok: true, build });
+    }
 
     if (req.method === "GET" && req.url === "/state") return send(res, 200, readStore(statePath));
 
