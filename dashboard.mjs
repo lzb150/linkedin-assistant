@@ -1,9 +1,10 @@
 // Builds a single self-contained HTML dashboard of all application packages
 // in applications/, sorted by score. Run:  node dashboard.mjs [--open]
-import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
+import { writeTextAtomic } from "./lib/json-file.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { execFile } from "node:child_process";
 
@@ -74,7 +75,7 @@ function scoreColor(s) {
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
 // All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3" };
+const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3", glassdoor: "#0caa41" };
 function badge(source) {
   const c = (Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : undefined) || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
@@ -96,8 +97,12 @@ const cards = items
         return `<a class="alt" href="${esc(safeUrl(url))}" target="_blank" rel="noopener">${esc(src)} ↗</a>`;
       }).join("");
     const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
+    // The server keys state by http(s) url and 400s anything else: a card with
+    // a bad url renders read-only (no status buttons / note / auto-viewed).
+    const live = safeUrl(f.url) !== "#";
+    const auto = live ? ` onclick="autoStatus(this.closest('.card'),'viewed')"` : "";
     return `
-<article class="card" data-url="${esc(f.url)}" data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-score="${it.score}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
+<article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-score="${it.score}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
     <span class="score" style="background:${scoreColor(it.score)}">${it.score}</span>
     <div class="titles">
@@ -106,8 +111,8 @@ const cards = items
       ${it.llm != null ? `<div class="llm-row"><span class="llm">🤖 ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
-      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open ${esc(f.title || "—")} at ${esc(f.company || "—")}" onclick="autoStatus(this.closest('.card'),'viewed')">Open job ↗</a>
-      <div class="status-seg" role="group" aria-label="Status">
+      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
+      ${live ? `<div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" aria-pressed="false" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" aria-pressed="false" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
         <button data-status="applied" aria-pressed="false" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
@@ -115,21 +120,21 @@ const cards = items
         <button data-status="interview" aria-pressed="false" onclick="setStatus(this.closest('.card'),'interview')">Interview</button>
         <button data-status="rejected" aria-pressed="false" aria-label="Rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
       </div>
-      <span class="applied-ago" hidden></span>
+      <span class="applied-ago" hidden></span>` : ""}
     </div>
   </div>
   <div class="skills">${skills}</div>
   ${altRow}
-  <details ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')">
+  <details${live ? ` ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')"` : ""}>
     <summary>Cover letter</summary>
     <pre id="cover${idx}" lang="${esc(f.cover_language || "en")}">${esc(it.cover)}</pre>
-    <button class="copy" aria-live="polite" onclick="copyCover(${idx}, this)">Copy letter</button>
+    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter</button><span class="sr-only" role="status"></span>
     <span class="resume">📎 resume: ${esc(f.resume || "")}</span>
   </details>
-  <details class="note-wrap">
+  ${live ? `<details class="note-wrap">
     <summary>📝 Note <span class="note-has" hidden>●</span></summary>
     <textarea class="note" rows="3" maxlength="10000" aria-label="Private note" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
-  </details>
+  </details>` : ""}
 </article>`;
   })
   .join("\n");
@@ -205,7 +210,7 @@ const html = `<!doctype html>
   .note-wrap summary { color: #57606a; }
   .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
   .note-has { color: #9a6700; }
-  .offline { background: #9a6700; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  .offline, .flash { background: #9a6700; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
   .card.fresh { box-shadow: inset 3px 0 0 #0969da; }
   .ribbon { background: #0969da; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
   #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid #57606a; background: #32383f; color: #fff; font-size: 13px; }
@@ -214,11 +219,12 @@ const html = `<!doctype html>
   .src-seg button, .min-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
   .src-seg button:first-child, .min-seg button:first-child { border-left: 0; }
   .src-seg button.active, .min-seg button.active { background: #0969da; color: #fff; }
+  @media (max-width: 640px) { .head { flex-wrap: wrap; } .actions { width: 100%; } }
 </style></head>
 <body>
 <header>
   <h1>🎯 Matching jobs: ${items.length}</h1>
-  <div class="meta">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
+  <div class="meta" aria-live="polite">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
       <button data-filter="all" aria-pressed="false" onclick="setFilter('all')">All <span class="cnt" id="cnt-all">0</span></button>
@@ -238,6 +244,7 @@ const html = `<!doctype html>
       <button data-src="djinni" aria-pressed="false" onclick="setSource('djinni')">Djinni</button>
       <button data-src="jooble" aria-pressed="false" onclick="setSource('jooble')">Jooble</button>
       <button data-src="robota" aria-pressed="false" onclick="setSource('robota')">Robota</button>
+      <button data-src="glassdoor" aria-pressed="false" onclick="setSource('glassdoor')">Glassdoor</button>
       <button data-src="workua" aria-pressed="false" onclick="setSource('workua')">Work.ua</button>
     </div>
     <div class="min-seg" role="group" aria-label="Minimum score">
@@ -256,7 +263,8 @@ ${clientJs}
 </script>
 </body></html>`;
 
-writeFileSync(OUT, html);
+// Atomic: the state server serves this file, a half-written page must never be visible.
+writeTextAtomic(OUT, html);
 console.log(`Dashboard: ${OUT} (${items.length} jobs)`);
 
 // Best-effort: opening a browser is a convenience, not a requirement.

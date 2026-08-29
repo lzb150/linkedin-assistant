@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
-import { llmJSON, buildJobPrompt } from "./lib/llm.mjs";
+import { llmJSON, buildJobPrompt, numericScore } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
@@ -26,8 +26,9 @@ import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { fetchWorkua } from "./lib/sources/workua.mjs";
+import { fetchWorkua, pageHtml } from "./lib/sources/workua.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
+import { fetchGlassdoor } from "./lib/sources/glassdoor.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser, acquireProfileLock } from "./lib/browser.mjs";
@@ -97,10 +98,9 @@ const summary = newSummary();
 // 1–3) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
 // Jooble (official API — needs JOOBLE_API_KEY). Same gather/record/collect shape.
 const BROWSERLESS_SOURCES = [
-  { name: "dou", enabled: true, fetch: fetchDou },
+  { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
   { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
   { name: "jooble", enabled: config.jooble?.enabled, fetch: fetchJooble },
-  { name: "workua", enabled: config.workua?.enabled, fetch: fetchWorkua },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   if (!s.enabled) continue;
@@ -115,10 +115,11 @@ for (const s of BROWSERLESS_SOURCES) {
   }
 }
 
-// 4–5) Browser sources: LinkedIn (needs login) and Robota.ua (Cloudflare-gated,
-// no login) share one Playwright context. Each source has its own try/catch so
+// 4–6) Browser sources: LinkedIn (needs login), Robota.ua and Work.ua (both
+// Cloudflare-gated, no login) share one Playwright context. Each source has its own try/catch so
 // one failing does not skip the other or hide from health monitoring.
-if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
+const BROWSER_SOURCES = ["linkedin", "robota", "workua", "glassdoor"];
+if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
   let ctx;
   try {
     ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
@@ -146,13 +147,34 @@ if (!DOU_ONLY && (config.linkedin?.enabled || config.robota?.enabled)) {
         jobs.push(...rJobs);
       } catch (e) { log("Robota.ua error:", e.message); recordFound(summary, "robota", 0); }
     }
+    if (config.workua?.enabled) {
+      log("Gathering Work.ua (browser)...");
+      try {
+        const wJobs = await fetchWorkua(config.workua, log, pageHtml(page));
+        recordFound(summary, "workua", wJobs.length);
+        jobs.push(...wJobs);
+      } catch (e) { log("Work.ua error:", e.message); recordFound(summary, "workua", 0); }
+    }
+    if (config.glassdoor?.enabled) {
+      log("Gathering Glassdoor...");
+      try {
+        const gJobs = await fetchGlassdoor(page, config.glassdoor, log);
+        recordFound(summary, "glassdoor", gJobs.length);
+        jobs.push(...gJobs);
+      } catch (e) { log("Glassdoor error:", e.message); recordFound(summary, "glassdoor", 0); }
+    }
   } catch (e) {
     log("Browser sources error:", e.message);
-    if (!ctx) notify(`Browser launch failed: ${e.message}`);
-    // Launch/lock failure happens before the per-source catches: record 0 for
-    // every enabled browser source so health monitoring sees the outage.
-    for (const s of ["linkedin", "robota"]) {
-      if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
+    // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
+    // no 0-counts either — leaving the sources out of the summary keeps a
+    // skipped run from looking like a scraper outage to health monitoring.
+    if (!/profile busy/.test(e.message)) {
+      if (!ctx) notify(`Browser launch failed: ${e.message}`);
+      // Launch/lock failure happens before the per-source catches: record 0 for
+      // every enabled browser source so health monitoring sees the outage.
+      for (const s of BROWSER_SOURCES) {
+        if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
+      }
     }
   } finally {
     await ctx?.close();
@@ -211,9 +233,12 @@ let written = 0, considered = 0;
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
+  // ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
+  // accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
+  const legacyId = id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
   // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
   // a vacancy still live after 90 days must not resurface as new.
-  if (seen.has(id)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
+  if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
   const existing = packageIndex.get(canonicalKey(job));
   if (existing && existing.source !== job.source) {
     try { appendAltLink(join(APPS, existing.file), job.source, job.url); }
@@ -259,7 +284,8 @@ for (const { id, job, scored } of matches) {
     const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
-    if (res && Number.isFinite(Number(res.score))) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(Number(res.score)))) };
+    const n = res ? numericScore(res.score) : null;
+    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))) };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
   const { filename, markdown } = buildApplication(job, scored, llm);

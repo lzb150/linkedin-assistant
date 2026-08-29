@@ -42,11 +42,16 @@ test("acquireProfileLock takes over a fresh lock whose pid is dead", (t) => {
   release();
 });
 
-test("acquireProfileLock does not take over an old lock whose pid is alive", (t) => {
+test("acquireProfileLock takes over an ancient lock even if its pid is alive (pid reuse)", (t) => {
   const p = tmp(t);
   mkdirSync(`${p}.lock`);
   writeFileSync(join(`${p}.lock`, "pid"), String(process.pid));
-  assert.throws(() => acquireProfileLock(p, { now: Date.now() + 3 * 3600_000 }), /profile busy/);
+  // Within staleMs an alive pid holds the lock...
+  assert.throws(() => acquireProfileLock(p), /profile busy/);
+  // ...beyond it, an alive pid is far more likely a reused pid than a 3h run.
+  const release = acquireProfileLock(p, { now: Date.now() + 3 * 3600_000 });
+  assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid));
+  release();
 });
 
 test("release() leaves a lock alone once another pid has taken it over", (t) => {

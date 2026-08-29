@@ -68,6 +68,23 @@ test("appendHistory appends and trims to HISTORY_LEN, keeps absent sources", () 
   assert.deepEqual(out.linkedin, [4]);    // untouched when the source didn't run
 });
 
+test("detectDegradations reports a source that never succeeded (>=5 all-zero runs)", () => {
+  assert.deepEqual(
+    detectDegradations({ workua: [0, 0, 0, 0, 0] }, summaryOf({ workua: 0 })),
+    [{ source: "workua", found: 0, median: 0, reason: "never-succeeded", runs: 5 }],
+  );
+  assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0] }, summaryOf({ workua: 0 })), []); // too few runs
+  assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0, 0] }, summaryOf({ workua: 3 })), []); // finally worked
+  assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0, 0] }, summaryOf({ dou: 5 })), []); // absent this run
+});
+
+test("formatAlert renders never-succeeded", () => {
+  assert.equal(
+    formatAlert([{ source: "workua", found: 0, median: 0, reason: "never-succeeded", runs: 7 }]),
+    "⚠️ workua: never returned results in 7 runs",
+  );
+});
+
 test("formatAlert renders degradations", () => {
   assert.equal(
     formatAlert([{ source: "linkedin", found: 6, median: 50 }, { source: "dou", found: 0, median: 25 }]),

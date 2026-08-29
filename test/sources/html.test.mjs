@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -81,4 +81,22 @@ test("stripHtml second pass removes only tag-like tokens, keeping prose between 
 test("extractDiv counts a div with a >2 KB attribute list toward depth", () => {
   const big = '<div data-x="' + "y".repeat(3000) + '">n</div>';
   assert.equal(extractDivByClass(`<div class="job">A${big}B</div>T`, "job"), `A${big}B`);
+});
+
+test("pool caps in-flight workers at the limit and visits every item", async () => {
+  let inFlight = 0, peak = 0;
+  const seen = [];
+  await pool([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+    inFlight++; peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 5));
+    seen.push(n); inFlight--;
+  });
+  assert.equal(peak, 3);
+  assert.deepEqual(seen.sort(), [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test("pool resolves on an empty list without calling the worker", async () => {
+  let calls = 0;
+  await pool([], 5, async () => { calls++; });
+  assert.equal(calls, 0);
 });

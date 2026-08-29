@@ -185,3 +185,42 @@ test("normalizeCompany is monotonic for suffix-only names", () => {
   assert.equal(normalizeCompany("Group LLC"), "group");
   assert.equal(normalizeCompany("Acme LLC"), "acme");
 });
+
+test("normalizeCompany strips Unicode punctuation («» and curly quotes) like ASCII", () => {
+  assert.equal(normalizeCompany("Компанія «Люкс»"), normalizeCompany("Компанія Люкс"));
+  assert.equal(normalizeCompany("O’Reilly"), normalizeCompany("O'Reilly"));
+  assert.equal(normalizeCompany("Acme™"), normalizeCompany("Acme"));
+});
+
+test("dedupeJobs is idempotent: a second pass adds no altLinks and merges nothing", () => {
+  const jobs = [
+    { source: "dou", company: "Acme", title: "QA Engineer", url: "https://dou/1", text: "long text" },
+    { source: "djinni", company: "Acme", title: "QA Engineer", url: "https://djinni/1", text: "t" },
+    { source: "dou", company: "Acme", title: "QA Engineer (100)", url: "https://dou/2", text: "t" },
+  ];
+  const first = dedupeJobs(jobs);
+  const second = dedupeJobs(first.deduped);
+  assert.equal(second.mergedCount, 0);
+  assert.deepEqual(second.deduped, first.deduped);
+  const links = first.deduped.flatMap((j) => j.altLinks || []);
+  assert.equal(links.length, 1);
+});
+
+test("identityKey keeps C++ / C# / C apart (+ and # are identity characters)", () => {
+  const k = (t) => identityKey({ company: "Acme", title: t, url: "https://a/1" });
+  assert.notEqual(k("Senior C++ Developer"), k("Senior C# Developer"));
+  assert.notEqual(k("Senior C# Developer"), k("Senior C Developer"));
+  assert.equal(normalizeCompany("Компанія «Люкс»"), normalizeCompany("Компанія Люкс")); // Unicode stripping still works
+});
+
+test("identity keys do not depend on Unicode normalization form (NFD input == NFC input)", () => {
+  const nfc = "Тестувальник ПЗ (Київ)";
+  assert.equal(normalizeTitle(nfc.normalize("NFD")), normalizeTitle(nfc));
+  assert.equal(normalizeCompany("München Robotics".normalize("NFD")), normalizeCompany("München Robotics"));
+});
+
+test("canonicalKey drops a #-prefixed req number like a bare one", () => {
+  const k = (t) => canonicalKey({ company: "Ciklum", title: t, url: "https://a/1" });
+  assert.equal(k("QA Engineer (#3282)"), k("QA Engineer (3282)"));
+  assert.equal(k("QA Engineer (#3282)"), k("QA Engineer"));
+});

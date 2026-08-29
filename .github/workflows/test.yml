@@ -28,19 +28,29 @@ jobs:
         shell: bash
         run: |
           set -e
-          for f in *.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs; do node --check "$f"; done
+          FILES="*.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs"   # one list: the guards below must never drift apart
+          for f in $FILES; do node --check "$f"; done
           # Playwright: page.$()/el.$() return ONE handle — iterating/slicing it is a
           # silent TypeError behind catch {} (bit us twice). Convention: a single
           # handle is either consumed via .then(Boolean) or bound to a *El name.
-          ! grep -nE 'await [a-zA-Z_.]+\.\$\(' *.mjs lib/*.mjs lib/sources/*.mjs | grep -vE '[eE]l = await|\.then\(Boolean\)'
+          # NOTE: `! cmd` is exempt from `set -e`, so each guard fails the step explicitly.
+          if grep -nE 'await [a-zA-Z_.]+\.\$\(' $FILES | grep -vE '[eE]l = await|\.then\(Boolean\)'; then
+            echo "::error::single-handle page.\$() result used as a list (see above)"; exit 1; fi
           # …and never iterate/slice a single handle even when it IS bound to a *El name.
-          ! grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)|of [a-zA-Z_]+El\b' *.mjs lib/*.mjs lib/sources/*.mjs
+          if grep -nE 'of await [a-zA-Z_.]+\.\$\(|\.\$\([^)]*\)\.(slice|length|map|forEach)|of [a-zA-Z_]+El\b' $FILES; then
+            echo "::error::single-handle iterated/sliced (see above)"; exit 1; fi
       - name: Dashboard smoke build
         shell: bash
         run: |
           set -e
+          # Hostile package: every scraped field must be escaped, urls http(s)-only.
+          mkdir -p applications
+          cp test/fixtures/hostile-package.md applications/
           node dashboard.mjs
           grep -q "advanceLastVisit" applications/index.html
+          grep -q '&lt;img src=x onerror=' applications/index.html   # fixture rendered AND escaped (guards below are negative-only)
+          if grep -q '<img src=x onerror=' applications/index.html; then echo "::error::unescaped markup in dashboard"; exit 1; fi   # escaped form is &lt;img …
+          if grep -q 'href="javascript:' applications/index.html; then echo "::error::javascript: href in dashboard"; exit 1; fi
       - name: Lint shell scripts
         shell: bash
         run: bash -n *.sh *.sh.example

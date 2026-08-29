@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
-import { readStore, statusOf } from "./lib/job-state.mjs";
+import { readStoreOrExit, statusOf } from "./lib/job-state.mjs";
 
 /**
  * Decide which package files to keep and which to remove.
@@ -48,7 +48,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const ROOT = dirname(fileURLToPath(import.meta.url));
   const APPS = join(ROOT, "applications");
   mkdirSync(APPS, { recursive: true }); // fresh clone: nothing to prune, but don't crash
-  const state = readStore(join(ROOT, "job-state.json"));
+  const state = readStoreOrExit(join(ROOT, "job-state.json"), "refusing to prune against unknown statuses");
   const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
   const packages = files.map((f) => {
     const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {};

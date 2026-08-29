@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { normalizeMeta } from "../lib/job-state.mjs";
 import {
   normalize, mergeEntry, validatePatch, readStore, writeStore, statusOf,
 } from "../lib/job-state.mjs";
@@ -75,11 +76,11 @@ test("readStore returns an empty store for a missing file", () => {
   assert.deepEqual(readStore("/no/such/job-state.json"), { _meta: {} });
 });
 
-test("readStore tolerates malformed JSON", (t) => {
+test("readStore throws on malformed JSON (a corrupt store must never be silently emptied)", (t) => {
   const dir = tmp(t);
   const p = join(dir, "job-state.json");
   writeFileSync(p, "{ not json");
-  assert.deepEqual(readStore(p), { _meta: {} });
+  assert.throws(() => readStore(p), SyntaxError);
 });
 
 test("normalize keeps the new post-applied statuses", () => {
@@ -102,4 +103,10 @@ test("mergeEntry keeps appliedAt when moving applied → answered", () => {
   map = mergeEntry(map, U, { status: "answered" });
   assert.equal(map[U].status, "answered");
   assert.equal(map[U].appliedAt, "2026-07-01T00:00:00Z");
+});
+
+test("normalizeMeta keeps only lastVisit and canonicalizes it to toISOString() form", () => {
+  assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00Z", junk: 1 }), { lastVisit: "2026-06-20T09:00:00.000Z" });
+  assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00.123Z" }), { lastVisit: "2026-06-20T09:00:00.123Z" });
+  for (const bad of [{}, { lastVisit: "t" }, { lastVisit: "" }, [], null, "x"]) assert.equal(normalizeMeta(bad), null);
 });

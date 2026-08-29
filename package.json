@@ -12,6 +12,7 @@
     "dashboard:bg": "./open-dashboard.sh",
     "test": "node --test"
   },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "playwright": "^1.49.0"
   }

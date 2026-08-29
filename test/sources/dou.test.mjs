@@ -93,3 +93,38 @@ test("parseRss keeps 'за кордоном' in the location so the location fil
   assert.equal(job.company, "WinWin.Travel");
   assert.equal(job.location, "за кордоном, віддалено");
 });
+
+test("parseRss skips an item with no <link> so it cannot produce a blank '::title' identity", () => {
+  const xml = `<rss><channel>
+    <item><title>QA в Acme</title><description>d</description></item>
+    <item><title>QA в Acme</title><link>https://jobs.dou.ua/x/1/</link><description>d</description></item>
+  </channel></rss>`;
+  const items = parseRss(xml);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].url, "https://jobs.dou.ua/x/1/");
+});
+
+test("parseRss stays linear on a hostile item full of unclosed <title> openers", () => {
+  const xml = `<rss><channel><item>${"<title>".repeat(60_000)}</item></channel></rss>`;
+  const t = Date.now(); parseRss(xml); assert.ok(Date.now() - t < 500, "tag() must be bounded");
+});
+
+test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () => {
+  const { fetchDou } = await import("../../lib/sources/dou.mjs");
+  // Stub fetch: the assertions are about WHETHER a feed is requested — the old
+  // truthy guard passed a network-based version of this test unchanged.
+  const calls = [], realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { calls.push(url); return { ok: false, status: 599 }; };
+  try {
+    assert.deepEqual(await fetchDou({ enabled: false, feeds: ["http://x/1"] }, () => {}), []);
+    assert.equal(calls.length, 0, "disabled: no feed fetched");
+    await fetchDou({ feeds: ["http://x/1"] }, () => {});            // enabled absent → runs
+    assert.deepEqual(calls, ["http://x/1"]);
+    assert.deepEqual(await fetchDou(undefined, () => {}), []);      // no `dou` section at all → no throw
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("parseRss stays linear on a hostile feed full of unclosed <item> openers", () => {
+  const xml = `<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`;
+  const t = Date.now(); assert.deepEqual(parseRss(xml), []); assert.ok(Date.now() - t < 500, "item scan must be bounded");
+});

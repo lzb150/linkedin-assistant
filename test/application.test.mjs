@@ -172,3 +172,14 @@ test("with llm a non-array red_flags (model returned a string) does not throw", 
   const { markdown } = buildApplication(job, scored, llm);
   assert.match(markdown, /^llm_why: ok$/m);
 });
+
+test("appendAltLink handles CRLF packages (parseFrontmatter indexes them, so appending must work too)", async () => {
+  const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { appendAltLink } = await import("../lib/application.mjs");
+  const f = join(mkdtempSync(join(tmpdir(), "crlf-")), "p.md");
+  writeFileSync(f, "---\r\ntitle: T\r\ncompany: C\r\nurl: https://a/1\r\n---\r\n\r\nbody\r\n");
+  assert.equal(appendAltLink(f, "dou", "https://b/2"), true);
+  assert.match(readFileSync(f, "utf8"), /alt_links: dou\|https:\/\/b\/2/);
+});

@@ -81,14 +81,23 @@ func handleActivation() {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    var lastBadge: String? = "unset"
+    var lastBadgeSetting: Int = -1
     var notifGranted = false
     let center = UNUserNotificationCenter.current()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
+        // A .regular app launched in the background (open -g from launchd) is never
+        // activated, and the Dock keeps showing the pinned static tile WITHOUT our
+        // badge until the first activation (verified: badge appeared only after
+        // `open -a`). Activate once and hand focus straight back; we own no windows,
+        // so this is a sub-second focus blip at launch only.
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { NSApp.hide(nil) }
         dbg("launched; background=\(isBackground) state=\(statePath)")
         center.delegate = self
-        center.requestAuthorization(options: [.alert]) { [weak self] granted, err in
+        center.requestAuthorization(options: [.alert, .badge]) { [weak self] granted, err in
             DispatchQueue.main.async { self?.notifGranted = granted }
             dbg("notifications granted=\(granted) error=\(String(describing: err))")
         }
@@ -115,9 +124,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func poll() {
+        // Permission can be granted/revoked in System Settings at any time: re-read
+        // it every tick instead of latching the launch-time answer.
+        center.getNotificationSettings { [weak self] st in
+            DispatchQueue.main.async {
+                self?.notifGranted = st.authorizationStatus == .authorized
+                if self?.lastBadgeSetting != st.badgeSetting.rawValue {
+                    self?.lastBadgeSetting = st.badgeSetting.rawValue
+                    dbg("notification settings: auth=\(st.authorizationStatus.rawValue) alert=\(st.alertSetting.rawValue) badge=\(st.badgeSetting.rawValue)")
+                }
+            }
+        }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
         let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
-        NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
+        // Re-apply every tick (cheap): the Dock forgets badges when it restarts,
+        // and a background-launched .regular app does not always repaint its tile.
+        let label: String? = count > 0 ? String(count) : nil
+        NSApp.dockTile.badgeLabel = label
+        NSApp.dockTile.display()
+        if label != lastBadge { dbg("badge -> \(label ?? "nil")"); lastBadge = label }
         pruneOldBanners()
         postQueuedBanners()
     }
@@ -142,15 +167,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // Files handed to center.add whose completion has not fired yet; poll()
     // runs every 3 s and must not re-submit them meanwhile.
     var inFlight = Set<String>()
+    // center.add failures per file. A transient error (permission race right
+    // after login — notifGranted is last tick's answer) is retried next tick; a
+    // poison file is dropped after 3 so it cannot block the oldest-first
+    // prefix(5) window for 7 days.
+    var failures = [String: Int]()
 
-    // Post every banners/*.json queued by lib/notify.mjs; a file is deleted only
-    // once its banner was accepted. Without notification permission recent
-    // files are left so they can be inspected or drained once granted.
+    // Post banners/*.json queued by lib/notify.mjs (at most 5 per tick so a
+    // backlog trickles out instead of flooding the screen); a file is deleted once
+    // its banner was accepted, or after 3 failed attempts. Without notification
+    // permission recent files are left so they can be drained once granted.
     func postQueuedBanners() {
         guard notifGranted else { return }
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
-        for name in names.sorted() where name.hasSuffix(".json") && !inFlight.contains(name) {
+        let pending = names.sorted().filter { $0.hasSuffix(".json") && !inFlight.contains($0) }
+        for name in pending.prefix(5) {
             let path = (bannersDir as NSString).appendingPathComponent(name)
             guard let data = fm.contents(atPath: path),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -163,9 +195,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             content.body = message
             inFlight.insert(name)
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
-                dbg("banner \(name) error=\(String(describing: err))")
-                if err == nil { try? fm.removeItem(atPath: path) }
-                DispatchQueue.main.async { self.inFlight.remove(name) }
+                DispatchQueue.main.async {
+                    if let err = err {
+                        let n = (self.failures[name] ?? 0) + 1
+                        self.failures[name] = n
+                        dbg("banner \(name) failed (\(n)/3): \(err)")
+                        if n >= 3 { try? fm.removeItem(atPath: path); self.failures[name] = nil }
+                    } else {
+                        try? fm.removeItem(atPath: path)
+                    }
+                    self.inFlight.remove(name)
+                }
             }
         }
     }

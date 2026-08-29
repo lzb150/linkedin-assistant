@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../state-server.mjs";
@@ -38,7 +38,7 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ _meta: { lastVisit: "2026-06-20T09:00:00Z" } }),
   }).then((r) => r.json());
-  assert.equal(meta._meta.lastVisit, "2026-06-20T09:00:00Z");
+  assert.equal(meta._meta.lastVisit, "2026-06-20T09:00:00.000Z"); // stored canonical (normalizeMeta), not verbatim
 
   const bad = await fetch(`${base}/state`, {
     method: "POST",
@@ -142,4 +142,70 @@ test("multi-byte body split across two chunks mid-character round-trips intact",
   assert.equal(status, 200);
   const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
   assert.equal(state["https://x/"].note, note);
+});
+
+test("corrupt state file → GET /state 500, file left byte-identical", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const statePath = join(dir, "job-state.json");
+  const corrupt = '{"https://x/": {"status": "applied" ';
+  writeFileSync(statePath, corrupt);
+  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+
+  assert.equal((await fetch(`${base}/state`)).status, 500);
+  // A POST must not turn the failed read into a truncating write.
+  const post = await fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "https://y/", patch: { status: "viewed" } }),
+  });
+  assert.equal(post.status, 500);
+  assert.equal(readFileSync(statePath, "utf8"), corrupt);
+});
+
+test("unwritable state path → POST 500, server still alive", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "notadir"), "");
+  const statePath = join(dir, "notadir", "job-state.json"); // ENOTDIR on write
+  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+
+  const post = await fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ _meta: { lastVisit: "t" } }),
+  });
+  assert.equal(post.status, 500);
+  assert.deepEqual(await fetch(`${base}/health`).then((r) => r.json()), { ok: true });
+});
+
+test("POST /state accepts an upper-case scheme like the dashboard's safeUrl does", async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createServer } = await import("../state-server.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "ss-"));
+  const server = createServer({ statePath: join(dir, "s.json"), indexPath: "/dev/null" });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const res = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "HTTPS://djinni.co/jobs/1", patch: { status: "viewed" } }) });
+  assert.equal(res.status, 200);
+  server.close();
+});
+
+test("POST /state rejects an unparseable _meta.lastVisit with 400 on a healthy store", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "srv-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const bad = await fetch(`${base}/state`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ _meta: { lastVisit: "t" } }),
+  });
+  assert.equal(bad.status, 400);
+  assert.deepEqual(await fetch(`${base}/state`).then((r) => r.json()), { _meta: {} }); // nothing written
 });

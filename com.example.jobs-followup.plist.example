@@ -15,12 +15,12 @@
   <key>Label</key><string>com.example.jobs-followup</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/YOUR_USERNAME/.nvm/versions/node/v20.14.0/bin/node</string>
+    <string>/Users/YOUR_USERNAME/.nvm/versions/node/vX.Y.Z/bin/node</string> <!-- `ls ~/.nvm/versions/node` — nvm has no bare "v20" dir -->
     <string>/Users/YOUR_USERNAME/linkedin-assistant/followup.mjs</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.log</string>
-  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.log</string>
+  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/followup.err.log</string>
 </dict>
 </plist>

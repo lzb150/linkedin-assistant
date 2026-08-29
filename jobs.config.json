@@ -62,7 +62,7 @@
   },
 
   "workua": {
-    "_comment": "Work.ua public jobs board, server-rendered — read with a plain fetch (no login, no browser). Each search is a full jobs-search URL; jobs-remote-<query> filters to remote-only, e.g. https://www.work.ua/jobs-remote-react/ (copy from your browser). fullDescription (default true) follows each job link for the complete text. Disabled: general-market board, local-SMB tail — DOU/Djinni cover the UA tech market.",
+    "_comment": "Work.ua public jobs board — Cloudflare-gated, so it is read through the shared Playwright browser (full runs only, like Robota.ua; no login). Each search is a full jobs-search URL, e.g. https://www.work.ua/jobs-<query>/ (copy from your browser). fullDescription (default true) follows each job link for the complete text. Disabled: general-market board, local-SMB tail — DOU/Djinni cover the UA tech market.",
     "enabled": false,
     "fullDescription": true,
     "maxResults": 15,
@@ -84,14 +84,22 @@
     ]
   },
 
+  "glassdoor": {
+    "_comment": "Glassdoor is Cloudflare-gated, so it is read through the shared Playwright browser (full runs only, like Robota.ua; no login). Each search is a keyword string; location is fixed to Ukraine. Clicking each card loads the full description — keep maxResults modest.",
+    "enabled": true,
+    "maxResults": 10,
+    "searches": ["Senior Frontend Engineer", "React Developer", "Full Stack Engineer Node.js", "Next.js Developer"]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. remote:true adds the f_WT=2 filter. Locations cover the target markets: Ukrainian companies, EU, US — all remote. Set enabled=false to turn off.",
     "enabled": true,
-    "maxResults": 8,
+    "maxResults": 15,
     "searches": [
       { "keywords": "Senior Frontend Engineer React", "location": "Ukraine", "remote": true },
       { "keywords": "Frontend Developer React Next.js", "location": "European Union", "remote": true },
-      { "keywords": "Senior Frontend Engineer React", "location": "United States", "remote": true }
+      { "keywords": "Senior Frontend Engineer React", "location": "United States", "remote": true },
+      { "keywords": "Senior Fullstack Engineer React Node.js", "location": "European Union", "remote": true }
     ]
   }
 }
