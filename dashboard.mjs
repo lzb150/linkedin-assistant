@@ -233,8 +233,6 @@ const html = `<!doctype html>
       <button data-filter="applied" aria-pressed="false" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
       <button data-filter="answered" aria-pressed="false" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
       <button data-filter="interview" aria-pressed="false" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
-      <button data-filter="rejected" aria-pressed="false" onclick="setFilter('rejected')"><span aria-hidden="true">✗</span><span class="sr-only">Rejected</span> <span class="cnt" id="cnt-rejected">0</span></button>
-      <button data-filter="fresh" aria-pressed="false" onclick="setFilter('fresh')">🆕 New since visit <span class="cnt" id="cnt-fresh">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
