@@ -138,7 +138,9 @@ node djinni-check.mjs              # headless
 HEADFUL=1 node djinni-check.mjs    # watch it / fix selectors against the live page
 ```
 
-`djinni-check.mjs` is **count-only**: it counts the conversation threads in Djinni's unread bucket (`https://djinni.co/my/inbox?bucket=unread`), never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
+`djinni-check.mjs` is **count-only** for the inbox: it counts the conversation threads in Djinni's unread bucket (`https://djinni.co/my/inbox?bucket=unread`), never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
+
+**Auto-bump:** the same run also keeps your profile fresh — Djinni lets you "Bump My Profile" (raise it in recruiter search results) periodically (its docs say once every 30 days). Once a day the script checks the button on `djinni.co/my/profile/` and clicks it whenever it is enabled — the button's own state is the source of truth, so any bump frequency Djinni allows is picked up automatically. Confirms the modal and fires a "Profile bumped" banner. Throttle state lives in `djinni-bump-state.json` (gitignored); a bump failure never affects the unread scan.
 
 Run it hourly via launchd:
 
