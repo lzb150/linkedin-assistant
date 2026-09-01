@@ -53,6 +53,9 @@ djinni-notify-state.json
 # Ids of Djinni threads already notified about (written by djinni-check.mjs)
 djinni-seen.json
 
+# Monthly profile-bump throttle state (written by djinni-check.mjs)
+djinni-bump-state.json
+
 # Machine-specific Djinni run wrapper — use run-djinni.sh.example
 run-djinni.sh
 
