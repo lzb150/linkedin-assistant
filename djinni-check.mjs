@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
+import { readBumpState, dueForCheck, nextBumpState, bumpProfile } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
@@ -23,6 +24,8 @@ const STATE_FILE = join(__dir, "djinni-notify-state.json");
 // given unread conversation only notifies once. A network error never touches
 // this file, so a transient blip can't trigger a spurious re-notification.
 const SEEN_FILE = join(__dir, "djinni-seen.json");
+// Monthly "Bump My Profile" throttle state (see lib/djinni-bump.mjs).
+const BUMP_STATE_FILE = join(__dir, "djinni-bump-state.json");
 
 // Djinni's own "unread" inbox bucket. Counting the conversation threads listed
 // here is the most reliable unread signal (verified against the live DOM):
@@ -103,6 +106,20 @@ try {
   try {
     writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
   } catch (e) { log("notify: writing seen file failed:", e?.message); }
+
+  // Monthly profile bump: Djinni allows one per 30 days. At most one
+  // /my/profile/ visit a day (state-throttled); a bump failure never breaks
+  // the unread scan above.
+  try {
+    const bumpState = readBumpState(BUMP_STATE_FILE);
+    if (dueForCheck(bumpState)) {
+      const outcome = await bumpProfile(page);
+      writeJsonAtomic(BUMP_STATE_FILE, nextBumpState(bumpState, outcome));
+      log(`bump: ${outcome}`);
+      if (outcome === "bumped") notify("Djinni", "Profile bumped — back to the top of search results.");
+      if (outcome === "unverified") notify("Djinni assistant", "Bump attempt could not be verified — check djinni.co/my/profile/ manually.");
+    }
+  } catch (e) { log("bump failed:", e?.message); }
 } catch (err) {
   log("ERROR:", err?.message || err);
   if (!ctx) notify("Djinni assistant", `Browser launch failed: ${err?.message || err}`);
