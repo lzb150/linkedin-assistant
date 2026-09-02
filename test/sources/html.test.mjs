@@ -106,7 +106,8 @@ test("siteUrl keeps links on the site (incl. subdomains) and drops everything el
   assert.equal(siteUrl("https://ROBOTA.UA/v/1", "https://robota.ua"), "https://robota.ua/v/1");
   assert.equal(siteUrl("https://uk.glassdoor.com/j", "https://www.glassdoor.com"), "https://uk.glassdoor.com/j");
   for (const bad of ["https://evil.com/x", "//evil.com/x", "https://robota.ua.evil.com/x",
-    "https://evilrobota.ua/x", "javascript:alert(1)", "ftp://robota.ua/x", "http://[bad", "", null]) {
+    "https://evilrobota.ua/x", "javascript:alert(1)", "ftp://robota.ua/x", "http://[bad", "", null,
+    "https://evil.com@robota.ua/x", "https://user:pw@robota.ua/x", "https://robota.ua:8443/x"]) {
     assert.equal(siteUrl(bad, "https://robota.ua"), null, String(bad));
   }
 });
