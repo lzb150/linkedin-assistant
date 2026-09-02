@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks, pool, siteUrl } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -99,4 +99,14 @@ test("pool resolves on an empty list without calling the worker", async () => {
   let calls = 0;
   await pool([], 5, async () => { calls++; });
   assert.equal(calls, 0);
+});
+
+test("siteUrl keeps links on the site (incl. subdomains) and drops everything else", () => {
+  assert.equal(siteUrl("/v/1?x=1", "https://robota.ua"), "https://robota.ua/v/1?x=1");
+  assert.equal(siteUrl("https://ROBOTA.UA/v/1", "https://robota.ua"), "https://robota.ua/v/1");
+  assert.equal(siteUrl("https://uk.glassdoor.com/j", "https://www.glassdoor.com"), "https://uk.glassdoor.com/j");
+  for (const bad of ["https://evil.com/x", "//evil.com/x", "https://robota.ua.evil.com/x",
+    "https://evilrobota.ua/x", "javascript:alert(1)", "ftp://robota.ua/x", "http://[bad", "", null]) {
+    assert.equal(siteUrl(bad, "https://robota.ua"), null, String(bad));
+  }
 });
