@@ -87,7 +87,7 @@ async function bootClient({ fetch, store, document }) {
   const { readFileSync } = await import("node:fs");
   const vm = await import("node:vm");
   const ctx = vm.createContext({
-    setTimeout, Date, JSON, console, fetch,
+    setTimeout, clearTimeout, Date, JSON, console, fetch,
     localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
     document: document || { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
   });
@@ -135,7 +135,7 @@ test("offline: dirty urls from a previous session survive a reload", async () =>
     ["jobStatusDirty", JSON.stringify(["https://old/"])],
   ]);
   const ctx = vm.createContext({
-    setTimeout, Date, JSON, console,
+    setTimeout, clearTimeout, Date, JSON, console,
     fetch: () => Promise.reject(new Error("offline")),
     localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
     document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
