@@ -62,7 +62,7 @@
 
   "workua": {
     "_comment": "Work.ua public jobs board — Cloudflare-gated, so it is read through the shared Playwright browser (full runs only, like Robota.ua; no login). Each search is a full jobs-search URL, e.g. https://www.work.ua/jobs-<query>/ (copy from your browser). fullDescription (default true) follows each job link for the complete text.",
-    "enabled": true,
+    "enabled": false,
     "fullDescription": true,
     "maxResults": 15,
     "searches": [
@@ -74,7 +74,7 @@
 
   "robota": {
     "_comment": "Robota.ua sits behind Cloudflare, which hard-blocks headless Chrome — this source only yields results when jobs.mjs runs with HEADFUL=1 (it is skipped with a log hint otherwise). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL, e.g. https://robota.ua/zapros/<query>/ukraine (copy from your browser). fullDescription (default true) opens each vacancy page for the complete text — slower, keep maxResults modest.",
-    "enabled": true,
+    "enabled": false,
     "fullDescription": true,
     "maxResults": 10,
     "searches": [
@@ -85,7 +85,7 @@
 
   "glassdoor": {
     "_comment": "Glassdoor is Cloudflare-gated, so it is read through the shared Playwright browser (full runs only, like Robota.ua; no login). Each search is a keyword string; location is fixed to Ukraine. Clicking each card loads the full description — keep maxResults modest.",
-    "enabled": true,
+    "enabled": false,
     "maxResults": 10,
     "searches": ["QA Automation", "SDET", "Senior Test Automation Engineer", "Playwright"]
   },
