@@ -272,7 +272,8 @@ for (const job of jobs) {
 }
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
-// per run), then write the package. LLM failure → keyword-only package.
+// per run), then write the package. LLM fit below llm.minScore → dropped;
+// LLM failure → keyword-only package.
 matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 let llmCalls = 0;
@@ -287,6 +288,15 @@ for (const { id, job, scored } of matches) {
     const n = res ? numericScore(res.score) : null;
     if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))) };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
+  }
+  // LLM gate: a confident low fit drops the job. CLI failure (llm === null)
+  // deliberately does not — an outage must not swallow real matches.
+  if (llm && llm.score < (LLM.minScore ?? 0)) {
+    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${label}`);
+    recordOutcome(summary, job.source, "low");
+    seen.add(id);
+    saveSeen();
+    continue;
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
   writeFileSync(join(APPS, filename), markdown);

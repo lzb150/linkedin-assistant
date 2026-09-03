@@ -6,7 +6,7 @@
   "requireRole": true,
 
   "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles. Matched in the title only, so senior roles that merely mention these words in the description are kept.",
-  "excludeTitle": ["junior", "intern", "internship", "trainee"],
+  "excludeTitle": ["junior", "intern", "internship", "trainee", "manual"],
 
   "_excludeLocationComment": "Boards also list vacancies physically located abroad (DOU marks them 'за кордоном', Jooble UA carries 'Краків, Польща' etc). Jobs whose location contains any of these substrings (case-insensitive) are dropped across ALL sources before scoring.",
   "excludeLocation": [
@@ -15,11 +15,12 @@
     "Грузія", "Georgia", "Тбілісі", "Tbilisi"
   ],
 
-  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). The LLM NEVER gates: keyword minScore/requireRole decide what gets a package; the LLM only ranks, explains, and writes the letter. Any CLI failure silently falls back to keyword-only packages. maxPerRun caps CLI calls per run.",
+  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). Keyword minScore/requireRole decide what reaches the LLM; when the LLM answers with a fit score below llm.minScore (0–100) the job is dropped as low instead of getting a package. A CLI failure still falls back to a keyword-only package (never lose a match to an outage). Set minScore to 0 to make the LLM advisory-only. maxPerRun caps CLI calls per run.",
   "llm": {
     "enabled": true,
     "model": "haiku",
-    "maxPerRun": 15
+    "maxPerRun": 15,
+    "minScore": 50
   },
 
   "dou": {
