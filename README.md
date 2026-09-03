@@ -36,11 +36,13 @@ click is always yours.
 - Builds an application package: cover letter + link + resume path
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
   second look from a local `claude -p` call (haiku by default): a 0–100 verdict,
-  a one-line "why", and a tailored cover letter. The LLM never gates — the keyword
-  score still decides what gets a package — it only ranks, explains, and writes.
-  Any CLI failure falls back silently to a keyword-only package. Needs `resume.txt`;
-  tune via the `llm` block in `jobs.config.json` (`enabled`, `model`,
-  `maxPerRun`). LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
+  a one-line "why", and a tailored cover letter. The keyword score decides what
+  reaches the LLM; a fit below `llm.minScore` (default 50) drops the job instead of
+  writing a package. Any CLI failure still falls back to a keyword-only package.
+  Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
+  `model`, `maxPerRun`, `minScore` — 0 makes the LLM advisory-only). The wrapper
+  script must have the `claude` binary on `PATH` (`~/.local/bin`, see
+  `run-jobs.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
   child process runs hardened — tools disallowed, cwd off the repo — since job
   descriptions are untrusted input and must not be able to read local files.
 

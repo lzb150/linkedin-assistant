@@ -3,7 +3,7 @@
 # Copy to run-jobs.sh and fill in your own values (run-jobs.sh is gitignored).
 set -euo pipefail
 
-export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"   # ~/.local/bin holds the claude CLI (LLM re-scoring)
 cd "$(dirname "$0")"
 export RESUME_PATH="$HOME/Downloads/your-resume.docx"
 export CANDIDATE_NAME="Your Name"
