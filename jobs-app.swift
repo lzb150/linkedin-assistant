@@ -7,7 +7,8 @@
 //     badge (cleared when the total is 0).
 //   - On a foreground (user) launch or a Dock-icon click: if Djinni has unread
 //     messages it opens that conversation (a single unread opens the thread, a
-//     few open Djinni's unread bucket); otherwise it opens the jobs dashboard
+//     few open Djinni's unread bucket) and clears the Djinni badge at once (the
+//     next hourly scan restores it if anything is still unread); otherwise it opens the jobs dashboard
 //     (node dashboard.mjs --open), preserving the old applet's behaviour.
 //   - Launched with --background (by the login LaunchAgent or check.mjs) it runs
 //     the badge daemon only and does NOT open the dashboard.
@@ -60,6 +61,22 @@ func djinniUnread() -> (count: Int, ids: [String]) {
     return (count, ids)
 }
 
+// The user just opened the unread thread/bucket, so the badge would otherwise
+// sit there until the next hourly djinni-check run. Zero the state now (same
+// shape djinni-check writes, atomically); that scan restores the real count if
+// anything is still unread. Banner de-dup lives in djinni-seen.json, so this
+// never causes a repeat banner.
+func clearDjinniBadge() {
+    let state: [String: Any] = ["count": 0, "pending": [], "updatedAt": ISO8601DateFormatter().string(from: Date()), "clearedBy": "activation"]
+    guard let data = try? JSONSerialization.data(withJSONObject: state) else { return }
+    let tmp = djinniStatePath + ".tmp"
+    do {
+        try data.write(to: URL(fileURLWithPath: tmp))
+        _ = try FileManager.default.replaceItemAt(URL(fileURLWithPath: djinniStatePath), withItemAt: URL(fileURLWithPath: tmp))
+        dbg("djinni badge cleared on activation")
+    } catch { dbg("clearDjinniBadge failed: \(error)") }
+}
+
 // Decide what a Dock-icon activation (click or foreground launch) opens:
 //   - Djinni has unread -> open that conversation (one unread opens the thread,
 //     several open Djinni's unread bucket).
@@ -74,6 +91,7 @@ func handleActivation() {
             : "https://djinni.co/my/inbox?bucket=unread"
         dbg("activation -> Djinni (count=\(count), ids=\(ids.count)) \(url)")
         openURL(url)
+        clearDjinniBadge()
         return
     }
     openDashboard()
