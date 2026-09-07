@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
-import { llmJSON, buildJobPrompt, numericScore } from "./lib/llm.mjs";
+import { llmJSON, buildJobPrompt, numericScore, llmRejects } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
@@ -228,7 +228,8 @@ const packageIndex = new Map();
 }
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
-// Gate unchanged: per-source/global minScore + requireRole. LLM never gates.
+// Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
+// where the LLM applies a second gate (llm.minScore).
 let written = 0, considered = 0;
 const matches = [];
 for (const job of jobs) {
@@ -273,14 +274,20 @@ for (const job of jobs) {
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
 // per run), then write the package. LLM fit below llm.minScore → dropped;
-// LLM failure → keyword-only package.
+// LLM failure → keyword-only package; past the per-run cap → deferred to the
+// next run (not written, not marked seen) so the weakest matches — the likeliest
+// false positives — never bypass the LLM gate.
 matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 let llmCalls = 0;
 for (const { id, job, scored } of matches) {
   const label = `${job.title} @ ${job.company}`;
   let llm = null;
-  if (llmOn && llmCalls < (LLM.maxPerRun ?? 15)) {
+  if (llmOn && llmCalls >= (LLM.maxPerRun ?? 15)) {
+    log(`  · deferred [${scored.score}] ${job.source}: ${label} — llm.maxPerRun reached, next run`);
+    continue;
+  }
+  if (llmOn) {
     llmCalls++;
     const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
     // Normalize the score once at the trust boundary; downstream (log,
@@ -289,9 +296,7 @@ for (const { id, job, scored } of matches) {
     if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))) };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
-  // LLM gate: a confident low fit drops the job. CLI failure (llm === null)
-  // deliberately does not — an outage must not swallow real matches.
-  if (llm && llm.score < (LLM.minScore ?? 0)) {
+  if (llmRejects(llm, LLM.minScore)) {
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${label}`);
     recordOutcome(summary, job.source, "low");
     seen.add(id);

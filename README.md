@@ -40,7 +40,8 @@ click is always yours.
   reaches the LLM; a fit below `llm.minScore` (default 50) drops the job instead of
   writing a package. Any CLI failure still falls back to a keyword-only package.
   Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
-  `model`, `maxPerRun`, `minScore` — 0 makes the LLM advisory-only). The wrapper
+  `model`, `maxPerRun`, `minScore` — 0 makes the LLM advisory-only). Matches past
+  the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
   script must have the `claude` binary on `PATH` (`~/.local/bin`, see
   `run-jobs.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
   child process runs hardened — tools disallowed, cwd off the repo — since job
