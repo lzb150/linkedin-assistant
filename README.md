@@ -61,7 +61,9 @@ click is always yours.
 | DOU discovery      | hourly              |
 | LinkedIn discovery | every 3 hours (at :45) |
 
-Every `jobs.mjs` run ends with a macOS notification of the run outcome, plus
+A `jobs.mjs` run that wrote new packages ends with a macOS notification of the
+outcome (a run that found nothing new stays silent — the dashboard timestamp and
+the weekly report tell you the scheduler is alive), plus
 a separate 🔥 banner when a run wrote a strong match (LLM score ≥ 70, or
 keyword score ≥ 40 when the LLM didn't score it) — so a great match doesn't
 drown in the day's digest. A scraper-health check also watches each source's
