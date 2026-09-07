@@ -38,8 +38,12 @@ function setupProject(t, feedUrl) {
     // Fake `claude` scores by company name and logs how it was called into the
     // project dir (the parent of bin/) — cwd must be OFF the project, it sees
     // untrusted board text.
+    // Each call sleeps 0.6 s and logs start/end (ms) so the test can prove the
+    // two gate-passers were scored concurrently, not one after the other.
     bins: { claude: `#!/bin/sh
-echo "cwd=$(pwd)" >> "$(dirname "$0")/../claude.log"; echo "args=$*" >> "$(dirname "$0")/../claude.log"
+LOG="$(dirname "$0")/../claude.log"; now() { node -e 'process.stdout.write(String(Date.now()))'; }
+echo "start=$(now)" >> "$LOG"; sleep 0.6
+echo "cwd=$(pwd)" >> "$LOG"; echo "args=$*" >> "$LOG"; echo "end=$(now)" >> "$LOG"
 case "$*" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "cover": "x"}' ;;
   *) echo 'Sure! {"score": 85, "why": "great fit", "red_flags": [], "cover": "Dear team, hire me."}' ;; esac
 ` },
@@ -75,6 +79,9 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.equal((claudeLog.match(/^args=/gm) || []).length, 2);
   assert.match(claudeLog, /--disallowedTools \S*Bash/);
   assert.ok(!claudeLog.split("\n").some((l) => l.startsWith("cwd=") && l.includes(p.dir)), "claude runs with cwd off the project dir");
+  const starts = [...claudeLog.matchAll(/^start=(\d+)/gm)].map((m) => +m[1]).sort((a, b) => a - b);
+  const ends = [...claudeLog.matchAll(/^end=(\d+)/gm)].map((m) => +m[1]).sort((a, b) => a - b);
+  assert.ok(starts[1] < ends[0], `LLM calls run concurrently (second started at +${starts[1] - starts[0]}ms, first ended at +${ends[0] - starts[0]}ms)`);
 
   // Side files.
   const seen = p.json("jobs-seen.json");

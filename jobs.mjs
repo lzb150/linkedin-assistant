@@ -27,6 +27,7 @@ import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { fetchWorkua, pageHtml } from "./lib/sources/workua.mjs";
+import { pool } from "./lib/sources/html.mjs";
 import { fetchRobota } from "./lib/sources/robota.mjs";
 import { fetchGlassdoor } from "./lib/sources/glassdoor.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
@@ -269,17 +270,26 @@ for (const job of jobs) {
 // false positives — never bypass the LLM gate.
 matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
-let llmCalls = 0;
-for (const { id, job, scored } of matches) {
-  const label = `${job.title} @ ${job.company}`;
+const label = (job) => `${job.title} @ ${job.company}`;
+const toScore = llmOn ? matches.slice(0, LLM.maxPerRun ?? 15) : matches;
+for (const { job, scored } of (llmOn ? matches.slice(toScore.length) : [])) {
+  log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
+}
+// Score first, a few CLI calls at a time (each takes ~55 s; 15 in sequence was
+// 14 min). Writes below stay sequential and in score order, so the package
+// files, seen saves and logs are unchanged in shape.
+const verdicts = new Map();
+if (llmOn) {
+  await pool(toScore, LLM.concurrency ?? 3, async (m) => {
+    verdicts.set(m, await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "haiku" }));
+  });
+}
+for (const m of toScore) {
+  const { id, job, scored } = m;
+  const lbl = label(job);
   let llm = null;
-  if (llmOn && llmCalls >= (LLM.maxPerRun ?? 15)) {
-    log(`  · deferred [${scored.score}] ${job.source}: ${label} — llm.maxPerRun reached, next run`);
-    continue;
-  }
   if (llmOn) {
-    llmCalls++;
-    const res = await llmJSON(buildJobPrompt(RESUME_TXT, job, detectLang(job.text)), { model: LLM.model || "haiku" });
+    const res = verdicts.get(m);
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
@@ -287,7 +297,7 @@ for (const { id, job, scored } of matches) {
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
   if (llmRejects(llm, LLM.minScore)) {
-    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${label}`);
+    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
     recordOutcome(summary, job.source, "low");
     seen.add(id);
     saveSeen();
@@ -295,10 +305,10 @@ for (const { id, job, scored } of matches) {
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
   writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
-  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${label}`);
+  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${lbl}`);
   recordOutcome(summary, job.source, "written");
-  recordTop(summary, scored.score, label);
-  writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label });
+  recordTop(summary, scored.score, lbl);
+  writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label: lbl });
   seen.add(id);
   // Persist after every package: a crash mid-run must not forget written
   // packages (the next run would re-score and re-pay the LLM for them).
