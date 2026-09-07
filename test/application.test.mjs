@@ -183,3 +183,14 @@ test("appendAltLink handles CRLF packages (parseFrontmatter indexes them, so app
   assert.equal(appendAltLink(f, "dou", "https://b/2"), true);
   assert.match(readFileSync(f, "utf8"), /alt_links: dou\|https:\/\/b\/2/);
 });
+
+// The LLM cover is raw model output, steerable by board text. A non-string
+// (array of paragraphs, number) used to throw in buildApplication and take the
+// whole jobs.mjs run down — no seen save, no dashboard, no banners.
+test("a non-string LLM cover falls back to the template letter instead of throwing", () => {
+  for (const cover of [["para 1", "para 2"], 5, true, { text: "x" }]) {
+    const { markdown } = buildApplication(job, scored, { score: 90, why: "fit", red_flags: [], cover });
+    assert.match(markdown, /^llm_score: 90$/m);
+    assert.doesNotMatch(markdown, /para 1|\[object Object\]/);
+  }
+});
