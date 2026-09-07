@@ -86,8 +86,9 @@ genitive position — they complete "досвід в …" / "опыт в …":
 
 ### 5. Searches — `jobs.config.json`
 
-Point **every** enabled source at the new field — there are six (`dou`,
-`djinni`, `jooble`, `workua`, `robota`, `linkedin`); a source left on the old
+Point **every** enabled source at the new field — there are seven (`dou`,
+`djinni`, `jooble`, `linkedin`, plus the browser-only `workua`, `robota`,
+`glassdoor`, disabled by default); a source left on the old
 searches keeps fetching the old profession. Copy real URLs from your
 browser's filters — that keeps parameters valid:
 
@@ -117,7 +118,7 @@ cover letters. All three files are gitignored.
 ## Seniority
 
 - `excludeTitle` in `jobs.config.json` drops titles containing
-  `junior` / `intern` / `internship` / `trainee` before scoring —
+  `junior` / `intern` / `internship` / `trainee` / `manual` before scoring —
   whole-word, title-only.
 - There is no "senior-only" positive filter: the score is skill-based, and
   senior titles already match your role entries by substring.
@@ -132,7 +133,7 @@ to your resume.
 ## Checklist
 
 1. `skills.json` — roles, skills, synonyms, antiKeywords, profile updated.
-2. `jobs.config.json` — searches repointed for **all six** sources;
+2. `jobs.config.json` — searches repointed for **every enabled** source;
    `excludeTitle` still fits.
 3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
    `run.sh` / `run-jobs.sh`.

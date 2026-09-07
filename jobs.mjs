@@ -7,7 +7,7 @@
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
 
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdirSync } from "node:fs";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -33,7 +33,7 @@ import { currentCounts, normalizeHistory, detectDegradations, appendHistory, for
 import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser, acquireProfileLock } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
-import { writeJsonAtomic } from "./lib/json-file.mjs";
+import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -50,7 +50,7 @@ try {
 }
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
-// Fresh clone has no applications/ yet; readdirSync/writeFileSync below need it.
+// Fresh clone has no applications/ yet; readdirSync/writeTextAtomic below need it.
 mkdirSync(APPS, { recursive: true });
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
@@ -86,11 +86,7 @@ const saveSeen = () => seen.save();
 // source-health.json keeps the last 10 runs' `found` counts per source so we
 // can warn when a source degrades well below its recent norm (a likely sign
 // its scraper broke). Missing/unparseable/legacy file → normalized quietly.
-function loadHealth() {
-  try { return JSON.parse(readFileSync(HEALTH_FILE, "utf8")); }
-  catch { return {}; }
-}
-const health = normalizeHistory(loadHealth());
+const health = normalizeHistory(readJson(HEALTH_FILE, {}));
 
 let jobs = [];
 const summary = newSummary();
@@ -298,7 +294,7 @@ for (const { id, job, scored } of matches) {
     continue;
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
-  writeFileSync(join(APPS, filename), markdown);
+  writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
   log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${label}`);
   recordOutcome(summary, job.source, "written");
   recordTop(summary, scored.score, label);

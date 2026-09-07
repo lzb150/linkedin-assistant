@@ -6,6 +6,7 @@
 //   REPORT_DAYS=14 node report.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { readPackages } from "./lib/packages.mjs";
+import { readJson as readJsonFile } from "./lib/json-file.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit } from "./lib/job-state.mjs";
@@ -18,7 +19,7 @@ const days = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 const now = new Date();
 const since = now.getTime() - days * 86400000;
 
-const readJson = (f) => { try { return JSON.parse(readFileSync(join(dir, f), "utf8")); } catch { return {}; } };
+const readJson = (f) => readJsonFile(join(dir, f), {});
 const files = (sub, ext) => (existsSync(join(dir, sub)) ? readdirSync(join(dir, sub)).filter((x) => x.endsWith(ext)).map((x) => join(dir, sub, x)) : []);
 
 const packages = readPackages(join(dir, "applications"));

@@ -1,11 +1,10 @@
 // followup.mjs
 // Daily reminder: notify about jobs marked "applied" with no movement for N days.
 // Notifications go through lib/notify.mjs (Jobs.app banner, osascript fallback).
-import { readFileSync } from "node:fs";
 import { readPackages } from "./lib/packages.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { writeJsonAtomic } from "./lib/json-file.mjs";
+import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { readStoreOrExit } from "./lib/job-state.mjs";
 import { dueReminders } from "./lib/followup.mjs";
 import { notify } from "./lib/notify.mjs";
@@ -27,8 +26,8 @@ function jobIndex() {
 
 // Dedupe per calendar day: { day: "YYYY-MM-DD", urls: [...] }.
 function loadDedupe(today) {
-  try { const d = JSON.parse(readFileSync(DEDUPE, "utf8")); if (d.day === today) return Array.isArray(d.urls) ? d.urls : []; } catch {}
-  return [];
+  const d = readJson(DEDUPE, null);
+  return d && d.day === today && Array.isArray(d.urls) ? d.urls : [];
 }
 const saveDedupe = (today, urls) => writeJsonAtomic(DEDUPE, { day: today, urls });
 

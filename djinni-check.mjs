@@ -9,11 +9,10 @@
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
-import { writeJsonAtomic } from "./lib/json-file.mjs";
+import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 import { readBumpState, dueForCheck, nextBumpState, bumpProfile } from "./lib/djinni-bump.mjs";
 
@@ -83,13 +82,8 @@ try {
   // the unread ids from the previous successful scan; a thread that is read (and
   // leaves the unread bucket) drops out, so if it ever goes unread again it will
   // notify afresh. First run with no seen file notifies for current unread.
-  let seen = [];
-  try {
-    if (existsSync(SEEN_FILE)) {
-      const raw = JSON.parse(readFileSync(SEEN_FILE, "utf8"));
-      if (Array.isArray(raw)) seen = raw.map(String);
-    }
-  } catch (e) { log("notify: reading seen file failed:", e?.message); }
+  const rawSeen = readJson(SEEN_FILE, []);
+  const seen = Array.isArray(rawSeen) ? rawSeen.map(String) : [];
 
   const seenSet = new Set(seen);
   const fresh = threads.filter((t) => !seenSet.has(t.id));

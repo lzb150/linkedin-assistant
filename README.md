@@ -3,7 +3,7 @@
 > 🇺🇦 [Українською](README.uk.md)
 
 A local job-search helper: it watches recruiter messages in your LinkedIn inbox,
-finds vacancies on DOU and LinkedIn, scores them against your resume, and prepares
+finds vacancies on DOU, Djinni, Jooble and LinkedIn, scores them against your resume, and prepares
 ready-to-review reply/application drafts. **It never sends anything** — the final
 click is always yours.
 
@@ -55,11 +55,16 @@ click is always yours.
 
 **4. Automation (launchd)**
 
-| Job                | Frequency           |
-|--------------------|---------------------|
-| Inbox check        | hourly              |
-| DOU discovery      | hourly              |
-| LinkedIn discovery | every 3 hours (at :45) |
+| Job (plist example)                              | Frequency              |
+|--------------------------------------------------|------------------------|
+| LinkedIn inbox check (`linkedin-assistant`)      | hourly                 |
+| Djinni inbox check + auto-bump (`djinni-inbox`)  | hourly                 |
+| DOU / Djinni / Jooble discovery (`job-discovery-dou`) | hourly            |
+| Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
+| Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
+| Follow-up reminders (`jobs-followup`)            | daily 09:30            |
+| Weekly report (`jobs-report`)                    | Monday 09:00           |
+| Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |
 
 A `jobs.mjs` run that wrote new packages ends with a macOS notification of the
 outcome (a run that found nothing new stays silent — the dashboard timestamp and
@@ -73,7 +78,7 @@ sources that are naturally low-volume) — this catches a slow selector decay
 (50 → 20 → 6), not just a source dropping to a clean 0.
 
 ## Key principles
-- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local, no API keys
+- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; the only key is Jooble's free API key, and only if that source is enabled
 - 🚫 **No auto-send:** the scripts only prepare — you review and apply manually
 - ⚖️ **Minimal risk:** DOU via legal RSS, LinkedIn scraping modest and toggleable
 

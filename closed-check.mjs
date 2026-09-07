@@ -6,11 +6,10 @@
 //   CLOSED_MAX=50 CLOSED_RECHECK_DAYS=7 node closed-check.mjs
 // Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) are moved to
 // applications/archive/, which nothing reads — keeps the dashboard small.
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
-import { writeJsonAtomic } from "./lib/json-file.mjs";
+import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { notify, log } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
@@ -25,11 +24,10 @@ const recheckDays = num(process.env.CLOSED_RECHECK_DAYS, 3);
 const archiveDays = num(process.env.CLOSED_ARCHIVE_DAYS, 14);
 // CLOSED_EXTRA_HOSTS='{"dou":"127.0.0.1"}' — extra allowed host per board (tests point a board at a local server).
 let extraHosts = {};
-try { extraHosts = JSON.parse(process.env.CLOSED_EXTRA_HOSTS || "{}"); } catch {}
+try { extraHosts = JSON.parse(process.env.CLOSED_EXTRA_HOSTS || "{}") || {}; } catch {}
 
 const packages = readPackages(APPS);
-let checked = {};
-try { checked = JSON.parse(readFileSync(CHECKED, "utf8")) || {}; } catch {}
+const checked = readJson(CHECKED, null) || {};
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
 const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, maxPerRun, recheckDays, extraHosts });

@@ -12,6 +12,9 @@ import { join, delimiter } from "node:path";
 import { spawn } from "node:child_process";
 
 export const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
+// Frozen QA skill profile. The live skills.json is USER config (README says
+// "edit freely"), so tests must never read it — scores below are pinned to this.
+export const SKILLS_FIXTURE = readFileSync(join(ROOT, "test", "fixtures", "skills.json"), "utf8");
 
 // A minimal application package (frontmatter + heading).
 export const pkg = ({ source = "dou", title = "SDET", company = "Acme", url, generated = "2026-09-01T00:00:00Z" }) =>
