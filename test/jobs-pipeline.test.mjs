@@ -6,14 +6,9 @@
 // "LLM silently off" and "LLM timeout" regressions both lived here for weeks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, copyFileSync, cpSync, symlinkSync, mkdirSync, readdirSync, readFileSync, chmodSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, delimiter } from "node:path";
+import { readdirSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+import { makeProject, runScript, waitFor } from "./helpers/e2e.mjs";
 
 const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map((i) =>
   `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link><description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
@@ -27,56 +22,30 @@ const FEED = rss([
 ]);
 
 function setupProject(t, feedUrl) {
-  const dir = mkdtempSync(join(tmpdir(), "jobs-e2e-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const f of ["jobs.mjs", "dashboard.mjs", "skills.json"]) copyFileSync(join(ROOT, f), join(dir, f));
-  // lib/ is COPIED, not symlinked: Node resolves ESM imports through realpath,
-  // so a symlinked lib/notify.mjs would compute ROOT as the real repo and queue
-  // banners into the user's Jobs.app. node_modules can stay a symlink.
-  cpSync(join(ROOT, "lib"), join(dir, "lib"), { recursive: true });
-  symlinkSync(join(ROOT, "node_modules"), join(dir, "node_modules"));
-  writeFileSync(join(dir, "resume.txt"), "Eugene, Senior SDET. Playwright, TypeScript, API testing.");
-  writeFileSync(join(dir, "jobs.config.json"), JSON.stringify({
-    minScore: 25, requireRole: true, excludeTitle: ["junior"], excludeLocation: [],
-    llm: { enabled: true, model: "haiku", maxPerRun: 15, minScore: 50 },
-    dou: { enabled: true, feeds: [feedUrl] },
-    djinni: { enabled: false }, jooble: { enabled: false }, linkedin: { enabled: false },
-    workua: { enabled: false }, robota: { enabled: false }, glassdoor: { enabled: false },
-  }));
-  // Fake binaries. `claude` scores by company name and records how it was
-  // called (cwd must be off the project — it sees untrusted board text).
-  const bin = join(dir, "bin"); mkdirSync(bin);
-  writeFileSync(join(bin, "claude"), `#!/bin/sh
-echo "cwd=$(pwd)" >> "${dir}/claude.log"; echo "args=$*" >> "${dir}/claude.log"
+  return makeProject(t, {
+    scripts: ["jobs.mjs", "dashboard.mjs", "skills.json"],
+    files: {
+      "resume.txt": "Eugene, Senior SDET. Playwright, TypeScript, API testing.",
+      "jobs.config.json": JSON.stringify({
+        minScore: 25, requireRole: true, excludeTitle: ["junior"], excludeLocation: [],
+        llm: { enabled: true, model: "haiku", maxPerRun: 15, minScore: 50 },
+        dou: { enabled: true, feeds: [feedUrl] },
+        djinni: { enabled: false }, jooble: { enabled: false }, linkedin: { enabled: false },
+        workua: { enabled: false }, robota: { enabled: false }, glassdoor: { enabled: false },
+      }),
+    },
+    // Fake `claude` scores by company name and logs how it was called into the
+    // project dir (the parent of bin/) — cwd must be OFF the project, it sees
+    // untrusted board text.
+    bins: { claude: `#!/bin/sh
+echo "cwd=$(pwd)" >> "$(dirname "$0")/../claude.log"; echo "args=$*" >> "$(dirname "$0")/../claude.log"
 case "$*" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "cover": "x"}' ;;
-  *) echo 'Sure! {"score": 85, "why": "great fit", "red_flags": [], "cover": "Dear team, hire me."}' ;; esac`);
-  // notify.mjs falls back to osascript on macOS and notify-send on Linux (CI runs both).
-  for (const n of ["osascript", "notify-send"]) writeFileSync(join(bin, n), `#!/bin/sh\necho "$*" >> "${dir}/notify.log"`);
-  for (const b of ["claude", "osascript", "notify-send"]) chmodSync(join(bin, b), 0o755);
-  return { dir, bin };
-}
-
-// The notifier is fire-and-forget (two osascript children spawned right before
-// process.exit), so the log fills a few ms after jobs.mjs has exited — and in
-// two writes. Wait for the CONTENT we need, not for the file to exist (the
-// existence check raced the second write on the macOS runner: 3 red mains).
-async function waitFor(path, re, ms = 3000) {
-  for (const t0 = Date.now(); Date.now() - t0 < ms;) {
-    try { const s = readFileSync(path, "utf8"); if (re.test(s)) return s; } catch {}
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  try { return readFileSync(path, "utf8"); } catch { return ""; }
-}
-
-// Async on purpose: a sync spawn would block this process's event loop, and the
-// fake feed server lives in it.
-async function runJobs({ dir, bin }) {
-  const { stdout } = await promisify(execFile)(process.execPath, [join(dir, "jobs.mjs")], {
-    cwd: dir, encoding: "utf8", timeout: 120_000,
-    env: { ...process.env, DOU_ONLY: "1", PATH: `${bin}${delimiter}${process.env.PATH}`, CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf" },
+  *) echo 'Sure! {"score": 85, "why": "great fit", "red_flags": [], "cover": "Dear team, hire me."}' ;; esac
+` },
   });
-  return stdout;
 }
+
+const runJobs = (p) => runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf" });
 
 test("jobs.mjs end-to-end: feed → gates → package → seen → health → dashboard → notification", async (t) => {
   const srv = createServer((_req, res) => { res.setHeader("content-type", "application/rss+xml"); res.end(FEED); });
@@ -93,26 +62,26 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.match(out, /Considered 3 new, wrote 1 application package/);
 
   // The package: one file, LLM verdict + tailored letter in it.
-  const apps = readdirSync(join(p.dir, "applications")).filter((f) => f.endsWith(".md"));
+  const apps = readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));
   assert.equal(apps.length, 1);
-  const pkg = readFileSync(join(p.dir, "applications", apps[0]), "utf8");
+  const pkg = p.read("applications", apps[0]);
   assert.match(pkg, /^llm_score: 85$/m);
   assert.match(pkg, /Dear team, hire me\./);
   assert.match(pkg, /^url: https:\/\/jobs\.dou\.ua\/companies\/acme\/vacancies\/1\/$/m);
 
   // The LLM child is hardened and every gate-passer (2) was scored exactly once.
-  const claudeLog = readFileSync(join(p.dir, "claude.log"), "utf8");
+  const claudeLog = p.read("claude.log");
   assert.equal((claudeLog.match(/^args=/gm) || []).length, 2);
   assert.match(claudeLog, /--disallowedTools \S*Bash/);
   assert.ok(!claudeLog.split("\n").some((l) => l.startsWith("cwd=") && l.includes(p.dir)), "claude runs with cwd off the project dir");
 
   // Side files.
-  const seen = JSON.parse(readFileSync(join(p.dir, "jobs-seen.json"), "utf8"));
+  const seen = p.json("jobs-seen.json");
   assert.equal(Object.keys(seen).length, 3, "all three vacancies (written, dropped, excluded) are now seen");
-  assert.deepEqual(JSON.parse(readFileSync(join(p.dir, "source-health.json"), "utf8")).dou, [3]);
-  assert.ok(existsSync(join(p.dir, "applications", "index.html")), "dashboard regenerated");
-  assert.match(readFileSync(join(p.dir, "applications", "index.html"), "utf8"), /Senior SDET \(Playwright\)/);
-  const notify = await waitFor(join(p.dir, "notify.log"), /dou 1 new/);
+  assert.deepEqual(p.json("source-health.json").dou, [3]);
+  assert.ok(existsSync(p.path("applications", "index.html")), "dashboard regenerated");
+  assert.match(p.read("applications", "index.html"), /Senior SDET \(Playwright\)/);
+  const notify = await waitFor(p.path("notify.log"), /dou 1 new/);
   assert.match(notify, /Job assistant/, "banners carry the app title");
   assert.match(notify, /Strong match: Senior SDET \(Playwright\) @ Acme/, "separate strong-match banner");
   assert.match(notify, /dou 1 new/, "run digest banner");
@@ -120,6 +89,6 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   // Second run over the same feed: everything is seen, nothing new is written or scored.
   const out2 = await runJobs(p);
   assert.match(out2, /Considered 0 new, wrote 0 application package/);
-  assert.equal(readdirSync(join(p.dir, "applications")).filter((f) => f.endsWith(".md")).length, 1);
-  assert.equal((readFileSync(join(p.dir, "claude.log"), "utf8").match(/^args=/gm) || []).length, 2, "no LLM calls on the second run");
+  assert.equal(readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).length, 1);
+  assert.equal((p.read("claude.log").match(/^args=/gm) || []).length, 2, "no LLM calls on the second run");
 });
