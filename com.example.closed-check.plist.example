@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  launchd job: runs closed-check.mjs every morning at 08:30: probes New/Viewed DOU and Djinni
+  launchd job: runs closed-check.mjs every morning at 08:30: probes New/Viewed DOU, Djinni and LinkedIn
   vacancies and marks the ones the board reports inactive as "closed". Replace YOUR_USERNAME (and the node path)
   with your own.
   Install:
