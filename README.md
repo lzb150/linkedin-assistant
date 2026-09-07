@@ -3,7 +3,7 @@
 > 🇺🇦 [Українською](README.uk.md)
 
 A local job-search helper: it watches recruiter messages in your LinkedIn inbox,
-finds vacancies on DOU, Djinni, Jooble and LinkedIn, scores them against your resume, and prepares
+finds vacancies on DOU, Djinni and LinkedIn, scores them against your resume, and prepares
 ready-to-review reply/application drafts. **It never sends anything** — the final
 click is always yours.
 
@@ -25,7 +25,7 @@ click is always yours.
 **2. Job discovery — `jobs.mjs`**
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
-- **Jooble** — via the official Jooble API (free key, structured JSON)
+- **Jooble** — via the official Jooble API (free key, structured JSON); **disabled by default** — its snippets are short and scored poorly, flip `jooble.enabled` to try it
 - **Work.ua / Robota.ua / Glassdoor** — via the shared browser session, but Cloudflare blocks them in headless mode, so they are **disabled by default** (opt in with `HEADFUL=1`, a Chrome window will appear)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
@@ -59,7 +59,7 @@ click is always yours.
 |--------------------------------------------------|------------------------|
 | LinkedIn inbox check (`linkedin-assistant`)      | hourly                 |
 | Djinni inbox check + auto-bump (`djinni-inbox`)  | hourly                 |
-| DOU / Djinni / Jooble discovery (`job-discovery-dou`) | hourly            |
+| DOU / Djinni discovery (`job-discovery-dou`)     | hourly                 |
 | Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
 | Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
 | Follow-up reminders (`jobs-followup`)            | daily 09:30            |

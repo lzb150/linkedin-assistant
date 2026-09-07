@@ -26,7 +26,6 @@
   "dou": {
     "enabled": true,
     "feeds": [
-      "https://jobs.dou.ua/vacancies/feeds/?category=QA",
       "https://jobs.dou.ua/vacancies/feeds/?search=automation",
       "https://jobs.dou.ua/vacancies/feeds/?search=SDET",
       "https://jobs.dou.ua/vacancies/feeds/?search=playwright"
@@ -40,7 +39,6 @@
     "maxResults": 15,
     "searches": [
       "https://djinni.co/jobs/?primary_keyword=QA+Automation",
-      "https://djinni.co/jobs/?primary_keyword=QA",
       "https://djinni.co/jobs/?all_keywords=SDET",
       "https://djinni.co/jobs/?all_keywords=playwright"
     ]
@@ -49,7 +47,7 @@
   "jooble": {
     "_comment": "Jooble via its official API on the Ukrainian market (apiHost ua.jooble.org — every vacancy is applyable from Ukraine). Keys are market-bound: the FREE key from ua.jooble.org/api/about goes into the JOOBLE_API_KEY env var (set it in run-jobs.sh, which is gitignored — never put the key here). Each search is { keywords, location }: ''=all of Ukraine, 'віддалено'=remote only, or a city like 'Київ'. The score gate + excludeTitle still filter results.",
     "_minScoreComment": "Per-source override of the global minScore. Jooble's API returns only short snippets, which score ~5-8 points lower than full descriptions, so it gets a lower bar.",
-    "enabled": true,
+    "enabled": false,
     "apiHost": "ua.jooble.org",
     "minScore": 18,
     "maxResults": 15,
