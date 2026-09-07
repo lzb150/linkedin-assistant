@@ -89,7 +89,9 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.deepEqual(p.json("source-health.json").dou, [3]);
   assert.ok(existsSync(p.path("applications", "index.html")), "dashboard regenerated");
   assert.match(p.read("applications", "index.html"), /Senior SDET \(Playwright\)/);
-  const notify = await waitFor(p.path("notify.log"), /dou 1 new/);
+  // Two banners, two fire-and-forget osascript children, any order: wait for BOTH.
+  await waitFor(p.path("notify.log"), /dou 1 new/);
+  const notify = await waitFor(p.path("notify.log"), /Strong match/);
   assert.match(notify, /Job assistant/, "banners carry the app title");
   assert.match(notify, /Strong match: Senior SDET \(Playwright\) @ Acme/, "separate strong-match banner");
   assert.match(notify, /dou 1 new/, "run digest banner");
