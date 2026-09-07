@@ -271,13 +271,14 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
 
 **Перевірка закритих вакансій (`closed-check.mjs`)** — щоденне launchd-завдання
 (`com.eugene.closed-check.plist`, постачається як `.example`, 08:30) опитує
-вакансії DOU і Djinni, що досі мають статус **New** чи **Viewed** (звичайний GET,
+вакансії DOU, Djinni і LinkedIn, що досі мають статус **New** чи **Viewed** (звичайний GET,
 одна за секунду, кожна адреса не частіше ніж раз на 3 дні, 150 за запуск), і
-позначає ті, які дошка називає неактивними («вакансія неактивна»), як **Closed**.
+позначає ті, які дошка називає неактивними («вакансія неактивна», публічне
+«No longer accepting applications» у LinkedIn), як **Closed**.
 Закриті картки зникають з перегляду New, отримують приглушену позначку «· closed»,
 власний фільтр і не відкриваються назад кліком. Картки Applied і далі не
-чіпаються — закривати їх вирішуєте ви. Адреси Jooble/LinkedIn/Work.ua/Robota.ua/
-Glassdoor пропускаються (редиректи, логін, Cloudflare). Налаштування: `CLOSED_MAX`
+чіпаються — закривати їх вирішуєте ви. Адреси Jooble/Work.ua/Robota.ua/Glassdoor
+пропускаються (на звичайний GET відповідають Cloudflare 403). Налаштування: `CLOSED_MAX`
 і `CLOSED_RECHECK_DAYS`; банер з’являється лише коли щось закрилося. Встановлення
 таке ж, як для фолоу-апу, з `com.example.closed-check.plist.example`.
 
@@ -384,7 +385,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ├── state-server.mjs   локальний HTTP-сервер (127.0.0.1:7777) для збереження job-state
 ├── followup.mjs       скрипт нагадувань про фолоу-ап (щоденне launchd-завдання)
 ├── report.mjs         тижневий звіт (launchd-завдання в понеділок або вручну)
-├── closed-check.mjs   позначити вакансії DOU/Djinni, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
+├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → запустити сервер → відкрити браузер
 ├── prune-applications.mjs  видалити застарілі дублікати пакетів з applications/
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn)
@@ -408,7 +409,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 | `state-server.mjs`    | Локальний HTTP-сервер на 127.0.0.1:7777; зберігає стан у `job-state.json`. |
 | `followup.mjs`        | macOS-сповіщення для Applied-вакансій без руху 7+ днів.   |
 | `report.mjs`          | Тижневий звіт: запуски, пакети за джерелами, вердикти LLM, воронка, вихід джерел. |
-| `closed-check.mjs`    | Опитати New/Viewed адреси DOU і Djinni; позначити неактивні вакансії Closed. |
+| `closed-check.mjs`    | Опитати New/Viewed адреси DOU, Djinni і LinkedIn; позначити неактивні вакансії Closed. |
 | `open-dashboard.sh`   | Помічник кліку в Dock: перегенерувати дашборд, запустити сервер, відкрити браузер. |
 | `prune-applications.mjs` | Видалити застарілі дублікати пакетів (типово пробний запуск). |
 | `lib/relevance.mjs`   | Локальне оцінювання (без API-ключа, нічого не покидає машину). |
