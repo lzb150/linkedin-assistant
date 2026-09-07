@@ -63,6 +63,14 @@ test("llmJSON passes model and prompt to the CLI", async () => {
   ]);
 });
 
+test("llmJSON gives the CLI 3 minutes and SIGKILLs it (a real call takes ~55s; SIGTERM left it hanging for up to an hour)", async () => {
+  let opts;
+  const exec = (_cmd, _args, o, cb) => { opts = o; cb(null, "{}"); };
+  await llmJSON("p", { exec });
+  assert.equal(opts.timeout, 180_000);
+  assert.equal(opts.killSignal, "SIGKILL");
+});
+
 test("llmJSON resolves null when the CLI errors (missing binary, timeout)", async () => {
   const exec = (_cmd, _args, _opts, cb) => cb(new Error("ENOENT"));
   assert.equal(await llmJSON("p", { exec }), null);
