@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractJSON, numericScore, llmJSON, buildJobPrompt } from "../lib/llm.mjs";
+import { extractJSON, numericScore, llmJSON, buildJobPrompt, llmRejects } from "../lib/llm.mjs";
+
+test("llmRejects: below minScore → true; at/above, unset minScore, or CLI failure (null) → false", () => {
+  assert.equal(llmRejects({ score: 49 }, 50), true);
+  assert.equal(llmRejects({ score: 50 }, 50), false);
+  assert.equal(llmRejects({ score: 0 }, undefined), false);
+  assert.equal(llmRejects(null, 50), false);
+});
 
 test("extractJSON tolerates trailing prose that contains braces", () => {
   assert.deepEqual(extractJSON('{"score":5} Note: {x}'), { score: 5 });

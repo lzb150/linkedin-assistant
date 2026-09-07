@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Wrapper for scheduled job discovery. Arg: "dou" (RSS only) or "full" (DOU + LinkedIn).
 # Copy to run-jobs.sh and fill in your own values (run-jobs.sh is gitignored).
 set -euo pipefail
