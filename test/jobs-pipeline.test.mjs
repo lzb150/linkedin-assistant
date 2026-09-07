@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
-import { makeProject, runScript, waitFor } from "./helpers/e2e.mjs";
+import { makeProject, runScript, waitFor, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
 
 const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map((i) =>
   `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link><description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
@@ -23,8 +23,9 @@ const FEED = rss([
 
 function setupProject(t, feedUrl) {
   return makeProject(t, {
-    scripts: ["jobs.mjs", "dashboard.mjs", "skills.json"],
+    scripts: ["jobs.mjs", "dashboard.mjs"],
     files: {
+      "skills.json": SKILLS_FIXTURE,
       "resume.txt": "Eugene, Senior SDET. Playwright, TypeScript, API testing.",
       "jobs.config.json": JSON.stringify({
         minScore: 25, requireRole: true, excludeTitle: ["junior"], excludeLocation: [],
