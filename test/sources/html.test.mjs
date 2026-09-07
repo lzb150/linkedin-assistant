@@ -49,11 +49,21 @@ test("stripHtml / extractDivByClass stay linear on junk full of unclosed '<' (Re
   t = Date.now(); extractDivByClass("<a ".repeat(50_000), "x"); assert.ok(Date.now() - t < 500, "extractDivByClass too slow");
 });
 
+// Linearity guard that does not depend on the machine: run at n and 4n and
+// compare. Linear scales ~4×, quadratic ~16×; the +20 ms absorbs timer
+// granularity and JIT warm-up. (Absolute "< 500 ms" caps flaked on shared CI.)
+function assertLinear(label, run, n) {
+  run(n);                                          // warm up
+  const ms = (k) => { const t = performance.now(); run(k); return performance.now() - t; };
+  const t1 = ms(n), t4 = ms(4 * n);
+  assert.ok(t4 < 8 * t1 + 20, `${label}: ${n}→${4 * n} took ${t1.toFixed(1)}ms→${t4.toFixed(1)}ms (not linear)`);
+}
+
 test("extractDivByClass stays linear when the opening div DOES match (depth scan + comment strip)", () => {
   const open = '<div class="job x">';
-  let t = Date.now(); extractDivByClass(open + "<div".repeat(50_000), "job"); assert.ok(Date.now() - t < 500, "depth scan too slow");
-  t = Date.now(); extractDivByClass(open + "<!--".repeat(50_000), "job"); assert.ok(Date.now() - t < 500, "comment strip too slow");
-  t = Date.now(); extractDivByClass(open + "<script>".repeat(20_000), "job"); assert.ok(Date.now() - t < 500, "script strip too slow");
+  assertLinear("depth scan", (n) => extractDivByClass(open + "<div".repeat(n), "job"), 25_000);
+  assertLinear("comment strip", (n) => extractDivByClass(open + "<!--".repeat(n), "job"), 25_000);
+  assertLinear("script strip", (n) => extractDivByClass(open + "<script>".repeat(n), "job"), 10_000);
 });
 
 test("stripHtml drops tags longer than the bounded scan (inline SVG / data: URI)", () => {
@@ -69,8 +79,8 @@ test("stripBlocks: abrupt comments, mixed case, İ (length-changing lowercase), 
 });
 
 test("stripBlocks stays linear on many TERMINATED blocks", () => {
-  let t = Date.now(); stripBlocks("<!-- c -->".repeat(50_000)); assert.ok(Date.now() - t < 500, "comments");
-  t = Date.now(); stripBlocks("<script></script>".repeat(20_000)); assert.ok(Date.now() - t < 500, "scripts");
+  assertLinear("comments", (n) => stripBlocks("<!-- c -->".repeat(n)), 25_000);
+  assertLinear("scripts", (n) => stripBlocks("<script></script>".repeat(n)), 10_000);
 });
 
 test("stripHtml second pass removes only tag-like tokens, keeping prose between stray < and >", () => {
