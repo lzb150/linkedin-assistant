@@ -230,8 +230,9 @@ unreachable the dashboard falls back to `localStorage` and shows an
 **"offline — not saved to disk"** badge. Before the first write of each day the
 store is snapshotted to `job-state.YYYY-MM-DD.bak` (last 7 kept) — to roll back
 a bad day, copy a snapshot over `job-state.json`. The server keeps running across
-updates — after pulling a new version, restart it (`pkill -f state-server.mjs`;
-the next Dock click starts a fresh one) so it knows any new statuses.
+updates; the Dock-click launcher (`open-dashboard.sh`) compares its start time
+(`/health`) with the server sources and restarts it when they are newer, so no
+manual `pkill` is needed after pulling a new version.
 
 **Pipeline tracking** — each card moves through **New → Viewed → Applied**, then
 on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**
