@@ -23,13 +23,16 @@ const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) :
 const maxPerRun = num(process.env.CLOSED_MAX, 150);
 const recheckDays = num(process.env.CLOSED_RECHECK_DAYS, 3);
 const archiveDays = num(process.env.CLOSED_ARCHIVE_DAYS, 14);
+// CLOSED_EXTRA_HOSTS='{"dou":"127.0.0.1"}' — extra allowed host per board (tests point a board at a local server).
+let extraHosts = {};
+try { extraHosts = JSON.parse(process.env.CLOSED_EXTRA_HOSTS || "{}"); } catch {}
 
 const packages = readPackages(APPS);
 let checked = {};
 try { checked = JSON.parse(readFileSync(CHECKED, "utf8")) || {}; } catch {}
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
-const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, maxPerRun, recheckDays });
+const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, maxPerRun, recheckDays, extraHosts });
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
 const closed = [], closedUrls = [];
 for (const { url, source } of todo) {

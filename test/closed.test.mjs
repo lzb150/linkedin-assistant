@@ -1,6 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isClosed, selectCandidates, planArchive } from "../lib/closed.mjs";
+import { isClosed, selectCandidates, planArchive, onBoardHost } from "../lib/closed.mjs";
+
+test("onBoardHost: only the board's own host (or a subdomain) is probed", () => {
+  assert.equal(onBoardHost("dou", "https://jobs.dou.ua/companies/x/vacancies/1/"), true);
+  assert.equal(onBoardHost("djinni", "https://djinni.co/jobs/1-x/"), true);
+  assert.equal(onBoardHost("linkedin", "https://www.linkedin.com/jobs/view/1/"), true);
+  assert.equal(onBoardHost("dou", "https://dou.ua.evil.com/x"), false);
+  assert.equal(onBoardHost("dou", "https://127.0.0.1:7777/state"), false);
+  assert.equal(onBoardHost("dou", "not a url"), false);
+  assert.equal(onBoardHost("jooble", "https://jooble.org/x"), false);
+  assert.equal(onBoardHost("dou", "http://127.0.0.1:8080/v/1/", { dou: "127.0.0.1" }), true, "extra host per board (tests / mirrors)");
+});
 
 test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not closed)", () => {
   assert.equal(isClosed({ source: "dou", status: 404, html: "" }), true);
@@ -32,6 +43,7 @@ test("selectCandidates: dou/djinni/linkedin only, new/viewed only, re-checked at
     { url: "https://www.linkedin.com/jobs/view/8/", source: "linkedin" }, // new, never checked → probed
     { url: "https://jobs.dou.ua/v/6/", source: "dou" },        // already closed
     { url: "https://jobs.dou.ua/v/7/", source: "dou" },        // new, checked 10d ago → due (older check than #2)
+    { url: "https://evil.example/v/9/", source: "dou" },       // wrong host for the board → never probed
   ];
   const stateMap = {
     _meta: {},
