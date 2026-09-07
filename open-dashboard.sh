@@ -20,6 +20,25 @@ fi
 # start is guarded by an atomic mkdir lock: the winner starts the server and
 # drops the lock once the port is bound; everyone else just waits for the port.
 mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
+# A server started before the last update keeps old code (status list, store
+# normalizer). /health reports its start time; if any server source is newer,
+# stop it here and let the start block below bring up a fresh one.
+if /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
+  # No "started" in the reply = a server from before this check existed → treat as 0 (stale).
+  STARTED="$(curl -s -m 2 http://127.0.0.1:7777/health | sed -n 's/.*"started":\([0-9]*\).*/\1/p')"
+  STARTED="${STARTED:-0}"
+  {
+    NEWEST=0
+    for f in state-server.mjs lib/job-state.mjs lib/json-file.mjs lib/dashboard-client-core.cjs; do
+      m="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f")"; [ "$m" -gt "$NEWEST" ] && NEWEST="$m"
+    done
+    if [ "$NEWEST" -gt "$STARTED" ]; then
+      echo "open-dashboard.sh: state server predates an update — restarting" >&2
+      pkill -f "state-server.mjs" || true
+      for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 || break; sleep 0.2; done
+    fi
+  }
+fi
 LOCK=state-server.lock
 WON=0
 if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
