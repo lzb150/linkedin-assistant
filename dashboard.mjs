@@ -76,7 +76,7 @@ function scoreColor(s) {
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
 // All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3", glassdoor: "#0caa41" };
+const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3", glassdoor: "#0a7a30" }   /* 5.5:1 on white; the old #0caa41 was 3.07:1 */;
 function badge(source) {
   const c = (Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : undefined) || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
