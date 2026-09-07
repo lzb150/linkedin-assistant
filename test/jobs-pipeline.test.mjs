@@ -50,8 +50,9 @@ function setupProject(t, feedUrl) {
 echo "cwd=$(pwd)" >> "${dir}/claude.log"; echo "args=$*" >> "${dir}/claude.log"
 case "$*" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "cover": "x"}' ;;
   *) echo 'Sure! {"score": 85, "why": "great fit", "red_flags": [], "cover": "Dear team, hire me."}' ;; esac`);
-  writeFileSync(join(bin, "osascript"), `#!/bin/sh\necho "$*" >> "${dir}/notify.log"`);
-  for (const b of ["claude", "osascript"]) chmodSync(join(bin, b), 0o755);
+  // notify.mjs falls back to osascript on macOS and notify-send on Linux (CI runs both).
+  for (const n of ["osascript", "notify-send"]) writeFileSync(join(bin, n), `#!/bin/sh\necho "$*" >> "${dir}/notify.log"`);
+  for (const b of ["claude", "osascript", "notify-send"]) chmodSync(join(bin, b), 0o755);
   return { dir, bin };
 }
 
@@ -107,7 +108,7 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.ok(existsSync(join(p.dir, "applications", "index.html")), "dashboard regenerated");
   assert.match(readFileSync(join(p.dir, "applications", "index.html"), "utf8"), /Senior SDET \(Playwright\)/);
   const notify = await waitForFile(join(p.dir, "notify.log"));
-  assert.match(notify, /Job assistant/, "run-outcome banner fired");
+  assert.match(notify, /Job assistant/, "banners carry the app title");
   assert.match(notify, /Strong match: Senior SDET \(Playwright\) @ Acme/, "separate strong-match banner");
   assert.match(notify, /dou 1 new/, "run digest banner");
 
