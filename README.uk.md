@@ -42,7 +42,7 @@
   вирішує, що доходить до LLM; оцінка нижче `llm.minScore` (типово 50) відкидає
   вакансію замість пакета. Будь-який збій CLI і далі відкочується до keyword-пакета.
   Потрібен `resume.txt`; налаштовується блоком `llm` у `jobs.config.json`
-  (`enabled`, `model`, `maxPerRun`, `minScore` — 0 робить LLM лише дорадчим). Збіги
+  (`enabled`, `model`, `maxPerRun`, `concurrency` — паралельні виклики CLI, типово 3, `minScore` — 0 робить LLM лише дорадчим). Збіги
   понад ліміт `maxPerRun` відкладаються на наступний запуск, а не пишуться без оцінки.
   У wrapper-скрипті бінарник `claude` має бути в `PATH` (`~/.local/bin`, див.
   `run-jobs.sh.example`), інакше кожен пакет тихо деградує до keyword-only. Картки з LLM-оцінкою
