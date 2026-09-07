@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeMeta } from "../lib/job-state.mjs";
@@ -120,4 +120,30 @@ test("normalize keeps entries with a status this build does not know", () => {
   assert.equal(out.u1.status, "from-the-future");
   assert.equal(out.u2.status, "viewed");
   assert.equal(statusOf(out, "u1"), "new", "unknown reads as new for display");
+});
+
+// Daily snapshots: the first writeStore of a day copies the previous file to
+// job-state.<YYYY-MM-DD>.bak (never overwritten that day), keeping the last 7.
+// A single ".bak" would be replaced by the next dashboard click seconds after
+// a bad write — as happened on 2026-09-07, when a stale server wiped 448 entries.
+test("writeStore keeps one snapshot per day, never overwrites it, prunes to 7", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "state-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const p = join(dir, "job-state.json");
+  const day = (n) => new Date(Date.UTC(2026, 8, n, 12));   // Sep n, 2026
+  const snaps = () => readdirSync(dir).filter((f) => /^job-state\.\d{4}-\d{2}-\d{2}\.bak$/.test(f)).sort();
+
+  writeStore(p, { _meta: {}, u1: { status: "viewed" } }, { now: day(1) });
+  assert.deepEqual(snaps(), [], "nothing to snapshot before the first file exists");
+
+  writeStore(p, { _meta: {}, u1: { status: "applied" } }, { now: day(2) });
+  assert.deepEqual(snaps(), ["job-state.2026-09-02.bak"]);
+  assert.equal(JSON.parse(readFileSync(join(dir, "job-state.2026-09-02.bak"), "utf8")).u1.status, "viewed", "snapshot holds the file as it was before the day's first write");
+
+  writeStore(p, { _meta: {} }, { now: day(2) });   // second write the same day (a wipe, say)
+  assert.equal(JSON.parse(readFileSync(join(dir, "job-state.2026-09-02.bak"), "utf8")).u1.status, "viewed", "same-day writes never touch the snapshot");
+
+  for (let n = 3; n <= 10; n++) writeStore(p, { _meta: {}, u1: { status: "viewed" } }, { now: day(n) });
+  assert.equal(snaps().length, 7);
+  assert.deepEqual(snaps()[0], "job-state.2026-09-04.bak", "oldest snapshots pruned");
 });

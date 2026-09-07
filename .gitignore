@@ -59,6 +59,7 @@ run-djinni.sh
 
 # Dashboard job state and follow-up notify dedupe (machine-local runtime state)
 job-state.json
+job-state.*.bak
 followup-notify-state.json
 closed-check-state.json
 
