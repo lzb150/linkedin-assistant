@@ -25,7 +25,8 @@ mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
 # stop it here and let the start block below bring up a fresh one.
 if /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
   # No "started" in the reply = a server from before this check existed → treat as 0 (stale).
-  STARTED="$(curl -s -m 2 http://127.0.0.1:7777/health | sed -n 's/.*"started":\([0-9]*\).*/\1/p')"
+  # `|| true`: under set -e a hung/unresponsive server (curl fails) must fall into the restart path, not abort the launcher.
+  STARTED="$(curl -s -m 2 http://127.0.0.1:7777/health 2>/dev/null | sed -n 's/.*"started":\([0-9]*\).*/\1/p' || true)"
   STARTED="${STARTED:-0}"
   {
     NEWEST=0
@@ -34,7 +35,9 @@ if /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
     done
     if [ "$NEWEST" -gt "$STARTED" ]; then
       echo "open-dashboard.sh: state server predates an update — restarting" >&2
-      pkill -f "state-server.mjs" || true
+      # Kill the verified :7777 listener only — never by argv pattern (that would hit
+      # `node --test test/state-server.test.mjs`, an editor on the file, another clone's server).
+      lsof -ti tcp:7777 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
       for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 || break; sleep 0.2; done
     fi
   }

@@ -264,13 +264,18 @@ const toScore = llmOn ? matches.slice(0, LLM.maxPerRun ?? 15) : matches;
 for (const { job, scored } of (llmOn ? matches.slice(toScore.length) : [])) {
   log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
 }
-// Score first, a few CLI calls at a time (each takes ~55 s; 15 in sequence was
-// 14 min). Writes below stay sequential and in score order, so the package
-// files, seen saves and logs are unchanged in shape.
-const verdicts = new Map();
+// Score a few CLI calls at a time (~20 s each on sonnet, ~55 s on haiku; 15 in
+// sequence used to take 14 min) while the loop below consumes verdicts in score
+// order and writes each package as soon as its verdict is in — so a crash or a
+// sleeping Mac mid-scoring keeps every package already paid for, exactly like
+// the old sequential loop. A bad `concurrency` (0, "abc") must not mean zero
+// workers, which would leave every verdict empty and bypass the LLM gate.
+const verdict = new Map();   // m → Promise<llm result | null>
+let scoring = Promise.resolve();
 if (llmOn) {
-  await pool(toScore, LLM.concurrency ?? 3, async (m) => {
-    verdicts.set(m, await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "haiku" }));
+  const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
+  scoring = pool(toScore, Math.max(1, Number(LLM.concurrency) || 3), async (m) => {
+    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "haiku" }));
   });
 }
 for (const m of toScore) {
@@ -278,7 +283,7 @@ for (const m of toScore) {
   const lbl = label(job);
   let llm = null;
   if (llmOn) {
-    const res = verdicts.get(m);
+    const res = await verdict.get(m);
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
@@ -304,6 +309,7 @@ for (const m of toScore) {
   saveSeen();
   written++;
 }
+await scoring;   // every worker has finished (all verdicts were consumed above; this just joins the pool)
 
 saveSeen();
 log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
