@@ -380,6 +380,13 @@ LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read mess
 
 Session expired? Re-run `node login.mjs`.
 
+A run that took far longer than usual (`search took 3010s` in `logs/`, or an
+hourly run exiting with "another jobs.mjs run is active") is usually the Mac
+asleep, not a broken scraper: launchd starts jobs during the short maintenance
+wakes and they only progress in those windows. Check with
+`pmset -g log | grep -E "Sleep|Wake"` before touching selectors. Normal figures:
+one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM calls.
+
 ## Project layout
 
 ```
