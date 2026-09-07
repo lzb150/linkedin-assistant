@@ -11,10 +11,10 @@
 
 import { launchBrowser } from "./lib/browser.mjs";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
+import { threadIdFrom, threadOutcome } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
@@ -85,9 +85,9 @@ try {
     process.exit(2);
   }
 
-  await page.waitForSelector(SEL.conversationList, { timeout: 20000 }).catch(() => {
-    log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
-  });
+  // Selector drift is not "inbox empty": without the list we must not zero the badge.
+  const listFound = await page.waitForSelector(SEL.conversationList, { timeout: 20000 }).then(() => true, () => false);
+  if (!listFound) log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
 
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
@@ -101,7 +101,7 @@ try {
   for (const card of cards) unread.push(await cardIsUnread(card));
   unreadCount = unread.filter(Boolean).length;
   log(`Unread threads: ${unreadCount}`);
-  counted = true;
+  counted = listFound;
 
   for (const [i, card] of cards.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
@@ -132,9 +132,10 @@ try {
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
-    let bubbles = [], oldest = "", extractFailed = false;
+    let bubbles = [], oldest = "", extractFailed = false, bubbleCount = 0;
     try {
       const els = await page.$$(SEL.messageBubble);
+      bubbleCount = els.length;
       if (els.length) oldest = (await els[0].innerText()).trim();
       for (const el of els.slice(-12)) {
         const t = (await el.innerText()).trim();
@@ -144,24 +145,12 @@ try {
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
-    // Stable id from the thread url. URL-less fallback hashes name + the OLDEST
-    // bubble (not the first of the last-12 window, which shifts as replies arrive).
-    const idMatch = url.match(/thread\/([^/?#]+)/); // same shape as wantId: query/hash must not leak into the seen key
-    const threadId = idMatch
-      ? idMatch[1]
-      : `name:${createHash("sha1").update(`${name}\n${oldest}`).digest("hex").slice(0, 12)}`;
-
-    // Re-stamp so the TTL is "last seen" and a long-lived thread does not resurface.
-    if (seen.has(threadId)) { log(`· already processed: ${name}`); seen.add(threadId); continue; }
-
-    // An extraction failure is not "not a job message": leave the thread
-    // unseen so the next run retries instead of burying it for 90 days.
-    if (extractFailed) { log(`· skipping without marking seen: ${name}`); continue; }
-    if (!fullText || !looksLikeJobMessage(fullText)) {
-      log(`· not a job message, skipping: ${name}`);
-      seen.add(threadId);
-      continue;
-    }
+    const threadId = threadIdFrom(url, name, oldest);
+    const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen: seen.has(threadId), isJob: looksLikeJobMessage(fullText) });
+    if (markSeen) seen.add(threadId);   // "already" re-stamps so the TTL is "last seen"
+    if (action === "already") { log(`· already processed: ${name}`); continue; }
+    if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
+    if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
 
     const scored = scoreMessage(fullText);
     log(`· ${name}: score=${scored.score} verdict=${scored.verdict} [${scored.matchedSkills.join(",")}]`);

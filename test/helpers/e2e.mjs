@@ -50,13 +50,19 @@ export function makeProject(t, { scripts = [], packages = {}, state, files = {},
 //   await run.output(/probing/);   // resolve once stdout+stderr matches
 //   const out = await run.done;    // resolves with the combined output on exit 0
 export function spawnScript(p, script, env = {}) {
-  const child = spawn(process.execPath, [p.path(script)], { cwd: p.dir, env: { ...p.env, ...env } });
+  // A hung script (the very regression these tests exist for) must fail the
+  // test, not hang CI until the runner kills it — hence the hard timeout.
+  const child = spawn(process.execPath, [p.path(script)], { cwd: p.dir, env: { ...p.env, ...env }, timeout: 120_000, killSignal: "SIGKILL" });
   let out = "";
   const waiters = [];
   const onData = (d) => { out += d; for (const w of waiters) if (w.re.test(out)) w.res(); };
   child.stdout.on("data", onData); child.stderr.on("data", onData);
-  const done = new Promise((res, rej) => child.on("exit", (code) => (code === 0 ? res(out) : rej(new Error(`${script} exit ${code}\n${out}`)))));
-  return { done, output: (re) => (re.test(out) ? Promise.resolve() : new Promise((res) => waiters.push({ re, res }))) };
+  const done = new Promise((res, rej) => child.on("exit", (code, signal) => {
+    const err = code === 0 ? null : new Error(`${script} exit ${code === null ? `signal ${signal}` : code}\n${out}`);
+    for (const w of waiters) w.rej(err || new Error(`${script} exited before output matched ${w.re}\n${out}`));   // never leave an output() waiter hanging
+    err ? rej(err) : res(out);
+  }));
+  return { done, output: (re) => (re.test(out) ? Promise.resolve() : new Promise((res, rej) => waiters.push({ re, res, rej }))) };
 }
 export const runScript = (p, script, env) => spawnScript(p, script, env).done;
 
