@@ -15,6 +15,8 @@ async function server404(t) {
   return `http://127.0.0.1:${srv.address().port}`;
 }
 const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+// The fixture board lives on loopback; the host allowlist must be told so.
+const LOCAL = { CLOSED_EXTRA_HOSTS: JSON.stringify({ dou: "127.0.0.1" }) };
 
 test("closed-check: edits landing during the run win — another url's status survives, and Applied on the probed url beats the closure", async (t) => {
   const U = `${await server404(t)}/vacancies/1/`;
@@ -29,7 +31,7 @@ test("closed-check: edits landing during the run win — another url's status su
   // shows `probing`) and before its 1 s post-probe sleep. Triggering on output,
   // not a timer: a timer could fire before the read on a slow runner and the
   // test would pass without racing anything.
-  const run = spawnScript(p, "closed-check.mjs");
+  const run = spawnScript(p, "closed-check.mjs", LOCAL);
   await run.output(/probing \d+ of/);
   writeFileSync(p.path("job-state.json"), JSON.stringify({ _meta: {},
     "https://other/": { status: "applied", appliedAt: "2026-09-07T10:00:00Z" },
@@ -47,6 +49,6 @@ test("closed-check: edits landing during the run win — another url's status su
 test("closed-check: with no concurrent edit the closure is recorded", async (t) => {
   const U = `${await server404(t)}/vacancies/2/`;
   const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "b.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });
-  assert.match(await runScript(p, "closed-check.mjs"), /1 closed, 1 probed/);
+  assert.match(await runScript(p, "closed-check.mjs", LOCAL), /1 closed, 1 probed/);
   assert.equal(p.json("job-state.json")[U].status, "closed");
 });

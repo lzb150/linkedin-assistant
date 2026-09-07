@@ -101,7 +101,8 @@ try {
   for (const card of cards) unread.push(await cardIsUnread(card));
   unreadCount = unread.filter(Boolean).length;
   log(`Unread threads: ${unreadCount}`);
-  counted = listFound;
+  // Zero cards on a rendered list is the card selector drifting, not an empty inbox.
+  counted = listFound && cards.length > 0;
 
   for (const [i, card] of cards.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
@@ -125,7 +126,10 @@ try {
     const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
     const before = page.url();
     await card.click().catch(() => {});
-    await page.waitForTimeout(1500);
+    // Wait for THIS thread's url (up to 5 s) instead of a fixed 1.5 s: on a slow
+    // LinkedIn the late navigation used to land inside the next card's window.
+    if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
+    else await page.waitForTimeout(1500);
     const url = page.url();
     const opened = wantId ? url.includes(wantId) : (url !== before || i === 0);
     if (!opened) { log(`· could not open thread, skipping: ${name}`); continue; }
