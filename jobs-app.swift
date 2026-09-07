@@ -118,6 +118,7 @@ func unreadCountAt(_ path: String) -> Int {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    let launchedAt = Date()
     var lastBadge: String? = "unset"
     var lastBadgeSetting: Int = -1
     var notifGranted = false
@@ -148,6 +149,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // Dock-icon click while already running -> Djinni unread thread/bucket if any,
     // otherwise the dashboard.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        // Two wrappers (run.sh, run-djinni.sh) fire at the same minute; when the
+        // daemon was down both miss pgrep and both `open` it. The second `open`
+        // lands here as a reopen and would pop the inbox in the browser and clear
+        // the badge nobody clicked. Ignore reopens in the first seconds after launch.
+        if Date().timeIntervalSince(launchedAt) < 5 { dbg("reopen within 5 s of launch ignored"); return true }
         handleActivation()
         return true
     }
