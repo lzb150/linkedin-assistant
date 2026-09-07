@@ -65,7 +65,7 @@ async function waitFor(path, re, ms = 3000) {
     try { const s = readFileSync(path, "utf8"); if (re.test(s)) return s; } catch {}
     await new Promise((r) => setTimeout(r, 50));
   }
-  return readFileSync(path, "utf8");
+  try { return readFileSync(path, "utf8"); } catch { return ""; }
 }
 
 // Async on purpose: a sync spawn would block this process's event loop, and the
