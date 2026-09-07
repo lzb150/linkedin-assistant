@@ -1,5 +1,5 @@
 // closed-check.mjs
-// Daily: probe New/Viewed DOU and Djinni vacancies and mark the ones the board
+// Daily: probe New/Viewed DOU, Djinni and LinkedIn vacancies and mark the ones the board
 // reports inactive as status "closed" in job-state.json, so they leave the
 // dashboard's New view and never reach a follow-up. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
