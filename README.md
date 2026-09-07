@@ -35,7 +35,7 @@ click is always yours.
 - Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
 - Builds an application package: cover letter + link + resume path
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
-  second look from a local `claude -p` call (haiku by default): a 0–100 verdict,
+  second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
   a one-line "why", and a tailored cover letter. The keyword score decides what
   reaches the LLM; a fit below `llm.minScore` (default 50) drops the job instead of
   writing a package. Any CLI failure still falls back to a keyword-only package.
