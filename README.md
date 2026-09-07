@@ -259,6 +259,22 @@ cp com.example.jobs-followup.plist.example \
 launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
 ```
 
+**Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
+runs and new vacancies considered, packages written per source, LLM verdicts
+(dropped / failed / scored / at ≥70, plus the top match), pipeline movement
+(applied, answered, interview, rejected this week and applied all-time) and the
+median per-run yield of every source. `node report.mjs` prints it;
+`--notify` also posts a one-line macOS notification, which is what the weekly
+launchd job (`com.eugene.jobs-report.plist`, ships as `.example`, Monday
+09:00) does. `REPORT_DAYS=14` widens the window. LLM counts come from the run
+logs in `logs/`, so they cover only what the log rotation still holds. Install:
+
+```bash
+cp com.example.jobs-report.plist.example \
+   ~/Library/LaunchAgents/com.eugene.jobs-report.plist   # edit paths inside
+launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
+```
+
 ## Clean up stale packages — `prune-applications.mjs`
 
 The dashboard hides on-disk duplicates, but you can reclaim the space. This
@@ -342,6 +358,7 @@ Session expired? Re-run `node login.mjs`.
 ├── dashboard.mjs      HTML dashboard generator
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
 ├── followup.mjs       follow-up reminder script (daily launchd job)
+├── report.mjs         weekly digest (Monday launchd job, or run by hand)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
 ├── prune-applications.mjs  remove stale duplicate packages from applications/
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn sources)
@@ -364,6 +381,7 @@ Session expired? Re-run `node login.mjs`.
 | `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `followup.mjs`        | Post macOS notifications for Applied jobs with no movement for 7+ days. |
+| `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, pipeline, source yield. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
 | `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |

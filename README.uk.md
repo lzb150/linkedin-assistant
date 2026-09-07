@@ -269,6 +269,23 @@ cp com.example.jobs-followup.plist.example \
 launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
 ```
 
+**Тижневий звіт (`report.mjs`)** — одна команда, що підсумовує останні 7 днів:
+запуски й нові розглянуті вакансії, пакети за джерелами, вердикти LLM
+(відкинуто / збій / оцінено / ≥70 і найкращий збіг), рух воронки (applied,
+answered, interview, rejected за тиждень і applied за весь час) та медіанний
+вихід кожного джерела за запуск. `node report.mjs` друкує звіт; `--notify`
+додатково показує однорядкове macOS-сповіщення — саме так працює тижневе
+launchd-завдання (`com.eugene.jobs-report.plist`, постачається як `.example`,
+понеділок 09:00). `REPORT_DAYS=14` розширює вікно. Лічильники LLM беруться з
+логів запусків у `logs/`, тож охоплюють лише те, що ще не видалила ротація.
+Встановлення:
+
+```bash
+cp com.example.jobs-report.plist.example \
+   ~/Library/LaunchAgents/com.eugene.jobs-report.plist   # відредагуйте шляхи всередині
+launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
+```
+
 ## Очищення застарілих пакетів — `prune-applications.mjs`
 
 Дашборд ховає дублікати на диску, але місце можна звільнити. Цей скрипт лишає
@@ -354,6 +371,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ├── dashboard.mjs      генератор HTML-дашборда
 ├── state-server.mjs   локальний HTTP-сервер (127.0.0.1:7777) для збереження job-state
 ├── followup.mjs       скрипт нагадувань про фолоу-ап (щоденне launchd-завдання)
+├── report.mjs         тижневий звіт (launchd-завдання в понеділок або вручну)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → запустити сервер → відкрити браузер
 ├── prune-applications.mjs  видалити застарілі дублікати пакетів з applications/
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn)
@@ -376,6 +394,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 | `dashboard.mjs`       | Зібрати HTML-дашборд зі стеженням за статусами.           |
 | `state-server.mjs`    | Локальний HTTP-сервер на 127.0.0.1:7777; зберігає стан у `job-state.json`. |
 | `followup.mjs`        | macOS-сповіщення для Applied-вакансій без руху 7+ днів.   |
+| `report.mjs`          | Тижневий звіт: запуски, пакети за джерелами, вердикти LLM, воронка, вихід джерел. |
 | `open-dashboard.sh`   | Помічник кліку в Dock: перегенерувати дашборд, запустити сервер, відкрити браузер. |
 | `prune-applications.mjs` | Видалити застарілі дублікати пакетів (типово пробний запуск). |
 | `lib/relevance.mjs`   | Локальне оцінювання (без API-ключа, нічого не покидає машину). |

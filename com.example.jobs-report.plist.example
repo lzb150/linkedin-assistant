@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: runs report.mjs every Monday at 09:00 and posts the weekly digest
+  (packages, LLM verdicts, pipeline, source yield). Replace YOUR_USERNAME (and the node path)
+  with your own.
+  Install:
+    cp com.example.jobs-report.plist.example ~/Library/LaunchAgents/com.example.jobs-report.plist
+    launchctl load ~/Library/LaunchAgents/com.example.jobs-report.plist
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.example.jobs-report.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.jobs-report</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_USERNAME/.nvm/versions/node/vX.Y.Z/bin/node</string> <!-- `ls ~/.nvm/versions/node` — nvm has no bare "v20" dir -->
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/report.mjs</string>
+    <string>--notify</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/report.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/report.err.log</string>
+</dict>
+</plist>
