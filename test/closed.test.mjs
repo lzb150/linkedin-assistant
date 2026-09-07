@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isClosed, selectCandidates } from "../lib/closed.mjs";
+import { isClosed, selectCandidates, planArchive } from "../lib/closed.mjs";
 
 test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not closed)", () => {
   assert.equal(isClosed({ source: "dou", status: 404, html: "" }), true);
@@ -44,4 +44,24 @@ test("selectCandidates: dou/djinni/linkedin only, new/viewed only, re-checked at
   assert.deepEqual(all.map((c) => c.url), ["https://jobs.dou.ua/v/1/", "https://www.linkedin.com/jobs/view/8/", "https://jobs.dou.ua/v/7/", "https://djinni.co/jobs/2/"]);
   assert.equal(all[0].source, "dou");
   assert.deepEqual(selectCandidates({ packages, stateMap, checked, now, recheckDays: 3, maxPerRun: 2 }).length, 2, "cap applies after ordering");
+});
+
+test("planArchive: closed packages older than the grace period move to archive; recent, open and post-applied stay", () => {
+  const packages = [
+    { file: "old-closed.md", url: "https://jobs.dou.ua/v/1/" },
+    { file: "fresh-closed.md", url: "https://jobs.dou.ua/v/2/" },
+    { file: "open.md", url: "https://jobs.dou.ua/v/3/" },
+    { file: "applied.md", url: "https://jobs.dou.ua/v/4/" },
+    { file: "no-stamp.md", url: "https://jobs.dou.ua/v/5/" },
+  ];
+  const stateMap = {
+    _meta: {},
+    "https://jobs.dou.ua/v/1/": { status: "closed", updatedAt: daysAgo(20) },
+    "https://jobs.dou.ua/v/2/": { status: "closed", updatedAt: daysAgo(3) },
+    "https://jobs.dou.ua/v/3/": { status: "viewed", updatedAt: daysAgo(40) },
+    "https://jobs.dou.ua/v/4/": { status: "applied", appliedAt: daysAgo(40), updatedAt: daysAgo(40) },
+    "https://jobs.dou.ua/v/5/": { status: "closed" },   // legacy entry without updatedAt → treat as old enough
+  };
+  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14 }), ["old-closed.md", "no-stamp.md"]);
+  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 0 }), ["old-closed.md", "fresh-closed.md", "no-stamp.md"], "grace 0 archives every closed package");
 });

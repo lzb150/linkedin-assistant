@@ -4,14 +4,16 @@
 // dashboard's New view and never reach a follow-up. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
 //   CLOSED_MAX=50 CLOSED_RECHECK_DAYS=7 node closed-check.mjs
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+// Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) are moved to
+// applications/archive/, which nothing reads — keeps the dashboard small.
+import { readdirSync, readFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 import { notify, log } from "./lib/notify.mjs";
-import { isClosed, selectCandidates } from "./lib/closed.mjs";
+import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const STATE = join(dir, "job-state.json");
@@ -20,9 +22,10 @@ const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO
 const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 const maxPerRun = num(process.env.CLOSED_MAX, 150);
 const recheckDays = num(process.env.CLOSED_RECHECK_DAYS, 3);
+const archiveDays = num(process.env.CLOSED_ARCHIVE_DAYS, 14);
 
 const packages = (existsSync(APPS) ? readdirSync(APPS) : []).filter((f) => f.endsWith(".md")).flatMap((f) => {
-  try { const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {}; return [{ url: fm.url, source: fm.source, title: fm.title, company: fm.company }]; }
+  try { const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {}; return [{ file: f, url: fm.url, source: fm.source, title: fm.title, company: fm.company }]; }
   catch { return []; }
 });
 let checked = {};
@@ -57,4 +60,9 @@ if (closed.length) {
   writeStore(STATE, stateMap);
   notify("Job assistant", `${closed.length} vacanc${closed.length === 1 ? "y" : "ies"} closed by the board — hidden from New`);
 }
-log(`closed-check: ${closed.length} closed, ${todo.length} probed`);
+const archive = planArchive({ packages, stateMap, closedDays: archiveDays });
+if (archive.length) {
+  mkdirSync(join(APPS, "archive"), { recursive: true });
+  for (const f of archive) renameSync(join(APPS, f), join(APPS, "archive", f));
+}
+log(`closed-check: ${closed.length} closed, ${todo.length} probed, ${archive.length} package(s) archived (closed ${archiveDays}+ days)`);
