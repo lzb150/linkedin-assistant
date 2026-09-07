@@ -75,12 +75,12 @@ test("formatNotification lists only sources with written matches plus the top", 
   assert.match(out, /top 42/);
 });
 
-test("formatNotification reports scanned total when nothing was written", () => {
+test("formatNotification is empty when nothing was written — an empty run posts no banner (~30/day of noise otherwise)", () => {
   const s = newSummary();
   recordFound(s, "dou", 12);
   recordFound(s, "jooble", 5);
   recordOutcome(s, "dou", "seen");
-  assert.equal(formatNotification(s), "No new matches · scanned 17");
+  assert.equal(formatNotification(s), "");
 });
 
 test("topMatches: llm-scored entries use the LLM threshold (70)", () => {

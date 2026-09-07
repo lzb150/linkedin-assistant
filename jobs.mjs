@@ -340,6 +340,8 @@ try {
 const top = topMatches(writtenList);
 if (top.length) notify(formatTopMatches(top));
 
-// Always notify with the run outcome (previously only fired when written > 0).
-notify(formatNotification(summary));
+// Run-outcome banner only when something was written (formatNotification is
+// empty otherwise). Errors, source degradation and strong matches have their own banners above.
+const outcome = formatNotification(summary);
+if (outcome) notify(outcome);
 process.exit(0);
