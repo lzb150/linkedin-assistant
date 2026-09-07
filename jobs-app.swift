@@ -152,7 +152,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    func unreadCount(at path: String) -> Int { unreadCountAt(path) }
 
     func poll() {
         // Permission can be granted/revoked in System Settings at any time: re-read
@@ -167,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             }
         }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
-        let count = unreadCount(at: statePath) + unreadCount(at: djinniStatePath)
+        let count = unreadCountAt(statePath) + unreadCountAt(djinniStatePath)
         // Re-apply every tick (cheap): the Dock forgets badges when it restarts,
         // and a background-launched .regular app does not always repaint its tile.
         let label: String? = count > 0 ? String(count) : nil

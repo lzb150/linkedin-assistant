@@ -5,10 +5,10 @@
 //   node report.mjs --notify     also post a macOS notification (launchd job)
 //   REPORT_DAYS=14 node report.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readPackages } from "./lib/packages.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit } from "./lib/job-state.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { notify } from "./lib/notify.mjs";
 import { buildReport } from "./lib/report.mjs";
 
@@ -21,9 +21,7 @@ const since = now.getTime() - days * 86400000;
 const readJson = (f) => { try { return JSON.parse(readFileSync(join(dir, f), "utf8")); } catch { return {}; } };
 const files = (sub, ext) => (existsSync(join(dir, sub)) ? readdirSync(join(dir, sub)).filter((x) => x.endsWith(ext)).map((x) => join(dir, sub, x)) : []);
 
-const packages = files("applications", ".md").flatMap((f) => {
-  try { return [parseFrontmatter(readFileSync(f, "utf8")) || {}]; } catch { return []; }   // one bad package must not kill the digest
-});
+const packages = readPackages(join(dir, "applications"));
 // Only log files touched inside the window (daily files since Sep 2026, per-run before).
 const logText = files("logs", ".log")
   .filter((f) => /jobs_(dou|full)_/.test(f) && statSync(f).mtimeMs >= since)

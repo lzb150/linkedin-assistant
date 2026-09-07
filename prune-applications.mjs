@@ -14,13 +14,13 @@
 //       node prune-applications.mjs --apply         (delete duplicates, archive closed)
 //       node prune-applications.mjs --closed-days 0 --apply
 
-import { readdirSync, readFileSync, unlinkSync, mkdirSync, renameSync } from "node:fs";
+import { unlinkSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { readStoreOrExit, statusOf } from "./lib/job-state.mjs";
 import { planArchive } from "./lib/closed.mjs";
+import { readPackages, archivePackages } from "./lib/packages.mjs";
 
 /**
  * Decide which package files to keep and which to remove.
@@ -55,11 +55,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const APPS = join(ROOT, "applications");
   mkdirSync(APPS, { recursive: true }); // fresh clone: nothing to prune, but don't crash
   const state = readStoreOrExit(join(ROOT, "job-state.json"), "refusing to prune against unknown statuses");
-  const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
-  const packages = files.map((f) => {
-    const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {};
-    return { file: f, company: fm.company || "", title: fm.title || "", url: fm.url || "", generated: fm.generated || "", status: statusOf(state, fm.url) };
-  });
+  const packages = readPackages(APPS).map((fm) => ({
+    file: fm.file, company: fm.company || "", title: fm.title || "", url: fm.url || "", generated: fm.generated || "", status: statusOf(state, fm.url),
+  }));
+  const files = packages.map((p) => p.file);
 
   const { keep, remove } = planPrune(packages);
   const cdIdx = process.argv.indexOf("--closed-days");
@@ -78,7 +77,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
 
   for (const f of remove) unlinkSync(join(APPS, f));
-  if (archive.length) mkdirSync(join(APPS, "archive"), { recursive: true });
-  for (const f of archive) renameSync(join(APPS, f), join(APPS, "archive", f));
+  archivePackages(APPS, archive);
   console.log(`Removed ${remove.length} stale duplicate package(s), archived ${archive.length}. ${keep.length - archive.length} remain.`);
 }
