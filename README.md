@@ -217,7 +217,9 @@ server if it is not already running, and opens the browser. Job state (status,
 applied-date, per-card notes, last-visit timestamp) is written to `job-state.json`
 on disk, so it survives a browser reset or a full OS restart. If the server is
 unreachable the dashboard falls back to `localStorage` and shows an
-**"offline — not saved to disk"** badge.
+**"offline — not saved to disk"** badge. The server keeps running across
+updates — after pulling a new version, restart it (`pkill -f state-server.mjs`;
+the next Dock click starts a fresh one) so it knows any new statuses.
 
 **Pipeline tracking** — each card moves through **New → Viewed → Applied**, then
 on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**

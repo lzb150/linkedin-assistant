@@ -110,3 +110,14 @@ test("normalizeMeta keeps only lastVisit and canonicalizes it to toISOString() f
   assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00.123Z" }), { lastVisit: "2026-06-20T09:00:00.123Z" });
   for (const bad of [{}, { lastVisit: "t" }, { lastVisit: "" }, [], null, "x"]) assert.equal(normalizeMeta(bad), null);
 });
+
+// A long-running state server (started before a deploy) must not delete
+// entries whose status it does not know yet: on 2026-09-07 the old server's
+// first POST normalized 448 fresh "closed" entries away. Unknown statuses are
+// kept verbatim on disk and merely read as "new" until the server restarts.
+test("normalize keeps entries with a status this build does not know", () => {
+  const out = normalize({ _meta: {}, "u1": { status: "from-the-future", updatedAt: "2026-09-07T00:00:00Z" }, "u2": { status: "viewed" } });
+  assert.equal(out.u1.status, "from-the-future");
+  assert.equal(out.u2.status, "viewed");
+  assert.equal(statusOf(out, "u1"), "new", "unknown reads as new for display");
+});
