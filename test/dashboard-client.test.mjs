@@ -204,3 +204,38 @@ test("flash then markOffline still shows the offline badge", async () => {
   assert.ok(children.some((el) => el.className === "offline"), "offline badge present after a flash");
   assert.ok(children.some((el) => el.className === "flash"));
 });
+
+// "Did you apply?" nudge: opening a job / copying its letter arms a per-card
+// prompt that survives page regeneration (localStorage) until the card is
+// marked applied, dismissed, or 3 days pass.
+function nudgeCard(url) {
+  const nudge = { hidden: true };
+  // enough surface for renderCard / applyFilter / markFreshness to run over a real card list
+  return { dataset: { url, source: "dou", score: "30", search: "", generated: "" }, style: {}, classList: { toggle() {}, contains: () => false },
+    querySelectorAll: () => [], querySelector: (s) => (s === ".apply-nudge" ? nudge : null), nudge };
+}
+test("apply nudge: armed on open, shown on load, cleared by Yes (→ applied) or Not yet, expired after 3 days", async () => {
+  const U1 = "https://example.com/jobs/1/", U2 = "https://example.com/jobs/2/", OLD = "https://example.com/jobs/old/";
+  const store = new Map([["applyNudge", JSON.stringify({ [OLD]: Date.now() - 4 * 86400000 })]]);
+  const c1 = nudgeCard(U1), c2 = nudgeCard(U2), cOld = nudgeCard(OLD);
+  const document = { querySelector: () => null, getElementById: () => null, querySelectorAll: (s) => (s === ".card" ? [c1, c2, cOld] : []) };
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document });
+  await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (it runs showNudges)
+  assert.equal(cOld.nudge.hidden, true, "a 4-day-old arm is expired, not shown");
+  assert.deepEqual(JSON.parse(store.get("applyNudge")), {}, "expired arm is forgotten");
+
+  c.ctx.c1 = c1; c.ctx.c2 = c2;
+  c.run("armNudge(c1); armNudge(c2)");
+  assert.equal(c1.nudge.hidden, false, "armed card shows the prompt");
+  assert.equal(c2.nudge.hidden, false);
+
+  await c.run("nudgeYes(c1)");
+  assert.equal(c.run(`statusOf(${JSON.stringify(U1)})`), "applied");
+  assert.equal(c1.nudge.hidden, true);
+  c.run("nudgeNo(c2)");
+  assert.equal(c2.nudge.hidden, true);
+  assert.deepEqual(JSON.parse(store.get("applyNudge")), {}, "both cleared from the store");
+
+  c.run("armNudge(c1)");
+  assert.equal(c1.nudge.hidden, true, "an already-applied card is never nudged");
+});

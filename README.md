@@ -223,7 +223,13 @@ unreachable the dashboard falls back to `localStorage` and shows an
 on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**
 at any point. The apply date is recorded on the first move into any
 post-Applied stage (even when a card jumps straight to Answered because the
-reply arrived before the bookkeeping) and shows as "applied 5d ago". A header line summarizes the funnel for the whole board (applied →
+reply arrived before the bookkeeping) and shows as "applied 5d ago". Because
+the actual applying happens on the job site, it is easy to never come back and
+press Applied: clicking **Open job** or **Copy letter** arms a **"Did you apply
+to this job?"** prompt on that card, which stays across dashboard regenerations
+(it lives in the browser's localStorage) until you answer **Yes, mark Applied**
+or **Not yet**, or the card reaches a post-Applied stage some other way; it
+expires by itself after 3 days. A header line summarizes the funnel for the whole board (applied →
 answered → interview, with conversion %, plus a rejected count and a
 per-source breakdown). You can attach private notes to any card; they are
 saved to disk via the state server. The header also shows live status/freshness
