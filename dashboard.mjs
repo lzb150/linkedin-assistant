@@ -27,7 +27,8 @@ function parse(md) {
   const fm = parseFrontmatter(md);
   if (!fm) return null;
   // cover note = text between "## Cover note" and "## Action"
-  const cover = (md.match(/## Cover note[^\n]*\n([\s\S]*?)\n## Action/) || [])[1] || "";
+  // Anchored to a line start: a job TITLE of "## Cover note" sits in the H1 ("# ## Cover note — …") and must not match.
+  const cover = (md.match(/^## Cover note[^\n]*\n([\s\S]*?)\n## Action/m) || [])[1] || "";
   return { fm, cover: cover.trim() };
 }
 

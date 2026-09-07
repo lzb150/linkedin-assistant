@@ -9,7 +9,7 @@ export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr
 
 cd "$(dirname "$0")"
 mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
-find "$PWD/logs" -name '*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation
+find "$PWD/logs" -name '*.log' ! -name 'state-server.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (the server holds its log open)
 STAMP="$(date +%Y%m%d)"   # one log file per day; each run appends after a "=== run" separator
 
 { echo "=== run $(date -u +%FT%TZ) ==="; node djinni-check.mjs; } >> "logs/djinni_${STAMP}.log" 2>&1

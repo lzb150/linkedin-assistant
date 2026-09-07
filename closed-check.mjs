@@ -30,11 +30,11 @@ const packages = (existsSync(APPS) ? readdirSync(APPS) : []).filter((f) => f.end
 });
 let checked = {};
 try { checked = JSON.parse(readFileSync(CHECKED, "utf8")) || {}; } catch {}
-let stateMap = readStoreOrExit(STATE, "skipping closed-vacancy check");
+const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
-const todo = selectCandidates({ packages, stateMap, checked, maxPerRun, recheckDays });
+const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, maxPerRun, recheckDays });
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
-const closed = [];
+const closed = [], closedUrls = [];
 for (const { url, source } of todo) {
   let status = 0, html = "";
   try {
@@ -43,23 +43,29 @@ for (const { url, source } of todo) {
   } catch (e) { log(`  · ${url} — ${e.message}`); continue; }   // network trouble: not checked, retried next run
   checked[url] = new Date().toISOString();
   if (isClosed({ source, status, html })) {
-    // ponytail: read-modify-write races a dashboard click landing in the same
-    // second; go through the state server's POST if that ever bites.
-    stateMap = mergeEntry(stateMap, url, { status: "closed" });
+    closedUrls.push(url);   // applied to a FRESH read of the store below, not to stateAtStart
     const p = packages.find((x) => x.url === url);
     closed.push(p ? `${p.title} @ ${p.company}` : url);
     log(`  ✗ closed [${status}] ${source}: ${closed.at(-1)}`);
   }
   await new Promise((r) => setTimeout(r, 1000));
 }
-// Forget check stamps for urls that no longer have a package (pruned) so the file stays bounded.
-const live = new Set(packages.map((p) => p.url));
-for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
-writeJsonAtomic(CHECKED, checked);
-if (closed.length) {
+// The probe loop runs for minutes; dashboard clicks land on job-state.json
+// meanwhile. Re-read the store now and apply only our patches, so the
+// read-modify-write window is the microseconds between these two lines.
+// ponytail: still a race with a click in that same instant; POST to the state
+// server instead if it ever bites.
+let stateMap = readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved");
+for (const url of closedUrls) stateMap = mergeEntry(stateMap, url, { status: "closed" });
+if (closedUrls.length) {
   writeStore(STATE, stateMap);
   notify("Job assistant", `${closed.length} vacanc${closed.length === 1 ? "y" : "ies"} closed by the board — hidden from New`);
 }
+// Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
+// Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
+const live = new Set(packages.map((p) => p.url));
+for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
+writeJsonAtomic(CHECKED, checked);
 const archive = planArchive({ packages, stateMap, closedDays: archiveDays });
 if (archive.length) {
   mkdirSync(join(APPS, "archive"), { recursive: true });
