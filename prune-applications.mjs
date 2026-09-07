@@ -6,15 +6,21 @@
 // script reclaims the disk clutter by keeping only the newest package per
 // identity (company+title) and deleting the rest.
 //
-// Run:  node prune-applications.mjs           (dry run — shows what would go)
-//       node prune-applications.mjs --apply   (actually delete)
+// It also moves packages of vacancies that closed-check.mjs marked "closed"
+// 14+ days ago (--closed-days N to change; 0 = every closed one) into
+// applications/archive/, which no script reads — the dashboard gets lighter.
+//
+// Run:  node prune-applications.mjs                 (dry run — shows what would go)
+//       node prune-applications.mjs --apply         (delete duplicates, archive closed)
+//       node prune-applications.mjs --closed-days 0 --apply
 
-import { readdirSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, mkdirSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { readStoreOrExit, statusOf } from "./lib/job-state.mjs";
+import { planArchive } from "./lib/closed.mjs";
 
 /**
  * Decide which package files to keep and which to remove.
@@ -56,16 +62,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   });
 
   const { keep, remove } = planPrune(packages);
-  console.log(`${files.length} package(s): keep ${keep.length}, remove ${remove.length}`);
-  if (!remove.length) { console.log("Nothing to prune."); process.exit(0); }
+  const cdIdx = process.argv.indexOf("--closed-days");
+  const closedDays = cdIdx !== -1 && Number.isFinite(Number(process.argv[cdIdx + 1])) ? Number(process.argv[cdIdx + 1]) : 14;
+  const removeSet = new Set(remove);
+  const archive = planArchive({ packages, stateMap: state, closedDays }).filter((f) => !removeSet.has(f));
+  console.log(`${files.length} package(s): keep ${keep.length - archive.length}, remove ${remove.length}, archive ${archive.length} (closed ${closedDays}+ days)`);
+  if (!remove.length && !archive.length) { console.log("Nothing to prune."); process.exit(0); }
 
   if (!apply) {
-    console.log("\n--- DRY RUN (no files deleted). Re-run with --apply to delete: ---");
-    for (const f of remove) console.log(`  would remove  ${f}`);
-    console.log(`\n${remove.length} file(s) would be removed. Run: node prune-applications.mjs --apply`);
+    console.log("\n--- DRY RUN (nothing changed). Re-run with --apply: ---");
+    for (const f of remove) console.log(`  would remove   ${f}`);
+    for (const f of archive) console.log(`  would archive  ${f}`);
+    console.log(`\n${remove.length} file(s) would be removed, ${archive.length} archived. Run: node prune-applications.mjs --apply`);
     process.exit(0);
   }
 
   for (const f of remove) unlinkSync(join(APPS, f));
-  console.log(`Removed ${remove.length} stale duplicate package(s). ${keep.length} remain.`);
+  if (archive.length) mkdirSync(join(APPS, "archive"), { recursive: true });
+  for (const f of archive) renameSync(join(APPS, f), join(APPS, "archive", f));
+  console.log(`Removed ${remove.length} stale duplicate package(s), archived ${archive.length}. ${keep.length - archive.length} remain.`);
 }
