@@ -100,7 +100,7 @@ const cards = items
     // The server keys state by http(s) url and 400s anything else: a card with
     // a bad url renders read-only (no status buttons / note / auto-viewed).
     const live = safeUrl(f.url) !== "#";
-    const auto = live ? ` onclick="autoStatus(this.closest('.card'),'viewed')"` : "";
+    const auto = live ? ` onclick="armNudge(this.closest('.card'));autoStatus(this.closest('.card'),'viewed')"` : "";
     return `
 <article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-score="${it.score}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
@@ -123,6 +123,10 @@ const cards = items
       <span class="applied-ago" hidden></span>` : ""}
     </div>
   </div>
+  ${live ? `<div class="apply-nudge" hidden role="status">Did you apply to this job?
+    <button class="yes" onclick="nudgeYes(this.closest('.card'))">Yes, mark Applied</button>
+    <button class="later" onclick="nudgeNo(this.closest('.card'))">Not yet</button>
+  </div>` : ""}
   <div class="skills">${skills}</div>
   ${altRow}
   <details${live ? ` ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')"` : ""}>
@@ -206,6 +210,11 @@ const html = `<!doctype html>
   .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .min-seg button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .applied-ago { font-size: 11px; color: #1a7f37; text-align: center; }
+  .apply-nudge { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; background: #dafbe1; border: 1px solid #1a7f37; border-radius: 7px; font-size: 13px; color: #1a4721; }   /* 8.9:1 */
+  .apply-nudge[hidden] { display: none; }   /* the flex rule above would otherwise beat the UA [hidden] style */
+  .apply-nudge button { border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  .apply-nudge .yes { background: #1a7f37; color: #fff; font-weight: 600; }
+  .apply-nudge .later { background: #fff; color: #57606a; border: 1px solid #d0d7de; }
   .funnel { font-size: 12px; color: #cdd9e5; margin-top: 6px; }
   .note-wrap summary { color: #57606a; }
   .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
