@@ -1,5 +1,6 @@
 // Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board),
-// Jooble (API), and LinkedIn (scrape), scores them against your resume, and
+// Jooble (API), LinkedIn (scrape) and, when enabled, Robota.ua / Work.ua /
+// Glassdoor (browser), scores them against your resume, and
 // writes an application package for each RELEVANT match. IT NEVER SUBMITS
 // ANYTHING — you review and apply manually.
 //
@@ -112,53 +113,41 @@ for (const s of BROWSERLESS_SOURCES) {
   }
 }
 
-// 4–6) Browser sources: LinkedIn (needs login), Robota.ua and Work.ua (both
-// Cloudflare-gated, no login) share one Playwright context. Each source has its own try/catch so
-// one failing does not skip the other or hide from health monitoring.
-const BROWSER_SOURCES = ["linkedin", "robota", "workua", "glassdoor"];
+// 4–7) Browser sources: LinkedIn (needs login), Robota.ua, Work.ua and Glassdoor
+// (Cloudflare-gated, no login; off by default) share one Playwright context.
+// LinkedIn first checks the session: an expired login is a hard failure for
+// health monitoring (found 0), not an exception. Work.ua fetches through the
+// page instead of taking it.
+async function fetchLinkedInChecked(page, cfg) {
+  await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
+  if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
+    log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
+    return [];
+  }
+  log("Gathering LinkedIn jobs (scraping, modest)...");
+  return fetchLinkedInJobs(page, cfg, log);
+}
+const BROWSER_SOURCE_TABLE = [
+  { name: "linkedin", label: "LinkedIn", fetch: fetchLinkedInChecked },
+  { name: "robota", label: "Robota.ua", fetch: (page, cfg) => fetchRobota(page, cfg, log) },
+  { name: "workua", label: "Work.ua (browser)", fetch: (page, cfg) => fetchWorkua(cfg, log, pageHtml(page)) },
+  { name: "glassdoor", label: "Glassdoor", fetch: (page, cfg) => fetchGlassdoor(page, cfg, log) },
+];
+const BROWSER_SOURCES = BROWSER_SOURCE_TABLE.map((s) => s.name);
 if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
   let ctx;
   try {
     ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
     const page = ctx.pages()[0] || (await ctx.newPage());
-    if (config.linkedin?.enabled) {
+    // Each source has its own try/catch so one failing does not skip the others or hide from health monitoring.
+    for (const s of BROWSER_SOURCE_TABLE) {
+      if (!config[s.name]?.enabled) continue;
+      if (s.name !== "linkedin") log(`Gathering ${s.label}...`);
       try {
-        // bail early if logged out
-        await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
-        if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
-          log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
-          recordFound(summary, "linkedin", 0); // expired session is a hard failure for health monitoring
-        } else {
-          log("Gathering LinkedIn jobs (scraping, modest)...");
-          const liJobs = await fetchLinkedInJobs(page, config.linkedin, log);
-          recordFound(summary, "linkedin", liJobs.length);
-          jobs.push(...liJobs);
-        }
-      } catch (e) { log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
-    }
-    if (config.robota?.enabled) {
-      log("Gathering Robota.ua...");
-      try {
-        const rJobs = await fetchRobota(page, config.robota, log);
-        recordFound(summary, "robota", rJobs.length);
-        jobs.push(...rJobs);
-      } catch (e) { log("Robota.ua error:", e.message); recordFound(summary, "robota", 0); }
-    }
-    if (config.workua?.enabled) {
-      log("Gathering Work.ua (browser)...");
-      try {
-        const wJobs = await fetchWorkua(config.workua, log, pageHtml(page));
-        recordFound(summary, "workua", wJobs.length);
-        jobs.push(...wJobs);
-      } catch (e) { log("Work.ua error:", e.message); recordFound(summary, "workua", 0); }
-    }
-    if (config.glassdoor?.enabled) {
-      log("Gathering Glassdoor...");
-      try {
-        const gJobs = await fetchGlassdoor(page, config.glassdoor, log);
-        recordFound(summary, "glassdoor", gJobs.length);
-        jobs.push(...gJobs);
-      } catch (e) { log("Glassdoor error:", e.message); recordFound(summary, "glassdoor", 0); }
+        const found = await s.fetch(page, config[s.name]);
+        recordFound(summary, s.name, found.length);
+        jobs.push(...found);
+      } catch (e) { log(`${s.label} error:`, e.message); recordFound(summary, s.name, 0); }
     }
   } catch (e) {
     log("Browser sources error:", e.message);
