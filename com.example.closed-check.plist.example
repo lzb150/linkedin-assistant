@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: runs closed-check.mjs every morning at 08:30: probes New/Viewed DOU and Djinni
+  vacancies and marks the ones the board reports inactive as "closed". Replace YOUR_USERNAME (and the node path)
+  with your own.
+  Install:
+    cp com.example.closed-check.plist.example ~/Library/LaunchAgents/com.example.closed-check.plist
+    launchctl load ~/Library/LaunchAgents/com.example.closed-check.plist
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.example.closed-check.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.closed-check</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_USERNAME/.nvm/versions/node/vX.Y.Z/bin/node</string> <!-- `ls ~/.nvm/versions/node` — nvm has no bare "v20" dir -->
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/closed-check.mjs</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/closed-check.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/closed-check.err.log</string>
+</dict>
+</plist>

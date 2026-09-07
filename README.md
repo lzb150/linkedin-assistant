@@ -259,6 +259,18 @@ cp com.example.jobs-followup.plist.example \
 launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
 ```
 
+**Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
+(`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU and
+Djinni vacancies that are still **New** or **Viewed** (plain GET, one per
+second, each url at most every 3 days, 150 per run) and marks the ones the board
+reports inactive ("вакансія неактивна") as **Closed**. Closed cards leave the
+New view, get a muted "· closed" cue, have their own filter, and are never
+auto-reopened by clicking them. Applied+ cards are left alone — closing them out
+is your call. Jooble/LinkedIn/Work.ua/Robota.ua/Glassdoor urls are skipped
+(redirects, login, Cloudflare). Tune with `CLOSED_MAX` and
+`CLOSED_RECHECK_DAYS`; a banner fires only when something was closed. Install
+like the follow-up job, with `com.example.closed-check.plist.example`.
+
 **Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
 runs and new vacancies considered, packages written per source, LLM verdicts
 (dropped / failed / scored / at ≥70, plus the top match), pipeline movement
@@ -359,6 +371,7 @@ Session expired? Re-run `node login.mjs`.
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
 ├── followup.mjs       follow-up reminder script (daily launchd job)
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
+├── closed-check.mjs   mark DOU/Djinni vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
 ├── prune-applications.mjs  remove stale duplicate packages from applications/
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn sources)
@@ -382,6 +395,7 @@ Session expired? Re-run `node login.mjs`.
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `followup.mjs`        | Post macOS notifications for Applied jobs with no movement for 7+ days. |
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, pipeline, source yield. |
+| `closed-check.mjs`    | Probe New/Viewed DOU and Djinni urls; mark board-inactive vacancies Closed. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
 | `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |

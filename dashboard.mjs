@@ -204,6 +204,10 @@ const html = `<!doctype html>
   .card.rejected { background: #f6f8fa; border-left: 4px solid #cf222e; }
   .card.rejected .titles h2 { color: #57606a; }
   .card.rejected .titles h2::after { content: " ✗"; color: #cf222e; }   /* non-colour cue next to the red border */
+  /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed, with a text cue. */
+  .card.closed { background: #f6f8fa; border-left: 4px solid #8c959f; }
+  .card.closed .titles h2 { color: #57606a; }
+  .card.closed .titles h2::after { content: " · closed"; color: #57606a; font-weight: 400; font-size: 13px; }
   .status-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }   /* blue on white: 5.9:1 */
   /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
      inset one extra px so it sits inside the fill rather than on the border. */
@@ -242,6 +246,7 @@ const html = `<!doctype html>
       <button data-filter="applied" aria-pressed="false" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
       <button data-filter="answered" aria-pressed="false" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
       <button data-filter="interview" aria-pressed="false" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
+      <button data-filter="closed" aria-pressed="false" onclick="setFilter('closed')">Closed <span class="cnt" id="cnt-closed">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
