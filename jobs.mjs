@@ -16,7 +16,7 @@ import { buildApplication, appendAltLink } from "./lib/application.mjs";
 import { llmJSON, buildJobPrompt, numericScore, llmRejects } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
+import { readPackages } from "./lib/packages.mjs";
 import { filterByLocation } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
@@ -215,16 +215,10 @@ function excludedByTitle(title) {
 // resurfacing on ANOTHER board must not spawn a second package — its link is
 // appended to the existing one instead. Same source = a distinct req, allowed.
 const packageIndex = new Map();
-{
-  for (const f of readdirSync(APPS)) {
-    if (!f.endsWith(".md")) continue;
-    try {
-      const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8"));
-      // "—" is the blank-company placeholder; canonicalKey scopes those by url,
-      // so pass the url along instead of filtering on a truthy company.
-      if (fm?.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: f, source: fm.source || "" });
-    } catch { log(`  · unreadable package skipped: ${f}`); }
-  }
+for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package skipped: ${f}`) })) {
+  // "—" is the blank-company placeholder; canonicalKey scopes those by url,
+  // so pass the url along instead of filtering on a truthy company.
+  if (fm.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: fm.file, source: fm.source || "" });
 }
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.

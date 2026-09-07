@@ -6,14 +6,14 @@
 //   CLOSED_MAX=50 CLOSED_RECHECK_DAYS=7 node closed-check.mjs
 // Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) are moved to
 // applications/archive/, which nothing reads — keeps the dashboard small.
-import { readdirSync, readFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 import { notify, log } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
+import { readPackages, archivePackages } from "./lib/packages.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const STATE = join(dir, "job-state.json");
@@ -24,10 +24,7 @@ const maxPerRun = num(process.env.CLOSED_MAX, 150);
 const recheckDays = num(process.env.CLOSED_RECHECK_DAYS, 3);
 const archiveDays = num(process.env.CLOSED_ARCHIVE_DAYS, 14);
 
-const packages = (existsSync(APPS) ? readdirSync(APPS) : []).filter((f) => f.endsWith(".md")).flatMap((f) => {
-  try { const fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {}; return [{ file: f, url: fm.url, source: fm.source, title: fm.title, company: fm.company }]; }
-  catch { return []; }
-});
+const packages = readPackages(APPS);
 let checked = {};
 try { checked = JSON.parse(readFileSync(CHECKED, "utf8")) || {}; } catch {}
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
@@ -66,9 +63,5 @@ if (closedUrls.length) {
 const live = new Set(packages.map((p) => p.url));
 for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
-const archive = planArchive({ packages, stateMap, closedDays: archiveDays });
-if (archive.length) {
-  mkdirSync(join(APPS, "archive"), { recursive: true });
-  for (const f of archive) renameSync(join(APPS, f), join(APPS, "archive", f));
-}
-log(`closed-check: ${closed.length} closed, ${todo.length} probed, ${archive.length} package(s) archived (closed ${archiveDays}+ days)`);
+const archived = archivePackages(APPS, planArchive({ packages, stateMap, closedDays: archiveDays }));
+log(`closed-check: ${closed.length} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ days)`);

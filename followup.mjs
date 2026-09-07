@@ -1,14 +1,13 @@
 // followup.mjs
 // Daily reminder: notify about jobs marked "applied" with no movement for N days.
 // Notifications go through lib/notify.mjs (Jobs.app banner, osascript fallback).
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readPackages } from "./lib/packages.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 import { readStoreOrExit } from "./lib/job-state.mjs";
 import { dueReminders } from "./lib/followup.mjs";
 import { notify } from "./lib/notify.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const STATE = join(dir, "job-state.json");
@@ -20,14 +19,8 @@ const THRESHOLD_DAYS = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 // Map url -> { title, company } from the application packages.
 function jobIndex() {
   const idx = {};
-  // applications/ does not exist before the first jobs.mjs run — no packages, no index.
-  for (const f of (existsSync(APPS) ? readdirSync(APPS) : []).filter((x) => x.endsWith(".md"))) {
-    // One unreadable package must not kill the whole reminder run.
-    let fm;
-    try { fm = parseFrontmatter(readFileSync(join(APPS, f), "utf8")) || {}; }
-    catch (e) { console.log(`followup: unreadable package skipped: ${f} (${e.message})`); continue; }
-    if (fm.url) idx[fm.url] = { title: fm.title || "", company: fm.company || "" };
-  }
+  const warn = (f, e) => console.log(`followup: unreadable package skipped: ${f} (${e.message})`);
+  for (const fm of readPackages(APPS, { warn })) if (fm.url) idx[fm.url] = { title: fm.title || "", company: fm.company || "" };
   return idx;
 }
 
