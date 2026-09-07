@@ -1,6 +1,7 @@
 // followup.mjs
 // Daily reminder: notify about jobs marked "applied" with no movement for N days.
 // Notifications go through lib/notify.mjs (Jobs.app banner, osascript fallback).
+import { readFileSync } from "node:fs";
 import { readPackages } from "./lib/packages.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

@@ -56,10 +56,15 @@ case "$*" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "cover"
   return { dir, bin };
 }
 
-// The notifier is fire-and-forget (osascript spawned right before process.exit),
-// so its log can land a few ms after jobs.mjs has exited.
-async function waitForFile(path, ms = 3000) {
-  for (const t0 = Date.now(); !existsSync(path) && Date.now() - t0 < ms;) await new Promise((r) => setTimeout(r, 50));
+// The notifier is fire-and-forget (two osascript children spawned right before
+// process.exit), so the log fills a few ms after jobs.mjs has exited — and in
+// two writes. Wait for the CONTENT we need, not for the file to exist (the
+// existence check raced the second write on the macOS runner: 3 red mains).
+async function waitFor(path, re, ms = 3000) {
+  for (const t0 = Date.now(); Date.now() - t0 < ms;) {
+    try { const s = readFileSync(path, "utf8"); if (re.test(s)) return s; } catch {}
+    await new Promise((r) => setTimeout(r, 50));
+  }
   return readFileSync(path, "utf8");
 }
 
@@ -107,7 +112,7 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.deepEqual(JSON.parse(readFileSync(join(p.dir, "source-health.json"), "utf8")).dou, [3]);
   assert.ok(existsSync(join(p.dir, "applications", "index.html")), "dashboard regenerated");
   assert.match(readFileSync(join(p.dir, "applications", "index.html"), "utf8"), /Senior SDET \(Playwright\)/);
-  const notify = await waitForFile(join(p.dir, "notify.log"));
+  const notify = await waitFor(join(p.dir, "notify.log"), /dou 1 new/);
   assert.match(notify, /Job assistant/, "banners carry the app title");
   assert.match(notify, /Strong match: Senior SDET \(Playwright\) @ Acme/, "separate strong-match banner");
   assert.match(notify, /dou 1 new/, "run digest banner");

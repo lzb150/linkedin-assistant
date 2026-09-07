@@ -238,4 +238,8 @@ test("apply nudge: armed on open, shown on load, cleared by Yes (→ applied) or
 
   c.run("armNudge(c1)");
   assert.equal(c1.nudge.hidden, true, "an already-applied card is never nudged");
+  c.ctx.c3 = nudgeCard("https://example.com/jobs/3/");
+  await c.run("patchEntry('https://example.com/jobs/3/', { status: 'closed' })");
+  c.run("armNudge(c3)");
+  assert.equal(c.ctx.c3.nudge.hidden, true, "a board-closed card is never nudged");
 });
