@@ -53,10 +53,18 @@ for (const { url, source } of todo) {
 // ponytail: still a race with a click in that same instant; POST to the state
 // server instead if it ever bites.
 let stateMap = readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved");
-for (const url of closedUrls) stateMap = mergeEntry(stateMap, url, { status: "closed" });
-if (closedUrls.length) {
+// A status the user set while we were probing (Applied, Rejected…) wins over
+// the board's verdict — candidates were New/Viewed at the start, re-check now.
+let saved = 0;
+for (const url of closedUrls) {
+  const st = stateMap[url]?.status;
+  if (st && st !== "viewed") { log(`  · kept ${st}: ${url} (changed during the run)`); continue; }
+  stateMap = mergeEntry(stateMap, url, { status: "closed" });
+  saved++;
+}
+if (saved) {
   writeStore(STATE, stateMap);
-  notify("Job assistant", `${closed.length} vacanc${closed.length === 1 ? "y" : "ies"} closed by the board — hidden from New`);
+  notify("Job assistant", `${saved} vacanc${saved === 1 ? "y" : "ies"} closed by the board — hidden from New`);
 }
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
@@ -64,4 +72,4 @@ const live = new Set(packages.map((p) => p.url));
 for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
 const archived = archivePackages(APPS, planArchive({ packages, stateMap, closedDays: archiveDays }));
-log(`closed-check: ${closed.length} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ days)`);
+log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ days)`);
