@@ -380,6 +380,11 @@ LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read mess
 
 Session expired? Re-run `node login.mjs`.
 
+Every browser script failing at launch with "Executable doesn't exist" (or a
+banner "Playwright browser build missing") means the Playwright package was
+upgraded but its Chromium build was not: run `npx playwright install chromium`.
+Do this after every `playwright` version bump.
+
 A run that took far longer than usual (`search took 3010s` in `logs/`, or an
 hourly run exiting with "another jobs.mjs run is active") is usually the Mac
 asleep, not a broken scraper: launchd starts jobs during the short maintenance

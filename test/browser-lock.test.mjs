@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireProfileLock } from "../lib/browser.mjs";
+import { explainLaunchError } from "../lib/browser.mjs";
 
 function tmp(t) {
   const dir = mkdtempSync(join(tmpdir(), "lock-"));
@@ -62,4 +63,12 @@ test("release() leaves a lock alone once another pid has taken it over", (t) => 
   release();
   assert.ok(existsSync(`${p}.lock`));
   assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), "999999");
+});
+
+test("explainLaunchError: a missing browser build gets the install hint, other errors pass through untouched", () => {
+  const e = new Error("browserType.launchPersistentContext: Executable doesn't exist at /x/chromium_headless_shell-1243/chrome\n╔═ Looks like Playwright was just installed ═╗");
+  assert.match(explainLaunchError(e).message, /^Playwright browser build missing — run: npx playwright install chromium/);
+  assert.doesNotMatch(explainLaunchError(e).message, /╔═/, "only the first line of Playwright's banner is kept");
+  const other = new Error("profile busy");
+  assert.equal(explainLaunchError(other), other);
 });
