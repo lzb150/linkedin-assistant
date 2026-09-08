@@ -24,6 +24,7 @@ test("with llm the frontmatter carries llm_score and a single-line llm_why", () 
   const llm = { score: 85, why: "Strong Playwright\nfit", red_flags: ["on-site only"], cover: "Dear team, custom letter." };
   const { markdown } = buildApplication(job, scored, llm);
   assert.match(markdown, /^llm_score: 85$/m);
+  assert.doesNotMatch(markdown, /^llm_model:/m, "no model field unless the caller supplied one");
   // newlines collapsed, red flags folded in — frontmatter values must stay one line
   assert.match(markdown, /^llm_why: Strong Playwright fit ⚠ on-site only$/m);
 });
@@ -194,4 +195,12 @@ test("a non-string LLM cover falls back to the template letter instead of throwi
     assert.match(markdown, /^llm_score: 90$/m);
     assert.doesNotMatch(markdown, /para 1|\[object Object\]/);
   }
+});
+
+// Which model produced the score matters when calibrating the gate: haiku
+// scored weak fits ~27 points above sonnet, so mixed-era packages must be
+// distinguishable in the weekly report.
+test("with llm.model the frontmatter records llm_model", () => {
+  const { markdown } = buildApplication(job, scored, { score: 71, why: "ok", red_flags: [], cover: "x", model: "sonnet" });
+  assert.match(markdown, /^llm_model: sonnet$/m);
 });

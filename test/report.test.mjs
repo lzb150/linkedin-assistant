@@ -6,8 +6,8 @@ const now = new Date("2026-09-07T12:00:00Z");
 const daysAgo = (n) => new Date(now.getTime() - n * 86400000).toISOString();
 
 const packages = [
-  { source: "dou", generated: daysAgo(1), score: 32, llm_score: 60, title: "QA", company: "Meest" },
-  { source: "djinni", generated: daysAgo(2), score: 33, llm_score: 88, title: "AQA", company: "Plexsupply" },
+  { source: "dou", generated: daysAgo(1), score: 32, llm_score: 60, llm_model: "haiku", title: "QA", company: "Meest" },
+  { source: "djinni", generated: daysAgo(2), score: 33, llm_score: 88, llm_model: "sonnet", title: "AQA", company: "Plexsupply" },
   { source: "dou", generated: daysAgo(4), score: 40, title: "SDET", company: "Kw" },          // keyword-only
   { source: "linkedin", generated: daysAgo(10), score: 50, llm_score: 95, title: "Old", company: "Old" }, // outside window
 ];
@@ -39,7 +39,7 @@ test("buildReport aggregates the last N days into text + a one-line notification
   assert.match(r.text, /3 packages written/);
   assert.match(r.text, /LLM dropped 1, failed 1/);
   assert.match(r.text, /Packages by source: dou 2 · djinni 1/);
-  assert.match(r.text, /2 scored, 1 at ≥70/);
+  assert.match(r.text, /2 scored \(haiku 1, sonnet 1\), 1 at ≥70/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
   assert.match(r.text, /top: 88 AQA @ Plexsupply \(djinni\)/);
   assert.match(r.text, /applied 1 · answered 1 · interview 0 · rejected 0 \(applied all-time: 3\)/);
   assert.match(r.text, /dou 45 · linkedin 11/, "median per run from source-health");
