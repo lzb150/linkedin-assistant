@@ -35,6 +35,15 @@ test("nextBumpState: cooldown near the expected end of the 7-day cooldown re-che
   assert.equal(Date.parse(nextBumpState({ lastBumpAt: last, nextCheckAt: "" }, "unverified", NOW).nextCheckAt), NOW + DAY, "only a cooldown answer speeds up");
 });
 
+test("nextBumpState anchors nextCheckAt to the start of the hour, so launchd's jittered hourly runs never skip a slot", () => {
+  const DAY = 86400000, HOUR = 3600000;
+  const late = NOW + 17 * 60000;                                   // launchd fired 17 min late (observed)
+  const last = new Date(late - 6.5 * DAY).toISOString();           // inside the hourly window
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: last, nextCheckAt: "" }, "cooldown", late).nextCheckAt), NOW + HOUR, "next slot, not now+1h");
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: "", nextCheckAt: "" }, "cooldown", late).nextCheckAt), NOW + DAY, "same-hour slot tomorrow, not now+24h");
+  assert.ok(dueForCheck({ nextCheckAt: nextBumpState({ lastBumpAt: last, nextCheckAt: "" }, "cooldown", late).nextCheckAt }, NOW + HOUR + 3000), "a run 3 s into the next hour is due");
+});
+
 test("nextBumpState: cooldown/unverified keep lastBumpAt and retry in a day", () => {
   for (const outcome of ["cooldown", "unverified"]) {
     const s = nextBumpState({ lastBumpAt: "2026-08-15T00:00:00.000Z", nextCheckAt: "" }, outcome, NOW);
