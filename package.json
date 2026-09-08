@@ -9,8 +9,10 @@
     "check": "node check.mjs",
     "test": "node --test test/"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "playwright": "^1.49.0"
+    "playwright": "^1.63.0"
   }
 }
