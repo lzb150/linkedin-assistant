@@ -101,9 +101,9 @@ try {
     writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
   } catch (e) { log("notify: writing seen file failed:", e?.message); }
 
-  // Profile bump: Djinni allows one per 7 days (button state is the truth). At most one
-  // /my/profile/ visit a day (state-throttled); a bump failure never breaks
-  // the unread scan above.
+  // Profile bump: Djinni allows one per 7 days (button state is the truth). One
+  // /my/profile/ visit a day, hourly around the expected cooldown end
+  // (state-throttled); a bump failure never breaks the unread scan above.
   try {
     const bumpState = readBumpState(BUMP_STATE_FILE);
     if (dueForCheck(bumpState)) {
