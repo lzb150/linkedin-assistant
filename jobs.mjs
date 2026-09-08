@@ -287,7 +287,7 @@ for (const m of toScore) {
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
-    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))) };
+    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "haiku" };
     else log(`  · llm failed for: ${job.title} — keyword-only package`);
   }
   if (llmRejects(llm, LLM.minScore)) {
