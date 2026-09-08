@@ -21,6 +21,20 @@ test("nextBumpState: bumped records lastBumpAt and rechecks in a day", () => {
   assert.equal(s.nextCheckAt, new Date(NOW + DAY).toISOString());
 });
 
+test("nextBumpState: cooldown near the expected end of the 7-day cooldown re-checks hourly, otherwise daily", () => {
+  const DAY = 86400000, HOUR = 3600000;
+  const last = new Date(NOW - 6.5 * DAY).toISOString();          // 12 h before the expected end → hourly
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: last, nextCheckAt: "" }, "cooldown", NOW).nextCheckAt), NOW + HOUR);
+  const justAfter = new Date(NOW - 7.5 * DAY).toISOString();     // 12 h past the expected end, still cooldown → keep trying hourly one more day
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: justAfter, nextCheckAt: "" }, "cooldown", NOW).nextCheckAt), NOW + HOUR);
+  const early = new Date(NOW - 3 * DAY).toISOString();           // mid-cooldown → daily
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: early, nextCheckAt: "" }, "cooldown", NOW).nextCheckAt), NOW + DAY);
+  const wayPast = new Date(NOW - 9 * DAY).toISOString();         // Djinni changed the rule → back to daily, never hourly forever
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: wayPast, nextCheckAt: "" }, "cooldown", NOW).nextCheckAt), NOW + DAY);
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: "", nextCheckAt: "" }, "cooldown", NOW).nextCheckAt), NOW + DAY, "unknown last bump → daily");
+  assert.equal(Date.parse(nextBumpState({ lastBumpAt: last, nextCheckAt: "" }, "unverified", NOW).nextCheckAt), NOW + DAY, "only a cooldown answer speeds up");
+});
+
 test("nextBumpState: cooldown/unverified keep lastBumpAt and retry in a day", () => {
   for (const outcome of ["cooldown", "unverified"]) {
     const s = nextBumpState({ lastBumpAt: "2026-08-15T00:00:00.000Z", nextCheckAt: "" }, outcome, NOW);
