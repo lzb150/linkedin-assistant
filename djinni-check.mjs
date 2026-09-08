@@ -23,7 +23,7 @@ const STATE_FILE = join(__dir, "djinni-notify-state.json");
 // given unread conversation only notifies once. A network error never touches
 // this file, so a transient blip can't trigger a spurious re-notification.
 const SEEN_FILE = join(__dir, "djinni-seen.json");
-// Monthly "Bump My Profile" throttle state (see lib/djinni-bump.mjs).
+// "Bump My Profile" throttle state (see lib/djinni-bump.mjs).
 const BUMP_STATE_FILE = join(__dir, "djinni-bump-state.json");
 
 // Djinni's own "unread" inbox bucket. Counting the conversation threads listed
@@ -101,7 +101,7 @@ try {
     writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
   } catch (e) { log("notify: writing seen file failed:", e?.message); }
 
-  // Monthly profile bump: Djinni allows one per 30 days. At most one
+  // Profile bump: Djinni allows one per 7 days (button state is the truth). At most one
   // /my/profile/ visit a day (state-throttled); a bump failure never breaks
   // the unread scan above.
   try {
