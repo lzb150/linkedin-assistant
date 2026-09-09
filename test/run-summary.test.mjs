@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatNotification, topMatches, formatTopMatches,
+  formatTable, formatRunBanner,
 } from "../lib/run-summary.mjs";
 
 test("recordFound tallies raw counts into a lazily-created source bucket", () => {
@@ -61,54 +61,20 @@ test("formatTable shows the top-score line only when a top exists", () => {
   assert.match(formatTable(s), /top score: 42 \(Senior AQA @ Acme\)/);
 });
 
-test("formatNotification lists only sources with written matches plus the top", () => {
-  const s = newSummary();
-  recordFound(s, "dou", 12);
-  recordFound(s, "jooble", 5);
-  recordOutcome(s, "dou", "written");
-  recordOutcome(s, "dou", "written");
-  recordOutcome(s, "dou", "written");
-  recordTop(s, 42, "Senior AQA @ Acme");
-  const out = formatNotification(s);
-  assert.match(out, /dou 3 new/);
-  assert.doesNotMatch(out, /jooble/); // 0 written
-  assert.match(out, /top 42/);
-});
-
-test("formatNotification is empty when nothing was written — an empty run posts no banner (~30/day of noise otherwise)", () => {
-  const s = newSummary();
-  recordFound(s, "dou", 12);
-  recordFound(s, "jooble", 5);
-  recordOutcome(s, "dou", "seen");
-  assert.equal(formatNotification(s), "");
-});
-
-test("topMatches: llm-scored entries use the LLM threshold (70)", () => {
+test("formatRunBanner: alerts first, then new packages strongest-first, capped at 3 labels", () => {
   const w = [
-    { score: 45, llmScore: 71, label: "A" },  // in: llm >= 70
-    { score: 45, llmScore: 69, label: "B" },  // out: llm verdict wins over keyword
-    { score: 40, llmScore: null, label: "C" }, // in: keyword >= 40, no llm
-    { score: 39, llmScore: null, label: "D" }, // out
+    { score: 90, llmScore: null, label: "kw-only" },  // LLM failed → outranked by every LLM-scored entry
+    { score: 45, llmScore: 71, label: "B" },
+    { score: 40, llmScore: 88, label: "A" },
+    { score: 40, llmScore: 75, label: "C" },
   ];
-  assert.deepEqual(topMatches(w).map((m) => m.label), ["A", "C"]);
+  assert.equal(formatRunBanner(w), "4 new: A, C, B, …");
+  assert.equal(formatRunBanner(w.slice(1), ["⚠️ dou: 0 found (recent median 12)"]),
+    "⚠️ dou: 0 found (recent median 12) · 3 new: A, C, B");
 });
 
-test("topMatches: keyword branch when llmScore is null (threshold 40)", () => {
-  const w = [
-    { score: 40, llmScore: null, label: "edge" },   // in: exactly 40
-    { score: 90, llmScore: null, label: "high" },   // in
-    { score: 39, llmScore: null, label: "low" },    // out
-    { score: 90, llmScore: 10, label: "llm-veto" }, // out: llm verdict wins even over keyword 90
-  ];
-  assert.deepEqual(topMatches(w).map((m) => m.label), ["edge", "high"]);
-  assert.deepEqual(topMatches(undefined), []);
-});
-
-test("formatTopMatches renders one line, caps at 3 labels", () => {
-  assert.equal(formatTopMatches([]), "");
-  assert.equal(formatTopMatches([{ label: "A @ X" }]), "🔥 Strong match: A @ X");
-  assert.equal(
-    formatTopMatches([{ label: "A" }, { label: "B" }, { label: "C" }, { label: "D" }]),
-    "🔥 4 strong matches: A, B, C, …",
-  );
+test("formatRunBanner is empty when nothing was written and nothing broke — an empty run posts no banner", () => {
+  assert.equal(formatRunBanner([]), "");
+  assert.equal(formatRunBanner(undefined, []), "");
+  assert.equal(formatRunBanner([], ["⚠️ LLM failed 3× — keyword-only packages"]), "⚠️ LLM failed 3× — keyword-only packages");
 });

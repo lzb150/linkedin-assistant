@@ -89,12 +89,11 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.deepEqual(p.json("source-health.json").dou, [3]);
   assert.ok(existsSync(p.path("applications", "index.html")), "dashboard regenerated");
   assert.match(p.read("applications", "index.html"), /Senior SDET \(Playwright\)/);
-  // Two banners, two fire-and-forget osascript children, any order: wait for BOTH.
-  await waitFor(p.path("notify.log"), /dou 1 new/);
-  const notify = await waitFor(p.path("notify.log"), /Strong match/);
-  assert.match(notify, /Job assistant/, "banners carry the app title");
-  assert.match(notify, /Strong match: Senior SDET \(Playwright\) @ Acme/, "separate strong-match banner");
-  assert.match(notify, /dou 1 new/, "run digest banner");
+  // One banner per run (fire-and-forget osascript child).
+  const notify = await waitFor(p.path("notify.log"), /1 new/);
+  assert.match(notify, /Job assistant/, "banner carries the app title");
+  assert.match(notify, /1 new: Senior SDET \(Playwright\) @ Acme/, "single run banner names the new package");
+  assert.doesNotMatch(notify, /Strong match/, "no separate strong-match banner");
 
   // Second run over the same feed: everything is seen, nothing new is written or scored.
   const out2 = await runJobs(p);
