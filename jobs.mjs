@@ -21,7 +21,7 @@ import { readPackages } from "./lib/packages.mjs";
 import { filterByLocation } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatNotification, topMatches, formatTopMatches,
+  formatTable, formatRunBanner,
 } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
@@ -122,6 +122,7 @@ async function fetchLinkedInChecked(page, cfg) {
   await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
   if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
     log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
+    alerts.push("⚠️ LinkedIn session expired — run: node login.mjs");
     return [];
   }
   log("Gathering LinkedIn jobs (scraping, modest)...");
@@ -210,7 +211,8 @@ for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
-let written = 0, considered = 0;
+let written = 0, considered = 0, llmFailed = 0;
+const alerts = [];   // breakage lines for the single end-of-run banner
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
@@ -288,7 +290,7 @@ for (const m of toScore) {
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
     if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "haiku" };
-    else log(`  · llm failed for: ${job.title} — keyword-only package`);
+    else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
   }
   if (llmRejects(llm, LLM.minScore)) {
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
@@ -317,10 +319,12 @@ log(`Done. Considered ${considered} new, wrote ${written} application package(s)
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));
 
-// Scraper-health: warn (separate banner) if a source came in far below its
-// recent norm, then append this run's counts to the history.
+// Scraper-health: alert if a source came in far below its recent norm, then
+// append this run's counts to the history. An LLM failing more than twice in
+// one run is a breakage too (a single flake is not).
 const degraded = detectDegradations(health, summary);
-if (degraded.length) notify(formatAlert(degraded));
+if (degraded.length) alerts.push(formatAlert(degraded));
+if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
 writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
@@ -331,12 +335,7 @@ try {
   log("dashboard refresh skipped:", e.message);
 }
 
-// Separate banner for strong matches so they don't drown in the run digest.
-const top = topMatches(writtenList);
-if (top.length) notify(formatTopMatches(top));
-
-// Run-outcome banner only when something was written (formatNotification is
-// empty otherwise). Errors, source degradation and strong matches have their own banners above.
-const outcome = formatNotification(summary);
-if (outcome) notify(outcome);
+// One banner per run: breakage alerts + the new packages. Silent when neither.
+const bannerText = formatRunBanner(writtenList, alerts);
+if (bannerText) notify(bannerText);
 process.exit(0);

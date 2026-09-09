@@ -37,7 +37,7 @@ click is always yours.
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
   second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
   a one-line "why", and a tailored cover letter. The keyword score decides what
-  reaches the LLM; a fit below `llm.minScore` (default 50) drops the job instead of
+  reaches the LLM; a fit below `llm.minScore` (default 70) drops the job instead of
   writing a package. Any CLI failure still falls back to a keyword-only package.
   Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
   `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only). Matches past
@@ -62,20 +62,19 @@ click is always yours.
 | DOU / Djinni discovery (`job-discovery-dou`)     | hourly                 |
 | Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
 | Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
-| Follow-up reminders (`jobs-followup`)            | daily 09:30            |
 | Weekly report (`jobs-report`)                    | Monday 09:00           |
 | Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |
 
-A `jobs.mjs` run that wrote new packages ends with a macOS notification of the
-outcome (a run that found nothing new stays silent — the dashboard timestamp and
-the weekly report tell you the scheduler is alive), plus
-a separate 🔥 banner when a run wrote a strong match (LLM score ≥ 70, or
-keyword score ≥ 40 when the LLM didn't score it) — so a great match doesn't
-drown in the day's digest. A scraper-health check also watches each source's
-found-count against its own recent history (last 10 runs) and fires a ⚠️ alert
-when a source comes in under 30% of its recent median (median ≥ 5, to ignore
-sources that are naturally low-volume) — this catches a slow selector decay
-(50 → 20 → 6), not just a source dropping to a clean 0.
+A `jobs.mjs` run posts **at most one macOS banner**: the new packages it wrote
+(strongest first, up to 3 names) preceded by any breakage alerts — a source far
+below its norm, the LLM failing more than twice in the run, an expired LinkedIn
+session. A run that found nothing new and broke nothing stays silent — the
+dashboard timestamp and the weekly report tell you the scheduler is alive. The
+scraper-health check watches each source's found-count against its own recent
+history (last 10 runs) and alerts when a source comes in under 30% of its recent
+median (median ≥ 5, to ignore sources that are naturally low-volume) — this
+catches a slow selector decay (50 → 20 → 6), not just a source dropping to a
+clean 0.
 
 ## Key principles
 - 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; the only key is Jooble's free API key, and only if that source is enabled
@@ -260,7 +259,9 @@ visit" filter.
 
 ![Multi-select filters, source chips and search](docs/filters.png)
 
-**Follow-up reminders (`followup.mjs`)** — a daily launchd job
+**Follow-up reminders (`followup.mjs`)** — optional, not scheduled by default
+(the tool is a radar: it finds and prepares, you apply selectively, so the
+pipeline features are secondary). A daily launchd job
 (`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
 notification for every job you marked **Applied** with no
 status movement for 7+ days. Reminders auto-silence themselves the moment a
@@ -284,8 +285,9 @@ New view, get a muted "· closed" cue, have their own filter, and are never
 auto-reopened by clicking them. Applied+ cards are left alone — closing them out
 is your call. Jooble/Work.ua/Robota.ua/Glassdoor urls are skipped (they answer a plain GET
 with a Cloudflare 403). Tune with `CLOSED_MAX` and
-`CLOSED_RECHECK_DAYS`; a banner fires only when something was closed. Install
-like the follow-up job, with `com.example.closed-check.plist.example`.
+`CLOSED_RECHECK_DAYS`; it never posts a banner — closures show up as the muted
+"· closed" cue on the dashboard. Install like the follow-up job, with
+`com.example.closed-check.plist.example`.
 
 **Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
 runs and new vacancies considered, packages written per source, LLM verdicts

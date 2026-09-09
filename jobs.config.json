@@ -21,7 +21,7 @@
     "model": "sonnet",
     "maxPerRun": 15,
     "concurrency": 3,
-    "minScore": 50
+    "minScore": 70
   },
 
   "dou": {

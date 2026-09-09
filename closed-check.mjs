@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
-import { notify, log } from "./lib/notify.mjs";
+import { log } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 
@@ -63,10 +63,7 @@ for (const url of closedUrls) {
   stateMap = mergeEntry(stateMap, url, { status: "closed" });
   saved++;
 }
-if (saved) {
-  writeStore(STATE, stateMap);
-  notify("Job assistant", `${saved} vacanc${saved === 1 ? "y" : "ies"} closed by the board — hidden from New`);
-}
+if (saved) writeStore(STATE, stateMap);
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 const live = new Set(packages.map((p) => p.url));
