@@ -58,13 +58,15 @@ test("selectCandidates: dou/djinni/linkedin only, new/viewed only, re-checked at
   assert.deepEqual(selectCandidates({ packages, stateMap, checked, now, recheckDays: 3, maxPerRun: 2 }).length, 2, "cap applies after ordering");
 });
 
-test("planArchive: closed packages older than the grace period move to archive; recent, open and post-applied stay", () => {
+test("planArchive: closed past the grace period and viewed untouched for viewedDays move to archive; recent, new and post-applied stay", () => {
   const packages = [
     { file: "old-closed.md", url: "https://jobs.dou.ua/v/1/" },
     { file: "fresh-closed.md", url: "https://jobs.dou.ua/v/2/" },
-    { file: "open.md", url: "https://jobs.dou.ua/v/3/" },
+    { file: "stale-viewed.md", url: "https://jobs.dou.ua/v/3/" },
     { file: "applied.md", url: "https://jobs.dou.ua/v/4/" },
     { file: "no-stamp.md", url: "https://jobs.dou.ua/v/5/" },
+    { file: "fresh-viewed.md", url: "https://ua.jooble.org/x/6" },
+    { file: "new.md", url: "https://ua.jooble.org/x/7" },
   ];
   const stateMap = {
     _meta: {},
@@ -73,7 +75,10 @@ test("planArchive: closed packages older than the grace period move to archive; 
     "https://jobs.dou.ua/v/3/": { status: "viewed", updatedAt: daysAgo(40) },
     "https://jobs.dou.ua/v/4/": { status: "applied", appliedAt: daysAgo(40), updatedAt: daysAgo(40) },
     "https://jobs.dou.ua/v/5/": { status: "closed" },   // legacy entry without updatedAt → treat as old enough
+    "https://ua.jooble.org/x/6": { status: "viewed", updatedAt: daysAgo(10) },
+    // x/7: no entry = new → never archived
   };
-  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14 }), ["old-closed.md", "no-stamp.md"]);
-  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 0 }), ["old-closed.md", "fresh-closed.md", "no-stamp.md"], "grace 0 archives every closed package");
+  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14, viewedDays: 30 }), ["old-closed.md", "stale-viewed.md", "no-stamp.md"]);
+  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 0, viewedDays: 30 }), ["old-closed.md", "fresh-closed.md", "stale-viewed.md", "no-stamp.md"], "grace 0 archives every closed package");
+  assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14, viewedDays: 365 }), ["old-closed.md", "no-stamp.md"], "a long viewedDays keeps viewed cards");
 });

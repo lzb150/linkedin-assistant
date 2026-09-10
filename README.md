@@ -310,9 +310,10 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 The dashboard hides on-disk duplicates, but you can reclaim the space. This
 script keeps the newest package per identity and deletes the rest. It also
 moves packages whose vacancy has been **Closed** (see the closed-vacancy check)
-for 14+ days into `applications/archive/` — nothing reads that folder, so the
-dashboard sheds those cards. The daily `closed-check.mjs` run does the same
-archiving on its own (`CLOSED_ARCHIVE_DAYS` to tune).
+for 14+ days, and **Viewed** packages you have not touched for 30+ days, into
+`applications/archive/` — nothing reads that folder, so the dashboard sheds
+those cards. The daily `closed-check.mjs` run does the same archiving on its
+own (`CLOSED_ARCHIVE_DAYS` / `VIEWED_ARCHIVE_DAYS` to tune).
 
 ```bash
 node prune-applications.mjs                      # dry run — lists what would be removed / archived

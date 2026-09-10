@@ -7,8 +7,9 @@
 // identity (company+title) and deleting the rest.
 //
 // It also moves packages of vacancies that closed-check.mjs marked "closed"
-// 14+ days ago (--closed-days N to change; 0 = every closed one) into
-// applications/archive/, which no script reads — the dashboard gets lighter.
+// 14+ days ago (--closed-days N to change; 0 = every closed one), and Viewed
+// packages untouched for 30+ days, into applications/archive/, which no script
+// reads — the dashboard gets lighter.
 //
 // Run:  node prune-applications.mjs                 (dry run — shows what would go)
 //       node prune-applications.mjs --apply         (delete duplicates, archive closed)
@@ -65,7 +66,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const closedDays = cdIdx !== -1 && Number.isFinite(Number(process.argv[cdIdx + 1])) ? Number(process.argv[cdIdx + 1]) : 14;
   const removeSet = new Set(remove);
   const archive = planArchive({ packages, stateMap: state, closedDays }).filter((f) => !removeSet.has(f));
-  console.log(`${files.length} package(s): keep ${keep.length - archive.length}, remove ${remove.length}, archive ${archive.length} (closed ${closedDays}+ days)`);
+  console.log(`${files.length} package(s): keep ${keep.length - archive.length}, remove ${remove.length}, archive ${archive.length} (closed ${closedDays}+ / viewed 30+ days)`);
   if (!remove.length && !archive.length) { console.log("Nothing to prune."); process.exit(0); }
 
   if (!apply) {
