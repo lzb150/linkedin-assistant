@@ -115,6 +115,30 @@ for (const s of BROWSERLESS_SOURCES) {
 
 // 4–7) Browser sources: LinkedIn (needs login), Robota.ua, Work.ua and Glassdoor
 // (Cloudflare-gated, no login; off by default) share one Playwright context.
+// Seniority terms we never apply to. Matched as whole words in the TITLE only,
+// so a senior role whose description mentions "junior" (e.g. "mentor junior
+// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
+// Regexes compiled once at load, not per job.
+const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => ({
+  term: t.toLowerCase(),
+  re: new RegExp(`(^|[^a-z0-9])${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
+}));
+function excludedByTitle(title) {
+  const t = (title || "").toLowerCase();
+  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
+}
+
+// Known before it is opened: already in the seen store (either key spelling) or
+// excluded by title. LinkedIn passes every card through this so it never spends
+// a click + 1.8 s on a vacancy the scoring loop below will drop anyway (17–20
+// of ~30 cards per run); the loop still re-stamps the seen entry.
+// ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
+// accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
+const legacyIdOf = (id) => id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
+const knownJob = (job) => { const id = identityKey(job); return seen.has(id) || seen.has(legacyIdOf(id)) || Boolean(excludedByTitle(job.title)); };
+
+const alerts = [];   // breakage lines for the single end-of-run banner (declared before the first push below)
+
 // LinkedIn first checks the session: an expired login is a hard failure for
 // health monitoring (found 0), not an exception. Work.ua fetches through the
 // page instead of taking it.
@@ -126,7 +150,7 @@ async function fetchLinkedInChecked(page, cfg) {
     return [];
   }
   log("Gathering LinkedIn jobs (scraping, modest)...");
-  return fetchLinkedInJobs(page, cfg, log);
+  return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
 const BROWSER_SOURCE_TABLE = [
   { name: "linkedin", label: "LinkedIn", fetch: fetchLinkedInChecked },
@@ -174,8 +198,13 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Jooble UA carries "Краків, Польща", etc).
 {
   const before = jobs.length;
-  jobs = filterByLocation(jobs, config.excludeLocation);
-  if (jobs.length < before) log(`Location filter: dropped ${before - jobs.length} foreign-location job(s)`);
+  const keptLoc = filterByLocation(jobs, config.excludeLocation);
+  if (keptLoc.length < before) {
+    const kept = new Set(keptLoc);
+    log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
+    for (const j of jobs) if (!kept.has(j)) log(`  · location [${j.location}] ${j.source}: ${j.title}`);
+  }
+  jobs = keptLoc;
 }
 
 // Collapse the same vacancy arriving from multiple sources into one record
@@ -185,18 +214,6 @@ jobs = deduped;
 recordMerged(summary, mergedCount);
 log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length} unique`);
 
-// Seniority terms we never apply to. Matched as whole words in the TITLE only,
-// so a senior role whose description mentions "junior" (e.g. "mentor junior
-// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
-// Regexes compiled once at load, not per job.
-const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => ({
-  term: t.toLowerCase(),
-  re: new RegExp(`(^|[^a-z0-9])${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
-}));
-function excludedByTitle(title) {
-  const t = (title || "").toLowerCase();
-  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
-}
 
 // Canonical-key index of existing packages (cross-run dedup): the same vacancy
 // resurfacing on ANOTHER board must not spawn a second package — its link is
@@ -212,13 +229,10 @@ for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package 
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
 let written = 0, considered = 0, llmFailed = 0;
-const alerts = [];   // breakage lines for the single end-of-run banner
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
-  // ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
-  // accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
-  const legacyId = id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
+  const legacyId = legacyIdOf(id);
   // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
   // a vacancy still live after 90 days must not resurface as new.
   if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
@@ -246,9 +260,13 @@ for (const job of jobs) {
   const minScore = config[job.source]?.minScore ?? config.minScore ?? 25;
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
-    log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}`);
+    // A card whose description failed to load (LinkedIn panel timeout) scores
+    // on its title alone; marking it seen would bury it for the 90-day TTL.
+    // Leave it unseen so the next run re-reads the description.
+    const noDesc = (job.text || "").length < 300;
+    log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${noDesc ? " (no description — will retry)" : ""}`);
     recordOutcome(summary, job.source, "low");
-    seen.add(id);
+    if (!noDesc) seen.add(id);
     continue;
   }
   matches.push({ id, job, scored });
