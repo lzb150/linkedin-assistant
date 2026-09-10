@@ -242,7 +242,7 @@ and Viewed views (deselect both tabs to see everything). That is the whole model
 there is no applied/answered/interview pipeline (the few real applications live
 in your mailbox, not here). You can attach private notes to any card; they are
 saved to disk via the state server. The header shows New / Viewed with live
-counts.
+counts, both selected by default.
 
 ![Card expanded — cover letter, private note](docs/card.png)
 

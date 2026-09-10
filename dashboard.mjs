@@ -230,7 +230,7 @@ const html = `<!doctype html>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
       <button data-filter="new" class="active" aria-pressed="true" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
-      <button data-filter="viewed" aria-pressed="false" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      <button data-filter="viewed" class="active" aria-pressed="true" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
