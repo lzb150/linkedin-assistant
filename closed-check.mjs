@@ -6,7 +6,8 @@
 //   CLOSED_MAX=50 CLOSED_RECHECK_DAYS=7 node closed-check.mjs
 // Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) and Viewed packages left
 // untouched for 30+ days (VIEWED_ARCHIVE_DAYS) are moved to applications/archive/,
-// which nothing reads — keeps the dashboard small.
+// which nothing reads — keeps the dashboard small. Their job-state entries go
+// with them (an entry without a live package is dead weight: 493 of 713 were).
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
@@ -65,11 +66,21 @@ for (const url of closedUrls) {
   stateMap = mergeEntry(stateMap, url, { status: "closed" });
   saved++;
 }
-if (saved) writeStore(STATE, stateMap);
+const toArchive = new Set(planArchive({ packages, stateMap, closedDays: archiveDays, viewedDays }));
+// State entries for urls with no live package (archived now or earlier, pruned,
+// or never had one) are dropped — if untouched for a day: a package jobs.mjs
+// wrote during the probe, already clicked on the dashboard, is not in our
+// package list yet and must survive. Only when packages/ read as non-empty: an
+// unreadable applications/ must not wipe the store (cf. the 448-entry wipe).
+const live = new Set(packages.filter((p) => !toArchive.has(p.file)).map((p) => p.url));
+const staleBefore = Date.now() - 86400000;
+const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return Number.isFinite(t) && t < staleBefore; };
+let pruned = 0;
+if (packages.length) for (const u of Object.keys(stateMap)) if (u !== "_meta" && !live.has(u) && stale(stateMap[u])) { delete stateMap[u]; pruned++; }
+if (saved || pruned) writeStore(STATE, stateMap);
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-const live = new Set(packages.map((p) => p.url));
 for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
-const archived = archivePackages(APPS, planArchive({ packages, stateMap, closedDays: archiveDays, viewedDays }));
-log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ / viewed ${viewedDays}+ days)`);
+const archived = archivePackages(APPS, [...toArchive]);
+log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ / viewed ${viewedDays}+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);

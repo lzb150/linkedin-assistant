@@ -16,6 +16,7 @@ export JOOBLE_API_KEY="your-jooble-api-key"
 
 mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
 find "$PWD/logs" -name '*.log' ! -name 'state-server.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (the server holds its log open)
+find "$PWD/applications/archive" -name '*.md' -mtime +180 -delete 2>/dev/null || true   # archived packages: nothing reads them; 6 months is plenty
 MODE="${1:-full}"
 STAMP="$(date +%Y%m%d)"   # one log file per day; each run appends after a "=== run" separator
 
