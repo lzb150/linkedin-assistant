@@ -11,13 +11,6 @@ const packages = [
   { source: "dou", generated: daysAgo(4), score: 40, title: "SDET", company: "Kw" },          // keyword-only
   { source: "linkedin", generated: daysAgo(10), score: 50, llm_score: 95, title: "Old", company: "Old" }, // outside window
 ];
-const stateMap = {
-  _meta: {},
-  "u1": { status: "applied", appliedAt: daysAgo(2), updatedAt: daysAgo(2) },
-  "u2": { status: "answered", appliedAt: daysAgo(12), updatedAt: daysAgo(1) },
-  "u3": { status: "applied", appliedAt: daysAgo(30), updatedAt: daysAgo(30) },   // old apply, counts all-time only
-  "u4": { status: "viewed", updatedAt: daysAgo(1) },
-};
 const logText = [
   "2026-09-06T00:59:00Z Done. Considered 3 new, wrote 1 application package(s) to /x",
   "2026-09-06T01:00:00Z   · skip [25 / llm 38] dou: Automation QA @ X",
@@ -33,7 +26,7 @@ test("countRunStats sums runs and considered-new, counts only LLM-rejected skips
 });
 
 test("buildReport aggregates the last N days into text + a one-line notification", () => {
-  const r = buildReport({ now, days: 7, packages, stateMap, logText, health });
+  const r = buildReport({ now, days: 7, packages, logText, health });
   assert.match(r.text, /2026-08-31 → 2026-09-07 \(7 days\)/);
   assert.match(r.text, /2 runs · 7 new vacancies considered/);
   assert.match(r.text, /3 packages written/);
@@ -41,14 +34,13 @@ test("buildReport aggregates the last N days into text + a one-line notification
   assert.match(r.text, /Packages by source: dou 2 · djinni 1/);
   assert.match(r.text, /2 scored \(haiku 1, sonnet 1\), 1 at ≥70/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
   assert.match(r.text, /top: 88 AQA @ Plexsupply \(djinni\)/);
-  assert.match(r.text, /applied 1 · answered 1 · interview 0 · rejected 0 \(applied all-time: 3\)/);
   assert.match(r.text, /dou 45 · linkedin 11/, "median per run from source-health");
-  assert.equal(r.notification, "3 packages (LLM ≥70: 1) · applied 1, answered 1 · 7 new considered");
+  assert.equal(r.notification, "3 packages (LLM ≥70: 1) · 7 new considered");
 });
 
 test("buildReport survives empty inputs", () => {
-  const r = buildReport({ now, days: 7, packages: [], stateMap: { _meta: {} }, logText: "", health: {} });
+  const r = buildReport({ now, days: 7, packages: [], logText: "", health: {} });
   assert.match(r.text, /0 runs · 0 new vacancies considered/);
   assert.match(r.text, /top: —/);
-  assert.equal(r.notification, "0 packages (LLM ≥70: 0) · applied 0, answered 0 · 0 new considered");
+  assert.equal(r.notification, "0 packages (LLM ≥70: 0) · 0 new considered");
 });

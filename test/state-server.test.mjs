@@ -26,13 +26,13 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
   const post = await fetch(`${base}/state`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: U, patch: { status: "applied", appliedAt: "2026-06-15T10:00:00Z" } }),
+    body: JSON.stringify({ url: U, patch: { status: "rejected", note: "not remote" } }),
   });
   assert.equal(post.status, 200);
 
   const state = await fetch(`${base}/state`).then((r) => r.json());
-  assert.equal(state[U].status, "applied");
-  assert.equal(state[U].appliedAt, "2026-06-15T10:00:00Z");
+  assert.equal(state[U].status, "rejected");
+  assert.equal(state[U].note, "not remote");
 
   const meta = await fetch(`${base}/state`, {
     method: "POST",
@@ -73,7 +73,7 @@ test("rejects cross-origin shaped requests: foreign Host and non-JSON POST", asy
   const csrf = await fetch(`${base}/state`, {
     method: "POST",
     headers: { "content-type": "text/plain" },
-    body: JSON.stringify({ url: "https://x/", patch: { status: "applied" } }),
+    body: JSON.stringify({ url: "https://x/", patch: { status: "rejected" } }),
   });
   assert.equal(csrf.status, 415);
 
@@ -149,7 +149,7 @@ test("corrupt state file → GET /state 500, file left byte-identical", async (t
   const dir = mkdtempSync(join(tmpdir(), "srv-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const statePath = join(dir, "job-state.json");
-  const corrupt = '{"https://x/": {"status": "applied" ';
+  const corrupt = '{"https://x/": {"status": "rejected" ';
   writeFileSync(statePath, corrupt);
   const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
   t.after(() => new Promise((r) => srv.close(() => r())));

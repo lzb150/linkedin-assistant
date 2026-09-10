@@ -82,6 +82,13 @@ function badge(source) {
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
 }
 
+// Source chips only for boards that actually have packages on disk: a disabled
+// board's chip disappears by itself once its last package is archived.
+const SOURCE_LABELS = { linkedin: "LinkedIn", dou: "DOU", djinni: "Djinni", jooble: "Jooble", robota: "Robota", workua: "Work.ua", glassdoor: "Glassdoor" };
+const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
+  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource('${esc(src)}')">${esc(SOURCE_LABELS[src] || src)}</button>`)
+  .join("\n      ");
+
 const cards = items
   .map((it, idx) => {
     const f = it.fm;
@@ -101,9 +108,9 @@ const cards = items
     // The server keys state by http(s) url and 400s anything else: a card with
     // a bad url renders read-only (no status buttons / note / auto-viewed).
     const live = safeUrl(f.url) !== "#";
-    const auto = live ? ` onclick="armNudge(this.closest('.card'));autoStatus(this.closest('.card'),'viewed')"` : "";
+    const auto = live ? ` onclick="autoStatus(this.closest('.card'),'viewed')"` : "";
     return `
-<article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-score="${it.score}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
+<article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
     <span class="score" style="background:${scoreColor(it.score)}">${it.score}</span>
     <div class="titles">
@@ -116,18 +123,10 @@ const cards = items
       ${live ? `<div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" aria-pressed="false" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" aria-pressed="false" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
-        <button data-status="applied" aria-pressed="false" onclick="setStatus(this.closest('.card'),'applied')">Applied</button>
-        <button data-status="answered" aria-pressed="false" onclick="setStatus(this.closest('.card'),'answered')">Answered</button>
-        <button data-status="interview" aria-pressed="false" onclick="setStatus(this.closest('.card'),'interview')">Interview</button>
-        <button data-status="rejected" aria-pressed="false" aria-label="Rejected" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
-      </div>
-      <span class="applied-ago" hidden></span>` : ""}
+        <button data-status="rejected" aria-pressed="false" aria-label="Not for me" title="Not for me" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
+      </div>` : ""}
     </div>
   </div>
-  ${live ? `<div class="apply-nudge" hidden role="status">Did you apply to this job?
-    <button class="yes" onclick="nudgeYes(this.closest('.card'))">Yes, mark Applied</button>
-    <button class="later" onclick="nudgeNo(this.closest('.card'))">Not yet</button>
-  </div>` : ""}
   <div class="skills">${skills}</div>
   ${altRow}
   <details${live ? ` ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')"` : ""}>
@@ -197,11 +196,7 @@ const html = `<!doctype html>
   .alt { color: #0969da; text-decoration: none; margin-right: 8px; }
   .alt:hover { text-decoration: underline; }
   .empty { text-align: center; color: #57606a; padding: 40px; }
-  .status-seg button.active[data-status="applied"] { background: #1a7f37; color: #fff; }
-  .status-seg button.active[data-status="answered"] { background: #0969da; color: #fff; }
-  .status-seg button.active[data-status="interview"] { background: #8250df; color: #fff; }
   .status-seg button.active[data-status="rejected"] { background: #cf222e; color: #fff; }
-  .card.applied { border-left: 4px solid #1a7f37; }
   .card.rejected { background: #f6f8fa; border-left: 4px solid #cf222e; }
   .card.rejected .titles h2 { color: #57606a; }
   .card.rejected .titles h2::after { content: " ✗"; color: #cf222e; }   /* non-colour cue next to the red border */
@@ -212,15 +207,8 @@ const html = `<!doctype html>
   .status-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }   /* blue on white: 5.9:1 */
   /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
      inset one extra px so it sits inside the fill rather than on the border. */
-  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .min-seg button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .applied-ago { font-size: 11px; color: #1a7f37; text-align: center; }
-  .apply-nudge { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; background: #dafbe1; border: 1px solid #1a7f37; border-radius: 7px; font-size: 13px; color: #1a4721; }   /* 8.9:1 */
-  .apply-nudge[hidden] { display: none; }   /* the flex rule above would otherwise beat the UA [hidden] style */
-  .apply-nudge button { border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-  .apply-nudge .yes { background: #1a7f37; color: #fff; font-weight: 600; }
-  .apply-nudge .later { background: #fff; color: #57606a; border: 1px solid #d0d7de; }
-  .funnel { font-size: 12px; color: #cdd9e5; margin-top: 6px; }
   .note-wrap summary { color: #57606a; }
   .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
   .note-has { color: #9a6700; }
@@ -229,10 +217,10 @@ const html = `<!doctype html>
   .ribbon { background: #0969da; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
   #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid #57606a; background: #32383f; color: #fff; font-size: 13px; }
   #q::placeholder { color: #9aa5b1; }
-  .src-seg, .min-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
-  .src-seg button, .min-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
-  .src-seg button:first-child, .min-seg button:first-child { border-left: 0; }
-  .src-seg button.active, .min-seg button.active { background: #0969da; color: #fff; }
+  .src-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
+  .src-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .src-seg button:first-child { border-left: 0; }
+  .src-seg button.active { background: #0969da; color: #fff; }
   @media (max-width: 640px) { .head { flex-wrap: wrap; } .actions { width: 100%; } }
 </style></head>
 <body>
@@ -244,29 +232,15 @@ const html = `<!doctype html>
       <button data-filter="all" aria-pressed="false" onclick="setFilter('all')">All <span class="cnt" id="cnt-all">0</span></button>
       <button data-filter="new" class="active" aria-pressed="true" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" aria-pressed="false" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
-      <button data-filter="applied" aria-pressed="false" onclick="setFilter('applied')">Applied <span class="cnt" id="cnt-applied">0</span></button>
-      <button data-filter="answered" aria-pressed="false" onclick="setFilter('answered')">Answered <span class="cnt" id="cnt-answered">0</span></button>
-      <button data-filter="interview" aria-pressed="false" onclick="setFilter('interview')">Interview <span class="cnt" id="cnt-interview">0</span></button>
+      <button data-filter="rejected" aria-pressed="false" aria-label="Not for me" onclick="setFilter('rejected')">✗ <span class="cnt" id="cnt-rejected">0</span></button>
       <button data-filter="closed" aria-pressed="false" onclick="setFilter('closed')">Closed <span class="cnt" id="cnt-closed">0</span></button>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
       <button data-src="all" class="active" aria-pressed="true" onclick="setSource('all')">All</button>
-      <button data-src="linkedin" aria-pressed="false" onclick="setSource('linkedin')">LinkedIn</button>
-      <button data-src="dou" aria-pressed="false" onclick="setSource('dou')">DOU</button>
-      <button data-src="djinni" aria-pressed="false" onclick="setSource('djinni')">Djinni</button>
-      <button data-src="jooble" aria-pressed="false" onclick="setSource('jooble')">Jooble</button>
-      <button data-src="robota" aria-pressed="false" onclick="setSource('robota')">Robota</button>
-      <button data-src="glassdoor" aria-pressed="false" onclick="setSource('glassdoor')">Glassdoor</button>
-      <button data-src="workua" aria-pressed="false" onclick="setSource('workua')">Work.ua</button>
-    </div>
-    <div class="min-seg" role="group" aria-label="Minimum score">
-      <button data-min="0" class="active" aria-pressed="true" onclick="setMin(this,0)">All</button>
-      <button data-min="30" aria-pressed="false" onclick="setMin(this,30)">≥30</button>
-      <button data-min="40" aria-pressed="false" onclick="setMin(this,40)">≥40</button>
+      ${sourceChips}
     </div>
   </div>
-  <div class="funnel" id="funnel"></div>
 </header>
 <main>
 ${items.length ? cards : '<div class="empty">No matching jobs yet. Run <code>node jobs.mjs</code>.</div>'}

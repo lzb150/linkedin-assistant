@@ -36,11 +36,10 @@ test("normalize keeps a note-only entry (status defaults to new)", () => {
   assert.equal(statusOf(out, U), "new");
 });
 
-test("mergeEntry sets status + appliedAt without mutating the input", () => {
+test("mergeEntry sets status without mutating the input", () => {
   const before = {};
-  const after = mergeEntry(before, U, { status: "applied", appliedAt: "2026-06-15T10:00:00Z" });
-  assert.equal(after[U].status, "applied");
-  assert.equal(after[U].appliedAt, "2026-06-15T10:00:00Z");
+  const after = mergeEntry(before, U, { status: "rejected" });
+  assert.equal(after[U].status, "rejected");
   assert.ok(after[U].updatedAt);
   assert.deepEqual(before, {}); // unchanged
 });
@@ -58,17 +57,18 @@ test("mergeEntry keeps the entry when a note remains after clearing status", () 
 
 test("validatePatch rejects an unknown status and accepts a valid one", () => {
   assert.equal(validatePatch({ status: "offer" }), false);
-  assert.equal(validatePatch({ status: "applied" }), true);
-  assert.equal(validatePatch({ appliedAt: null, note: "ok" }), true);
+  assert.equal(validatePatch({ status: "rejected" }), true);
+  assert.equal(validatePatch({ note: "ok" }), true);
+  assert.equal(validatePatch({ appliedAt: "2026-06-15T10:00:00Z" }), true, "unknown patch keys are ignored, not rejected");
   assert.equal(validatePatch({ note: 5 }), false);
 });
 
 test("readStore round-trips through writeStore atomically", (t) => {
   const dir = tmp(t);
   const p = join(dir, "job-state.json");
-  writeStore(p, mergeEntry({ _meta: { lastVisit: "t" } }, U, { status: "applied", appliedAt: "a" }));
+  writeStore(p, mergeEntry({ _meta: { lastVisit: "t" } }, U, { status: "rejected" }));
   const back = readStore(p);
-  assert.equal(back[U].status, "applied");
+  assert.equal(back[U].status, "rejected");
   assert.equal(back._meta.lastVisit, "t");
 });
 
@@ -83,26 +83,22 @@ test("readStore throws on malformed JSON (a corrupt store must never be silently
   assert.throws(() => readStore(p), SyntaxError);
 });
 
-test("normalize keeps the new post-applied statuses", () => {
-  for (const st of ["answered", "interview", "rejected"]) {
+test("normalize keeps every stored status", () => {
+  for (const st of ["viewed", "rejected", "closed"]) {
     const out = normalize({ [U]: { status: st } });
     assert.equal(out[U].status, st, st);
     assert.equal(statusOf(out, U), st);
   }
 });
 
-test("validatePatch accepts the new statuses and still rejects junk", () => {
-  for (const st of ["answered", "interview", "rejected"]) {
-    assert.equal(validatePatch({ status: st }), true, st);
-  }
+// Radar mode dropped applied/answered/interview; an old store may still hold
+// them (or a newer build may add one). Keep the entry, read it as "new".
+test("normalize keeps an unknown (legacy/newer) status verbatim; statusOf reads it as new; validatePatch rejects it", () => {
+  const out = normalize({ [U]: { status: "applied", appliedAt: "2026-07-01T00:00:00Z" } });
+  assert.equal(out[U].status, "applied");
+  assert.equal(statusOf(out, U), "new");
+  assert.equal(validatePatch({ status: "applied" }), false);
   assert.equal(validatePatch({ status: "ghosted" }), false);
-});
-
-test("mergeEntry keeps appliedAt when moving applied → answered", () => {
-  let map = mergeEntry({}, U, { status: "applied", appliedAt: "2026-07-01T00:00:00Z" });
-  map = mergeEntry(map, U, { status: "answered" });
-  assert.equal(map[U].status, "answered");
-  assert.equal(map[U].appliedAt, "2026-07-01T00:00:00Z");
 });
 
 test("normalizeMeta keeps only lastVisit and canonicalizes it to toISOString() form", () => {
@@ -136,7 +132,7 @@ test("writeStore keeps one snapshot per day, never overwrites it, prunes to 7", 
   writeStore(p, { _meta: {}, u1: { status: "viewed" } }, { now: day(1) });
   assert.deepEqual(snaps(), [], "nothing to snapshot before the first file exists");
 
-  writeStore(p, { _meta: {}, u1: { status: "applied" } }, { now: day(2) });
+  writeStore(p, { _meta: {}, u1: { status: "rejected" } }, { now: day(2) });
   assert.deepEqual(snaps(), ["job-state.2026-09-02.bak"]);
   assert.equal(JSON.parse(readFileSync(join(dir, "job-state.2026-09-02.bak"), "utf8")).u1.status, "viewed", "snapshot holds the file as it was before the day's first write");
 
