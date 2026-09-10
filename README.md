@@ -25,8 +25,6 @@ click is always yours.
 **2. Job discovery — `jobs.mjs`**
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
-- **Jooble** — via the official Jooble API (free key, structured JSON); **disabled by default** — its snippets are short and scored poorly, flip `jooble.enabled` to try it
-- **Work.ua / Robota.ua / Glassdoor** — via the shared browser session, but Cloudflare blocks them in headless mode, so they are **disabled by default** (opt in with `HEADFUL=1`, a Chrome window will appear)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
   into one package (the other source links are kept on the card)
@@ -77,7 +75,7 @@ catches a slow selector decay (50 → 20 → 6), not just a source dropping to a
 clean 0.
 
 ## Key principles
-- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; the only key is Jooble's free API key, and only if that source is enabled
+- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all
 - 🚫 **No auto-send:** the scripts only prepare — you review and apply manually
 - ⚖️ **Minimal risk:** DOU via legal RSS, LinkedIn scraping modest and toggleable
 
@@ -169,21 +167,20 @@ each strong match into `applications/`. **It never submits anything.**
 
 ```bash
 node jobs.mjs              # all sources (per jobs.config.json)
-DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni, and Jooble if enabled, still run — fully ToS-clean)
-HEADFUL=1 node jobs.mjs    # visible Chrome window (also required for Work.ua / Robota.ua / Glassdoor)
+DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni still run — fully ToS-clean)
+HEADFUL=1 node jobs.mjs    # visible Chrome window (watch the LinkedIn part)
 ```
 
-Scheduled runs are headless by default — no browser window. Sources that Cloudflare blocks in headless Chrome (Work.ua, Robota.ua, Glassdoor) ship with `enabled: false`; to use them set `enabled: true` in `jobs.config.json` and `export HEADFUL=1` in `run-jobs.sh`, accepting a Chrome window during each full run.
+Scheduled runs are headless — no browser window. Boards that Cloudflare blocks
+in headless Chrome (Work.ua, Robota.ua, Glassdoor) and Jooble's snippet-only API
+were dropped in Sep 2026; git history has the source modules if you want them
+back with a visible browser.
 
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
 - **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
-- **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Keys are market-bound — the config pins `apiHost: "ua.jooble.org"` (the Ukrainian market, every vacancy applyable from Ukraine), so register the key there. Searches are `{ keywords, location }` pairs in `jobs.config.json`: `''` = all of Ukraine, `"віддалено"` = remote only, or a city. Set `jooble.enabled=false` to disable.
-- **Work.ua** — *disabled by default (headless returns empty result pages).* Public jobs board (`work.ua`), Cloudflare-gated, read through the shared Playwright browser during `HEADFUL=1` full runs (no login). Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=true` to enable.
-- **Robota.ua** — *disabled by default (Cloudflare hard-blocks headless Chrome).* Only yields results on `HEADFUL=1` runs (otherwise it is skipped with a log hint). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (e.g. `https://robota.ua/zapros/qa-automation/ukraine`). Set `robota.enabled=true` to enable.
-- **Glassdoor** — *disabled by default (headless runs time out on the results page).* Cloudflare-gated, read through the shared Playwright browser during `HEADFUL=1` full runs (no login). Each search is a keyword string (location fixed to Ukraine); clicking a card loads the full description. Set `glassdoor.enabled=true` to enable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
 - **Foreign-location filter** — boards also list vacancies physically located
-  abroad (DOU marks them "за кордоном"; Jooble UA carries "Краків, Польща").
+  abroad (DOU marks them "за кордоном"; Djinni "Тільки офіс · Польща").
   Jobs whose location contains any substring from the top-level
   `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
   across **all** sources before scoring.
@@ -261,8 +258,7 @@ second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
 New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
-auto-reopened by clicking them. ✗ cards are left alone. Jooble/Work.ua/Robota.ua/Glassdoor urls are skipped (they answer a plain GET
-with a Cloudflare 403). Tune with `CLOSED_MAX` and
+auto-reopened by clicking them. ✗ cards are left alone. Tune with `CLOSED_MAX` and
 `CLOSED_RECHECK_DAYS`; it never posts a banner — closures show up as the muted
 "· closed" cue on the dashboard. Install like the weekly report below, with
 `com.example.closed-check.plist.example`.
@@ -312,8 +308,7 @@ entirely in config. To hunt, say, developer jobs instead:
    resume instead); Cyrillic values sit in genitive position ("досвід в …").
 2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
-   `https://djinni.co/jobs/?primary_keyword=Node.js`, Jooble
-   `{ "keywords": "node.js developer", "location": "remote" }`, LinkedIn
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
 3. **Resume** — replace `resume.txt` (drives LLM scoring and letters).
 4. **Attachment** — update `RESUME_PATH` in `run.sh` / `run-jobs.sh`.
@@ -388,7 +383,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
 ├── prune-applications.mjs  remove stale duplicate packages from applications/
-├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn sources)
+├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── job-state.json     per-card state (status, notes, last-visit) — gitignored
