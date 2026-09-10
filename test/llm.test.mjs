@@ -75,34 +75,56 @@ test("llmJSON resolves null when the CLI errors (missing binary, timeout) and lo
   const lines = [];
   const log = (...a) => lines.push(a.join(" "));
   const enoent = Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
-  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(enoent, "", ""), log }), null);
+  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(enoent, "", ""), log, retryDelayMs: 0 }), null);
   assert.match(lines.at(-1), /llm failed: spawn claude ENOENT/);
 
   const killed = Object.assign(new Error("killed"), { killed: true, signal: "SIGKILL" });
-  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(killed, "", ""), log }), null);
+  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(killed, "", ""), log, retryDelayMs: 0 }), null);
   assert.match(lines.at(-1), /timeout 180s.*SIGKILL/);
 
   const exit = Object.assign(new Error("Command failed"), { code: 1 });
-  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(exit, "", "Not logged in\nrun claude login"), log }), null);
+  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(exit, "", "Not logged in\nrun claude login"), log, retryDelayMs: 0 }), null);
   assert.match(lines.at(-1), /exit 1.*Not logged in run claude login/);
+});
+
+test("llmJSON retries once: a transient failure then JSON → the JSON; two failures → null, both logged", async () => {
+  const lines = [];
+  const log = (...a) => lines.push(a.join(" "));
+  const killed = Object.assign(new Error("killed"), { killed: true, signal: "SIGKILL" });
+  let calls = 0;
+  const flaky = (_c, _a, _o, cb) => (++calls === 1 ? cb(killed, "", "") : cb(null, '{"score":80}'));
+  assert.deepEqual(await llmJSON("p", { exec: flaky, log, retryDelayMs: 0 }), { score: 80 });
+  assert.equal(calls, 2);
+  assert.equal(lines.length, 1, "the first failure is logged");
+
+  calls = 0;
+  const dead = (_c, _a, _o, cb) => { calls++; cb(killed, "", ""); };
+  assert.equal(await llmJSON("p", { exec: dead, log, retryDelayMs: 0 }), null);
+  assert.equal(calls, 2, "exactly one retry");
+  assert.equal(lines.length, 3);
+
+  calls = 0;
+  const ok = (_c, _a, _o, cb) => { calls++; cb(null, '{"score":50}'); };
+  await llmJSON("p", { exec: ok, retryDelayMs: 0 });
+  assert.equal(calls, 1, "no retry on success");
 });
 
 test("llmJSON logs the head of unparseable output, capped", async () => {
   const lines = [];
   const exec = (_cmd, _args, _opts, cb) => cb(null, "I refuse to answer in JSON ".repeat(50));
-  assert.equal(await llmJSON("p", { exec, log: (...a) => lines.push(a.join(" ")) }), null);
+  assert.equal(await llmJSON("p", { exec, log: (...a) => lines.push(a.join(" ")), retryDelayMs: 0 }), null);
   assert.match(lines[0], /llm failed: no JSON in output: I refuse/);
   assert.ok(lines[0].length < 300, `capped, got ${lines[0].length}`);
 });
 
 test("llmJSON resolves null when exec itself throws synchronously", async () => {
   const exec = () => { throw new Error("boom"); };
-  assert.equal(await llmJSON("p", { exec }), null);
+  assert.equal(await llmJSON("p", { exec, retryDelayMs: 0 }), null);
 });
 
 test("llmJSON resolves null on unparseable output", async () => {
   const exec = (_cmd, _args, _opts, cb) => cb(null, "I refuse to answer in JSON");
-  assert.equal(await llmJSON("p", { exec }), null);
+  assert.equal(await llmJSON("p", { exec, retryDelayMs: 0 }), null);
 });
 
 test("buildJobPrompt embeds resume, vacancy and language, truncates long text", () => {
