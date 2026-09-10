@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUrl, fetchLinkedInJobs } from "../../lib/sources/linkedin-jobs.mjs";
+import { buildUrl, fetchLinkedInJobs, readCard } from "../../lib/sources/linkedin-jobs.mjs";
 
 test("buildUrl includes keywords and location and always sorts by date", () => {
   const url = buildUrl({ keywords: "QA Automation", location: "Ukraine" });
@@ -143,4 +143,19 @@ test("fetchLinkedInJobs skips the click for cards the skip() predicate knows, st
   assert.equal(jobs.length, 2, "known card is still returned so the caller can re-stamp it as seen");
   assert.equal(jobs[0].text, "Known SDET at Acme. Kyiv. ", "no description for a skipped card");
   assert.match(jobs[1].text, /Job description$/);
+});
+
+// The title link carries the title twice (visible + visually-hidden copy) and
+// innerText joins them: 3 doubled keys in the seen store, e.g.
+// "Middle Automation QA EngineerMiddle Automation QA Engineer".
+test("readCard halves a doubled title and leaves a genuine title alone", () => {
+  const SEL = { title: "t", company: "c", location: "l" };
+  const card = (title) => ({
+    querySelector: (sel) => (sel === "t" ? { innerText: title, getAttribute: () => "/jobs/view/1/" } : sel === "c" ? { innerText: "Acme\nverified" } : null),
+    querySelectorAll: () => [{ innerText: "Kyiv" }],
+  });
+  assert.deepEqual(readCard(card("Middle Automation QA EngineerMiddle Automation QA Engineer"), SEL), { title: "Middle Automation QA Engineer", href: "/jobs/view/1/", company: "Acme", location: "Kyiv" });
+  assert.equal(readCard(card("QA QA"), SEL).title, "QA QA", "a real repeated word is not a doubled title (odd length with the space)");
+  assert.equal(readCard(card("abab"), SEL).title, "ab", "even a short doubled string halves — LinkedIn never emits one this short");
+  assert.equal(readCard(card(""), SEL).title, "");
 });
