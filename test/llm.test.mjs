@@ -58,6 +58,7 @@ test("llmJSON passes model and prompt to the CLI", async () => {
   assert.equal(seen.cmd, "claude");
   assert.deepEqual(seen.args, [
     "-p", "my prompt", "--model", "haiku",
+    "--setting-sources", "project",   // no ~/.claude: global CLAUDE.md, hooks, plugins stay out of the screener
     "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
     "--disallowedTools", "Read,Glob,Grep,Bash,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,Task,Agent",
   ]);
