@@ -4,8 +4,9 @@
 // dashboard's New view and never reach a follow-up. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
 //   CLOSED_MAX=50 CLOSED_RECHECK_DAYS=7 node closed-check.mjs
-// Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) are moved to
-// applications/archive/, which nothing reads — keeps the dashboard small.
+// Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) and Viewed packages left
+// untouched for 30+ days (VIEWED_ARCHIVE_DAYS) are moved to applications/archive/,
+// which nothing reads — keeps the dashboard small.
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
@@ -22,6 +23,7 @@ const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) :
 const maxPerRun = num(process.env.CLOSED_MAX, 150);
 const recheckDays = num(process.env.CLOSED_RECHECK_DAYS, 3);
 const archiveDays = num(process.env.CLOSED_ARCHIVE_DAYS, 14);
+const viewedDays = num(process.env.VIEWED_ARCHIVE_DAYS, 30);
 // CLOSED_EXTRA_HOSTS='{"dou":"127.0.0.1"}' — extra allowed host per board (tests point a board at a local server).
 let extraHosts = {};
 try { extraHosts = JSON.parse(process.env.CLOSED_EXTRA_HOSTS || "{}") || {}; } catch {}
@@ -69,5 +71,5 @@ if (saved) writeStore(STATE, stateMap);
 const live = new Set(packages.map((p) => p.url));
 for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
-const archived = archivePackages(APPS, planArchive({ packages, stateMap, closedDays: archiveDays }));
-log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ days)`);
+const archived = archivePackages(APPS, planArchive({ packages, stateMap, closedDays: archiveDays, viewedDays }));
+log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived} package(s) archived (closed ${archiveDays}+ / viewed ${viewedDays}+ days)`);
