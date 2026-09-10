@@ -63,12 +63,29 @@ test("llmJSON passes model and prompt to the CLI", async () => {
   ]);
 });
 
-test("llmJSON gives the CLI 3 minutes and SIGKILLs it (a real call takes ~55s; SIGTERM left it hanging for up to an hour)", async () => {
+// execFile's own timeout was useless: its callback waits for stdout to close and
+// a CLI grandchild kept the pipe open after SIGKILL — "180 s" calls blocked
+// 200–1300 s (six of them, 2026-09-07..10). Our timer resolves null itself and
+// kills the whole process group (detached → the CLI is the group leader).
+test("llmJSON gives up on its own timer and SIGKILLs the process group even if the CLI never closes stdout", async () => {
+  const lines = [], kills = [];
   let opts;
-  const exec = (_cmd, _args, o, cb) => { opts = o; cb(null, "{}"); };
-  await llmJSON("p", { exec });
-  assert.equal(opts.timeout, 180_000);
-  assert.equal(opts.killSignal, "SIGKILL");
+  const hung = (_cmd, _args, o) => { opts = o; return { pid: 4242 }; };   // never calls back
+  const t0 = Date.now();
+  assert.equal(await llmJSON("p", { exec: hung, log: (...a) => lines.push(a.join(" ")), timeoutMs: 20, retryDelayMs: 0, kill: (pid, sig) => kills.push([pid, sig]) }), null);
+  assert.ok(Date.now() - t0 < 2000, "resolved by the timer, not by the pipe");
+  assert.equal(opts.detached, true, "CLI must lead its own process group");
+  assert.equal(opts.timeout, undefined, "no execFile timeout — it would wait for the pipe anyway");
+  assert.deepEqual(kills, [[-4242, "SIGKILL"], [-4242, "SIGKILL"]], "group kill on both attempts");
+  assert.match(lines[0], /llm failed: timeout 0s, SIGKILL to the process group/);
+});
+
+test("llmJSON ignores a late callback after the timer fired", async () => {
+  let late;
+  const exec = (_cmd, _args, _o, cb) => { late = cb; return { pid: 1 }; };
+  const p = llmJSON("p", { exec, timeoutMs: 5, retryDelayMs: 0, kill: () => {} });
+  assert.equal(await p, null);
+  late(null, '{"score":99}');   // must not throw or resolve anything
 });
 
 test("llmJSON resolves null when the CLI errors (missing binary, timeout) and logs why — 18 of 27 packages one week were keyword-only with no trace of the cause", async () => {
@@ -77,10 +94,6 @@ test("llmJSON resolves null when the CLI errors (missing binary, timeout) and lo
   const enoent = Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
   assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(enoent, "", ""), log, retryDelayMs: 0 }), null);
   assert.match(lines.at(-1), /llm failed: spawn claude ENOENT/);
-
-  const killed = Object.assign(new Error("killed"), { killed: true, signal: "SIGKILL" });
-  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(killed, "", ""), log, retryDelayMs: 0 }), null);
-  assert.match(lines.at(-1), /timeout 180s.*SIGKILL/);
 
   const exit = Object.assign(new Error("Command failed"), { code: 1 });
   assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(exit, "", "Not logged in\nrun claude login"), log, retryDelayMs: 0 }), null);
