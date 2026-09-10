@@ -121,3 +121,14 @@ test("siteUrl keeps links on the site (incl. subdomains) and drops everything el
     assert.equal(siteUrl(bad, "https://robota.ua"), null, String(bad));
   }
 });
+
+test("uniqueByUrl keeps the first record per url (was copy-pasted in every source)", async () => {
+  const { uniqueByUrl, pool } = await import("../../lib/sources/html.mjs");
+  const a = { url: "https://x/1", title: "first" }, b = { url: "https://x/2" }, a2 = { url: "https://x/1", title: "second" };
+  assert.deepEqual(uniqueByUrl([a, b, a2]), [a, b]);
+  assert.deepEqual(uniqueByUrl([]), []);
+  // pool: a bad limit must still run the workers (0 workers = Promise.all([]) resolving with nothing done)
+  const ran = [];
+  await pool([1, 2, 3], "five", async (n) => { ran.push(n); });
+  assert.deepEqual(ran.sort(), [1, 2, 3]);
+});

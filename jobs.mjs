@@ -295,7 +295,7 @@ let scoring = Promise.resolve();
 if (llmOn) {
   const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
   scoring = pool(toScore, Math.max(1, Number(LLM.concurrency) || 3), async (m) => {
-    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "haiku", log }));
+    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "sonnet", log }));
   });
 }
 for (const m of toScore) {
@@ -307,7 +307,7 @@ for (const m of toScore) {
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
-    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "haiku" };
+    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "sonnet" };
     else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
   }
   if (llmRejects(llm, LLM.minScore)) {

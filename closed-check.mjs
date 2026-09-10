@@ -1,7 +1,7 @@
 // closed-check.mjs
 // Daily: probe New/Viewed DOU, Djinni and LinkedIn vacancies and mark the ones the board
 // reports inactive as status "closed" in job-state.json, so they leave the
-// dashboard's New view and never reach a follow-up. Plain GETs, one per second.
+// dashboard's New and Viewed views. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
 //   CLOSED_MAX=50 CLOSED_RECHECK_DAYS=7 node closed-check.mjs
 // Packages closed for 14+ days (CLOSED_ARCHIVE_DAYS) and Viewed packages left
@@ -57,7 +57,7 @@ for (const { url, source } of todo) {
 // ponytail: still a race with a click in that same instant; POST to the state
 // server instead if it ever bites.
 let stateMap = readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved");
-// A status the user set while we were probing (Applied, Rejected…) wins over
+// A status the user set while we were probing (✗) wins over
 // the board's verdict — candidates were New/Viewed at the start, re-check now.
 let saved = 0;
 for (const url of closedUrls) {

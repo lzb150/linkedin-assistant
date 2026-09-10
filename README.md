@@ -169,7 +169,7 @@ each strong match into `applications/`. **It never submits anything.**
 
 ```bash
 node jobs.mjs              # all sources (per jobs.config.json)
-DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni still run — fully ToS-clean)
+DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni, and Jooble if enabled, still run — fully ToS-clean)
 HEADFUL=1 node jobs.mjs    # visible Chrome window (also required for Work.ua / Robota.ua / Glassdoor)
 ```
 
@@ -249,7 +249,7 @@ counts, both selected by default.
 **Find & freshness** — a search box filters cards by title, company, or skill
 keywords; source chips (one per board that has packages on disk) narrow the
 list further. Cards that arrived since your last visit are highlighted with a
-🆕 badge. Viewed cards you have not touched for 30 days are archived by the
+**NEW** ribbon. Viewed cards you have not touched for 30 days are archived by the
 daily closed-check run (see "Clean up stale packages").
 
 ![Multi-select filters, source chips and search](docs/filters.png)
