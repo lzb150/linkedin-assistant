@@ -290,7 +290,9 @@ moves packages whose vacancy has been **Closed** (see the closed-vacancy check)
 for 14+ days, and **Viewed** packages you have not touched for 30+ days, into
 `applications/archive/` — nothing reads that folder, so the dashboard sheds
 those cards. The daily `closed-check.mjs` run does the same archiving on its
-own (`CLOSED_ARCHIVE_DAYS` / `VIEWED_ARCHIVE_DAYS` to tune).
+own (`CLOSED_ARCHIVE_DAYS` / `VIEWED_ARCHIVE_DAYS` to tune), drops the
+`job-state.json` entries of packages that are no longer live (once they are a
+day old), and `run-jobs.sh` deletes archived packages after 180 days.
 
 ```bash
 node prune-applications.mjs                      # dry run — lists what would be removed / archived

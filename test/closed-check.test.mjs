@@ -52,3 +52,28 @@ test("closed-check: with no concurrent edit the closure is recorded", async (t) 
   assert.match(await runScript(p, "closed-check.mjs", LOCAL), /1 closed, 1 probed/);
   assert.equal(p.json("job-state.json")[U].status, "closed");
 });
+
+// Archiving a package must take its job-state entry along, and entries whose
+// package is gone for any other reason are dropped too (once a day old — a
+// package written and clicked during the probe must survive) — but never when
+// applications/ read as empty (that once looked like "delete everything").
+// example.com urls are off every board's host allowlist, so nothing is probed.
+test("closed-check: archived and orphaned state entries are dropped; an empty applications/ prunes nothing", async (t) => {
+  const old = new Date(Date.now() - 40 * 86400000).toISOString();
+  const live = "https://example.com/v/9/", gone = "https://example.com/v/8/", orphan = "https://example.com/v/7/", fresh = "https://example.com/v/6/";
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "live.md": pkg({ url: live }), "gone.md": pkg({ url: gone }) },
+    state: { _meta: { lastVisit: "2026-09-01T00:00:00Z" }, [live]: { status: "viewed", updatedAt: new Date().toISOString() }, [gone]: { status: "viewed", updatedAt: old }, [orphan]: { status: "closed", updatedAt: old }, [fresh]: { status: "viewed", updatedAt: new Date().toISOString() } },
+    bins: quiet,
+  });
+  const out = await runScript(p, "closed-check.mjs");
+  assert.match(out, /1 package\(s\) archived .*2 stale state entries dropped/);
+  const state = p.json("job-state.json");
+  assert.deepEqual(Object.keys(state).sort(), ["_meta", live, fresh].sort(), "gone (archived now) and orphan removed; live, a fresh no-package entry (clicked during the probe) and _meta kept");
+  assert.equal(state._meta.lastVisit, "2026-09-01T00:00:00Z", "_meta untouched");
+
+  const empty = makeProject(t, { scripts: ["closed-check.mjs"], packages: {}, state: { _meta: {}, [orphan]: { status: "closed" } }, bins: quiet });
+  await runScript(empty, "closed-check.mjs");
+  assert.ok(empty.json("job-state.json")[orphan], "an empty applications/ must not wipe the store");
+});

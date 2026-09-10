@@ -300,7 +300,9 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 закрилися 14+ днів тому, а також пакети зі статусом **Viewed**, яких ви не
 торкалися 30+ днів, до `applications/archive/` — цю теку ніхто не читає, тож
 дашборд позбувається тих карток. Щоденний запуск `closed-check.mjs` робить таке
-ж архівування сам (`CLOSED_ARCHIVE_DAYS` / `VIEWED_ARCHIVE_DAYS` для налаштування).
+ж архівування сам (`CLOSED_ARCHIVE_DAYS` / `VIEWED_ARCHIVE_DAYS` для налаштування),
+прибирає з `job-state.json` записи пакетів, яких більше немає (щойно їм день), а
+`run-jobs.sh` видаляє заархівовані пакети через 180 днів.
 
 ```bash
 node prune-applications.mjs                      # пробний запуск — показує, що буде видалено / заархівовано
