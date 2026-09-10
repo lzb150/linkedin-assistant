@@ -115,6 +115,8 @@ for (const s of BROWSERLESS_SOURCES) {
 
 // 4–7) Browser sources: LinkedIn (needs login), Robota.ua, Work.ua and Glassdoor
 // (Cloudflare-gated, no login; off by default) share one Playwright context.
+const alerts = [];   // breakage lines for the single end-of-run banner (declared before the first push below)
+
 // LinkedIn first checks the session: an expired login is a hard failure for
 // health monitoring (found 0), not an exception. Work.ua fetches through the
 // page instead of taking it.
@@ -174,8 +176,13 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Jooble UA carries "Краків, Польща", etc).
 {
   const before = jobs.length;
-  jobs = filterByLocation(jobs, config.excludeLocation);
-  if (jobs.length < before) log(`Location filter: dropped ${before - jobs.length} foreign-location job(s)`);
+  const keptLoc = filterByLocation(jobs, config.excludeLocation);
+  if (keptLoc.length < before) {
+    const kept = new Set(keptLoc);
+    log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
+    for (const j of jobs) if (!kept.has(j)) log(`  · location [${j.location}] ${j.source}: ${j.title}`);
+  }
+  jobs = keptLoc;
 }
 
 // Collapse the same vacancy arriving from multiple sources into one record
@@ -212,7 +219,6 @@ for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package 
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
 let written = 0, considered = 0, llmFailed = 0;
-const alerts = [];   // breakage lines for the single end-of-run banner
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
@@ -246,9 +252,13 @@ for (const job of jobs) {
   const minScore = config[job.source]?.minScore ?? config.minScore ?? 25;
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
-    log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}`);
+    // A card whose description failed to load (LinkedIn panel timeout) scores
+    // on its title alone; marking it seen would bury it for the 90-day TTL.
+    // Leave it unseen so the next run re-reads the description.
+    const noDesc = (job.text || "").length < 300;
+    log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${noDesc ? " (no description — will retry)" : ""}`);
     recordOutcome(summary, job.source, "low");
-    seen.add(id);
+    if (!noDesc) seen.add(id);
     continue;
   }
   matches.push({ id, job, scored });

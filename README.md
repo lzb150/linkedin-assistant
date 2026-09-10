@@ -32,7 +32,7 @@ click is always yours.
   into one package (the other source links are kept on the card)
 - **Foreign-location filter** — vacancies physically located abroad are dropped
   across all sources (the `excludeLocation` list in `jobs.config.json`)
-- Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
+- Two gates for cold applications: keyword score ≥ 18 + an automation role, then the LLM fit ≥ 70 → only on-target jobs
 - Builds an application package: cover letter + link + resume path
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
   second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
@@ -187,7 +187,7 @@ Scheduled runs are headless by default — no browser window. Sources that Cloud
   Jobs whose location contains any substring from the top-level
   `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
   across **all** sources before scoring.
-- Cold applications use a **high bar**: `minScore` (default 25) + `requireRole`.
+- Cold applications pass a keyword pre-gate — `minScore` (default 18) + `requireRole` — and then the LLM gate (`llm.minScore`, 70), which does the real screening. A remote listing is never dropped by `excludeLocation` for also naming a foreign office.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
   differs per board) is collapsed into one record before scoring. The record with
   the fullest description is kept; the other source links are recorded under

@@ -174,3 +174,12 @@ test("scoreMessage keeps a rich real vacancy above the cold-application gate", (
   // 9 skills matched, no role; the cap drops the lowest weight: expected ≈30.
   assert.ok(r.score >= 25, `rich vacancy score ${r.score} must clear minScore 25`);
 });
+
+// Live profile (skills.json): title forms that real postings use and that the
+// role gate rejected in production — "[35 no-role] Senior/Lead AQA Engineer",
+// "[34 no-role] Test Automation Middle Engineer", "[28 no-role] QA Team Lead".
+test("scoreMessage (live skills.json) recognises AQA / QA Lead / QA Team Lead / General QA / Test Automation … Engineer as roles", () => {
+  for (const title of ["Senior/Lead AQA Engineer (Python)", "QA Team Lead", "QA Lead", "General QA (Manual + Automation)", "Test Automation Middle Engineer"]) {
+    assert.ok(scoreMessage(title).matchedRole, `role expected for: ${title}`);
+  }
+});

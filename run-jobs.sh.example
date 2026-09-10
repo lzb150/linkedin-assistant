@@ -2,6 +2,10 @@
 # Wrapper for scheduled job discovery. Arg: "dou" (RSS only) or "full" (DOU + LinkedIn).
 # Copy to run-jobs.sh and fill in your own values (run-jobs.sh is gitignored).
 set -euo pipefail
+# caffeinate: launchd fires a missed schedule inside a 7-second DarkWake and the
+# Mac sleeps again under the run — timers pause, LinkedIn "searches" took 15–58
+# minutes of wall clock, and the run lock then skipped the next hourly run.
+# -i keeps the system awake while jobs.mjs runs; -s adds a hard hold on AC power.
 
 export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"   # ~/.local/bin holds the claude CLI (LLM re-scoring)
 cd "$(dirname "$0")"
@@ -16,7 +20,7 @@ MODE="${1:-full}"
 STAMP="$(date +%Y%m%d)"   # one log file per day; each run appends after a "=== run" separator
 
 if [ "$MODE" = "dou" ]; then
-  { echo "=== run $(date -u +%FT%TZ) ==="; DOU_ONLY=1 node jobs.mjs; } >> "logs/jobs_dou_${STAMP}.log" 2>&1
+  { echo "=== run $(date -u +%FT%TZ) ==="; DOU_ONLY=1 caffeinate -i -s node jobs.mjs; } >> "logs/jobs_dou_${STAMP}.log" 2>&1
 else
-  { echo "=== run $(date -u +%FT%TZ) ==="; node jobs.mjs; } >> "logs/jobs_full_${STAMP}.log" 2>&1
+  { echo "=== run $(date -u +%FT%TZ) ==="; caffeinate -i -s node jobs.mjs; } >> "logs/jobs_full_${STAMP}.log" 2>&1
 fi
