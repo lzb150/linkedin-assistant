@@ -30,8 +30,7 @@
       "https://jobs.dou.ua/vacancies/feeds/?search=automation",
       "https://jobs.dou.ua/vacancies/feeds/?search=SDET",
       "https://jobs.dou.ua/vacancies/feeds/?search=playwright",
-      "https://jobs.dou.ua/vacancies/feeds/?search=AQA",
-      "https://jobs.dou.ua/vacancies/feeds/?search=QA%20Lead"
+      "https://jobs.dou.ua/vacancies/feeds/?search=AQA"
     ]
   },
 
@@ -44,8 +43,7 @@
       "https://djinni.co/jobs/?primary_keyword=QA+Automation",
       "https://djinni.co/jobs/?all_keywords=SDET",
       "https://djinni.co/jobs/?all_keywords=playwright",
-      "https://djinni.co/jobs/?all_keywords=AQA",
-      "https://djinni.co/jobs/?all_keywords=QA+Lead"
+      "https://djinni.co/jobs/?all_keywords=AQA"
     ]
   },
 

@@ -177,9 +177,11 @@ test("scoreMessage keeps a rich real vacancy above the cold-application gate", (
 
 // Live profile (skills.json): title forms that real postings use and that the
 // role gate rejected in production — "[35 no-role] Senior/Lead AQA Engineer",
-// "[34 no-role] Test Automation Middle Engineer", "[28 no-role] QA Team Lead".
-test("scoreMessage (live skills.json) recognises AQA / QA Lead / QA Team Lead / General QA / Test Automation … Engineer as roles", () => {
-  for (const title of ["Senior/Lead AQA Engineer (Python)", "QA Team Lead", "QA Lead", "General QA (Manual + Automation)", "Test Automation Middle Engineer"]) {
+// "[34 no-role] Test Automation Middle Engineer". (Lead-only titles are not
+// sought: "QA Lead" / "QA Team Lead" stay out of the roles list on purpose.)
+test("scoreMessage (live skills.json) recognises AQA / General QA / Test Automation … Engineer as roles, not lead-only titles", () => {
+  for (const title of ["Senior/Lead AQA Engineer (Python)", "General QA (Manual + Automation)", "Test Automation Middle Engineer"]) {
     assert.ok(scoreMessage(title).matchedRole, `role expected for: ${title}`);
   }
+  assert.equal(scoreMessage("QA Team Lead").matchedRole, null, "a lead-only title is not a role we search for");
 });
