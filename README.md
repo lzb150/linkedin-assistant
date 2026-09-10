@@ -7,7 +7,7 @@ finds vacancies on DOU, Djinni and LinkedIn, scores them against your resume, an
 ready-to-review reply/application drafts. **It never sends anything** — the final
 click is always yours.
 
-![Dashboard — matched jobs sorted by relevance, with pipeline tracking and filters](docs/dashboard.png)
+![Dashboard — matched jobs sorted by relevance, with status counts and filters](docs/dashboard.png)
 
 > ⚠️ LinkedIn's User Agreement restricts automated access. This tool only *reads*
 > your own inbox and *drafts* replies for you — it does not auto-message or scrape
@@ -48,9 +48,9 @@ click is always yours.
   descriptions are untrusted input and must not be able to read local files.
 
 **3. Dashboard & convenience**
-- **HTML dashboard** — all jobs on one page, sorted by relevance, with pipeline
-  tracking (New → Viewed → Applied → Answered → Interview / Rejected), private
-  notes, multi-select filters, search, freshness highlights, and a copy-letter button
+- **HTML dashboard** — all jobs on one page, sorted by relevance; cards are
+  marked Viewed as you open them, ✗ hides what is not yours; private notes,
+  multi-select filters, search, freshness highlights, and a copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
 **4. Automation (launchd)**
@@ -207,8 +207,8 @@ node dashboard.mjs --open   # rebuild and open it
 ```
 
 Renders the packages in `applications/` as cards, sorted by score. Per-card
-state (status, applied date, notes) is keyed by job URL and stored on disk by
-the state server (see Dashboard v2 below), so it survives dashboard
+state (status, notes) is keyed by job URL and stored on disk by
+the state server (see below), so it survives dashboard
 regeneration and browser resets. Opening a job link or expanding its cover
 letter marks the card Viewed automatically.
 
@@ -216,64 +216,42 @@ letter marks the card Viewed automatically.
 by identity** (`company + title`) at render time, keeping the most recently
 generated one. You see each vacancy once even when older packages linger on disk.
 
-### Dashboard v2 — state server, pipeline tracking & follow-up reminders
+### State server, statuses & filters
 
 **State server (`state-server.mjs`)** replaces in-browser localStorage as the
-persistence layer. The dashboard is now served by a tiny local HTTP server at
+persistence layer. The dashboard is served by a tiny local HTTP server at
 `http://127.0.0.1:7777/` (localhost only, never exposed). Clicking the Jobs.app
 Dock icon runs `open-dashboard.sh`, which regenerates the dashboard, starts the
 server if it is not already running, and opens the browser. Job state (status,
-applied-date, per-card notes, last-visit timestamp) is written to `job-state.json`
-on disk, so it survives a browser reset or a full OS restart. If the server is
-unreachable the dashboard falls back to `localStorage` and shows an
-**"offline — not saved to disk"** badge. Before the first write of each day the
-store is snapshotted to `job-state.YYYY-MM-DD.bak` (last 7 kept) — to roll back
-a bad day, copy a snapshot over `job-state.json`. The server keeps running across
-updates; the Dock-click launcher (`open-dashboard.sh`) compares its start time
-(`/health`) with the server sources and restarts it when they are newer, so no
-manual `pkill` is needed after pulling a new version.
+per-card notes, last-visit timestamp) is written to `job-state.json` on disk, so
+it survives a browser reset or a full OS restart. If the server is unreachable
+the dashboard falls back to `localStorage` and shows an **"offline — not saved
+to disk"** badge. Before the first write of each day the store is snapshotted to
+`job-state.YYYY-MM-DD.bak` (last 7 kept) — to roll back a bad day, copy a
+snapshot over `job-state.json`. The server keeps running across updates; the
+Dock-click launcher (`open-dashboard.sh`) compares its start time (`/health`)
+with the server sources and restarts it when they are newer, so no manual
+`pkill` is needed after pulling a new version.
 
-**Pipeline tracking** — each card moves through **New → Viewed → Applied**, then
-on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**
-at any point. The apply date is recorded on the first move into any
-post-Applied stage (even when a card jumps straight to Answered because the
-reply arrived before the bookkeeping) and shows as "applied 5d ago". Because
-the actual applying happens on the job site, it is easy to never come back and
-press Applied: clicking **Open job** or **Copy letter** arms a **"Did you apply
-to this job?"** prompt on that card, which stays across dashboard regenerations
-(it lives in the browser's localStorage) until you answer **Yes, mark Applied**
-or **Not yet**, or the card reaches a post-Applied stage some other way; it
-expires by itself after 3 days. A header line summarizes the funnel for the whole board (applied →
-answered → interview, with conversion %, plus a rejected count and a
-per-source breakdown). You can attach private notes to any card; they are
-saved to disk via the state server. The header also shows live status/freshness
-counters and lets you filter by stage.
+**Statuses** — the tool is a radar: it finds and prepares, you apply
+selectively on the job site, so the dashboard tracks only what it needs to stay
+readable. A card is **New** until you open the job or expand its letter, which
+marks it **Viewed** automatically; **✗** hides a vacancy that is not for you;
+**Closed** is set by the closed-vacancy check below. That is the whole model —
+there is no applied/answered/interview pipeline (the few real applications live
+in your mailbox, not here). You can attach private notes to any card; they are
+saved to disk via the state server. The header shows live counts per status and
+lets you filter by them.
 
-![Card expanded — cover letter, private note, Applied state](docs/card.png)
+![Card expanded — cover letter, private note](docs/card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
-keywords. Source chips (LinkedIn / DOU / Djinni / Jooble / Robota / Work.ua / Glassdoor) and min-score presets
-(≥ 30 / ≥ 40) narrow the list further. Cards that arrived since your last visit
-are highlighted with a 🆕 badge and can be isolated with the "New since last
-visit" filter.
+keywords; source chips (one per board that has packages on disk) narrow the
+list further. Cards that arrived since your last visit are highlighted with a
+🆕 badge. Viewed cards you have not touched for 30 days are archived by the
+daily closed-check run (see "Clean up stale packages").
 
 ![Multi-select filters, source chips and search](docs/filters.png)
-
-**Follow-up reminders (`followup.mjs`)** — optional, not scheduled by default
-(the tool is a radar: it finds and prepares, you apply selectively, so the
-pipeline features are secondary). A daily launchd job
-(`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
-notification for every job you marked **Applied** with no
-status movement for 7+ days. Reminders auto-silence themselves the moment a
-card moves past Applied (Answered, Interview, or Rejected) — no more nagging
-about jobs that already got a reply. Tune the threshold with the
-`FOLLOWUP_DAYS` env var. Install:
-
-```bash
-cp com.example.jobs-followup.plist.example \
-   ~/Library/LaunchAgents/com.eugene.jobs-followup.plist   # edit paths inside
-launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
-```
 
 **Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
 (`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU,
@@ -282,17 +260,15 @@ second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
 New view, get a muted "· closed" cue, have their own filter, and are never
-auto-reopened by clicking them. Applied+ cards are left alone — closing them out
-is your call. Jooble/Work.ua/Robota.ua/Glassdoor urls are skipped (they answer a plain GET
+auto-reopened by clicking them. ✗ cards are left alone. Jooble/Work.ua/Robota.ua/Glassdoor urls are skipped (they answer a plain GET
 with a Cloudflare 403). Tune with `CLOSED_MAX` and
 `CLOSED_RECHECK_DAYS`; it never posts a banner — closures show up as the muted
-"· closed" cue on the dashboard. Install like the follow-up job, with
+"· closed" cue on the dashboard. Install like the weekly report below, with
 `com.example.closed-check.plist.example`.
 
 **Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
 runs and new vacancies considered, packages written per source, LLM verdicts
-(dropped / failed / scored / at ≥70, plus the top match), pipeline movement
-(applied, answered, interview, rejected this week and applied all-time) and the
+(dropped / failed / scored / at ≥70, plus the top match) and the
 median per-run yield of every source. `node report.mjs` prints it;
 `--notify` also posts a one-line macOS notification, which is what the weekly
 launchd job (`com.eugene.jobs-report.plist`, ships as `.example`, Monday
@@ -405,7 +381,6 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 ├── djinni-check.mjs   Djinni inbox unread count → djinni-notify-state.json
 ├── dashboard.mjs      HTML dashboard generator
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
-├── followup.mjs       follow-up reminder script (daily launchd job)
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
@@ -413,7 +388,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
-├── job-state.json     per-card state (status, applied-date, notes, last-visit) — gitignored
+├── job-state.json     per-card state (status, notes, last-visit) — gitignored
 ├── drafts/            reply drafts
 ├── applications/      application packages + index.html
 └── Jobs.app           Dock shortcut 💼
@@ -427,10 +402,9 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 | `check.mjs`           | Read unread → score → draft. Never sends.                 |
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
-| `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |
+| `dashboard.mjs`       | Build the HTML dashboard (Viewed / ✗ / Closed, notes, filters). |
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
-| `followup.mjs`        | Post macOS notifications for Applied jobs with no movement for 7+ days. |
-| `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, pipeline, source yield. |
+| `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
 | `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |

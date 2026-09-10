@@ -1,6 +1,6 @@
 // report.mjs
 // Weekly digest: runs and new vacancies considered, packages per source, LLM verdicts,
-// pipeline movement and per-source yield for the last N days (default 7).
+// and per-source yield for the last N days (default 7).
 //   node report.mjs              print to stdout
 //   node report.mjs --notify     also post a macOS notification (launchd job)
 //   REPORT_DAYS=14 node report.mjs
@@ -9,7 +9,6 @@ import { readPackages } from "./lib/packages.mjs";
 import { readJson as readJsonFile } from "./lib/json-file.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readStoreOrExit } from "./lib/job-state.mjs";
 import { notify } from "./lib/notify.mjs";
 import { buildReport } from "./lib/report.mjs";
 
@@ -31,7 +30,6 @@ const logText = files("logs", ".log")
 const { text, notification } = buildReport({
   now, days,
   packages,
-  stateMap: readStoreOrExit(join(dir, "job-state.json"), "skipping weekly report"),
   logText,
   health: readJson("source-health.json"),
 });

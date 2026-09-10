@@ -55,11 +55,11 @@ test("planPrune groups by identityKey like the dashboard: distinct req numbers s
 
 test("planPrune never removes a package with a non-new status", () => {
   const pkgs = [
-    { file: "applied.md", company: "X", title: "SDET", generated: "2026-06-09T00:00", status: "applied" },
+    { file: "rejected.md", company: "X", title: "SDET", generated: "2026-06-09T00:00", status: "rejected" },
     { file: "newer.md", company: "X", title: "SDET", generated: "2026-06-12T00:00", status: "new" },
   ];
   const { keep, remove } = planPrune(pkgs);
-  assert.deepEqual(keep.sort(), ["applied.md", "newer.md"]);
+  assert.deepEqual(keep.sort(), ["newer.md", "rejected.md"]);
   assert.deepEqual(remove, []);
 });
 

@@ -34,15 +34,15 @@ test("closed-check: edits landing during the run win — another url's status su
   const run = spawnScript(p, "closed-check.mjs", LOCAL);
   await run.output(/probing \d+ of/);
   writeFileSync(p.path("job-state.json"), JSON.stringify({ _meta: {},
-    "https://other/": { status: "applied", appliedAt: "2026-09-07T10:00:00Z" },
-    [U]: { status: "applied", appliedAt: "2026-09-07T10:00:01Z" } }));
+    "https://other/": { status: "rejected" },
+    [U]: { status: "rejected" } }));
   const out = await run.done;
 
   assert.match(out, /✗ closed \[404\]/, "the board did report it closed");
-  assert.match(out, /0 closed, 1 probed/, "…but the user's Applied wins, so nothing was saved as closed");
+  assert.match(out, /0 closed, 1 probed/, "…but the user's ✗ wins, so nothing was saved as closed");
   const state = p.json("job-state.json");
-  assert.equal(state[U].status, "applied", "Applied set during the run is not overwritten by the closure");
-  assert.equal(state["https://other/"].status, "applied", "the concurrent edit on another url survived");
+  assert.equal(state[U].status, "rejected", "✗ set during the run is not overwritten by the closure");
+  assert.equal(state["https://other/"].status, "rejected", "the concurrent edit on another url survived");
   assert.ok(Object.keys(p.json("closed-check-state.json")).includes(U), "check stamp written");
 });
 

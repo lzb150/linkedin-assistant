@@ -28,12 +28,12 @@ import { readPackages, archivePackages } from "./lib/packages.mjs";
  * Groups by identityKey — the same strict key the dashboard collapses on, so
  * prune never deletes a card the dashboard still shows separately — and keeps the most recently `generated` package per group; ties are broken
  * deterministically by the larger filename. Packages with a status other than
- * "new" (viewed/applied/...) are never removed.
+ * "new" (viewed / ✗ / closed) are never removed.
  * @param {{file:string, company:string, title:string, generated:string, status?:string}[]} packages
  * @returns {{ keep: string[], remove: string[] }}
  */
 export function planPrune(packages) {
-  const tracked = (p) => Boolean(p.status && p.status !== "new"); // viewed/applied/… → always keep
+  const tracked = (p) => Boolean(p.status && p.status !== "new"); // viewed / ✗ / closed → always keep
   const best = new Map();
   for (const p of packages) {
     if (tracked(p)) continue;

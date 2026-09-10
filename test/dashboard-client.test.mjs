@@ -1,6 +1,6 @@
 // test/dashboard-client.test.mjs
 // Verifies the server persistence contract the dashboard client relies on:
-// status+appliedAt+note survive a round-trip and migration shape is accepted.
+// status+note survive a round-trip and migration shape is accepted.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { createServer } from "../state-server.mjs";
 
 function listen(srv) { return new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port))); }
 
-test("status, appliedAt and note persist across a server restart", async (t) => {
+test("status and note persist across a server restart", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "dash-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const statePath = join(dir, "job-state.json");
@@ -23,7 +23,7 @@ test("status, appliedAt and note persist across a server restart", async (t) => 
   t.after(() => new Promise((r) => srv.close(() => r())));
   let port = await listen(srv);
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: U, patch: { status: "applied", appliedAt: "2026-06-15T10:00:00Z" } }) });
+    body: JSON.stringify({ url: U, patch: { status: "rejected" } }) });
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ url: U, patch: { note: "recruiter Anna" } }) });
   await new Promise((r) => srv.close(r));
@@ -32,26 +32,11 @@ test("status, appliedAt and note persist across a server restart", async (t) => 
   srv = createServer({ statePath, indexPath });
   port = await listen(srv);
   const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
-  assert.equal(state[U].status, "applied");
-  assert.equal(state[U].appliedAt, "2026-06-15T10:00:00Z");
+  assert.equal(state[U].status, "rejected");
   assert.equal(state[U].note, "recruiter Anna");
   // GET / serves the generated dashboard html.
   const html = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.text());
   assert.match(html, /<html>/);
-});
-
-test("the state server round-trips the new funnel statuses", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "dash-"));
-  writeFileSync(join(dir, "index.html"), "<html></html>");
-  const U = "https://example.com/jobs/9/";
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  const port = await listen(srv);
-  await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: U, patch: { status: "interview" } }) });
-  const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
-  assert.equal(state[U].status, "interview");
-  await new Promise((r) => srv.close(r));
-  rmSync(dir, { recursive: true, force: true });
 });
 
 test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
@@ -70,7 +55,7 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
   let state = {}, offline = false;
   const patches = [
     { url: "javascript:alert(1)", patch: { status: "viewed" } },          // 400
-    { url: "https://example.com/jobs/1/", patch: { status: "applied" } }, // ok
+    { url: "https://example.com/jobs/1/", patch: { status: "rejected" } }, // ok
   ];
   try {
     for (const body of patches) {
@@ -79,7 +64,7 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
     }
   } catch { offline = true; }
   assert.equal(offline, false);
-  assert.equal(state["https://example.com/jobs/1/"].status, "applied");
+  assert.equal(state["https://example.com/jobs/1/"].status, "rejected");
 });
 
 // Boot the inlined client (core + dom) in a vm against a fake window.
@@ -99,8 +84,8 @@ async function bootClient({ fetch, store, document }) {
 const fakeCard = (url) => ({ dataset: { url }, classList: { toggle() {} }, querySelectorAll: () => [], querySelector: () => null });
 
 // After an online session the cache stays as a read mirror of the server, so
-// an offline reload shows the real statuses; re-applying keeps appliedAt.
-test("online session mirrors server state to localStorage; offline reload keeps statuses and appliedAt", async (t) => {
+// an offline reload shows the real statuses and notes.
+test("online session mirrors server state to localStorage; offline reload keeps statuses and notes", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "dash-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "index.html"), "<html></html>");
@@ -112,16 +97,16 @@ test("online session mirrors server state to localStorage; offline reload keeps 
 
   const on = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
   on.ctx.card = fakeCard(U);
-  await on.run("setStatus(card, 'applied')");
-  const appliedAt = JSON.parse(store.get("jobStatus"))[U].appliedAt;
-  assert.ok(appliedAt, "mirror holds the server-assigned appliedAt");
+  await on.run("setStatus(card, 'rejected')");
+  await on.run(`patchEntry(${JSON.stringify(U)}, { note: 'no relocation' })`);
+  assert.equal(JSON.parse(store.get("jobStatus"))[U].note, "no relocation", "mirror holds the server state");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), []);
 
   const off = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
-  assert.equal(off.run(`statusOf(${JSON.stringify(U)})`), "applied");
+  assert.equal(off.run(`statusOf(${JSON.stringify(U)})`), "rejected");
   off.ctx.card = fakeCard(U);
-  await off.run("setStatus(card, 'applied')");
-  assert.equal(off.run(`entryOf(${JSON.stringify(U)}).appliedAt`), appliedAt);
+  await off.run("setStatus(card, 'viewed')");
+  assert.equal(off.run(`entryOf(${JSON.stringify(U)}).note`), "no relocation", "a status change keeps the note");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), [U]);
 });
 
@@ -143,7 +128,7 @@ test("offline: dirty urls from a previous session survive a reload", async () =>
   vm.runInContext(readFileSync(new URL("../lib/dashboard-client-core.cjs", import.meta.url), "utf8"), ctx);
   vm.runInContext(readFileSync(new URL("../lib/dashboard-client-dom.js", import.meta.url), "utf8"), ctx);
   await vm.runInContext("ready", ctx);
-  await vm.runInContext("patchEntry('https://new/', { status: 'applied' })", ctx);
+  await vm.runInContext("patchEntry('https://new/', { status: 'rejected' })", ctx);
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")).sort(), ["https://new/", "https://old/"]);
 });
 
@@ -158,7 +143,7 @@ test("reconnect: a network failure mid-push keeps the unpushed dirty urls and th
   const port = await listen(srv);
   const A = "https://example.com/jobs/a/", B = "https://example.com/jobs/b/";
   const store = new Map([
-    ["jobStatus", JSON.stringify({ _meta: {}, [A]: { status: "viewed" }, [B]: { status: "applied", note: "keep me" } })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [A]: { status: "viewed" }, [B]: { status: "rejected", note: "keep me" } })],
     ["jobStatusDirty", JSON.stringify([A, B])],
   ]);
   let posts = 0;
@@ -205,41 +190,20 @@ test("flash then markOffline still shows the offline badge", async () => {
   assert.ok(children.some((el) => el.className === "flash"));
 });
 
-// "Did you apply?" nudge: opening a job / copying its letter arms a per-card
-// prompt that survives page regeneration (localStorage) until the card is
-// marked applied, dismissed, or 3 days pass.
-function nudgeCard(url) {
-  const nudge = { hidden: true };
-  // enough surface for renderCard / applyFilter / markFreshness to run over a real card list
-  return { dataset: { url, source: "dou", score: "30", search: "", generated: "" }, style: {}, classList: { toggle() {}, contains: () => false },
-    querySelectorAll: () => [], querySelector: (s) => (s === ".apply-nudge" ? nudge : null), nudge };
-}
-test("apply nudge: armed on open, shown on load, cleared by Yes (→ applied) or Not yet, expired after 3 days", async () => {
-  const U1 = "https://example.com/jobs/1/", U2 = "https://example.com/jobs/2/", OLD = "https://example.com/jobs/old/";
-  const store = new Map([["applyNudge", JSON.stringify({ [OLD]: Date.now() - 4 * 86400000 })]]);
-  const c1 = nudgeCard(U1), c2 = nudgeCard(U2), cOld = nudgeCard(OLD);
-  const document = { querySelector: () => null, getElementById: () => null, querySelectorAll: (s) => (s === ".card" ? [c1, c2, cOld] : []) };
-  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document });
-  await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (it runs showNudges)
-  assert.equal(cOld.nudge.hidden, true, "a 4-day-old arm is expired, not shown");
-  assert.deepEqual(JSON.parse(store.get("applyNudge")), {}, "expired arm is forgotten");
-
-  c.ctx.c1 = c1; c.ctx.c2 = c2;
-  c.run("armNudge(c1); armNudge(c2)");
-  assert.equal(c1.nudge.hidden, false, "armed card shows the prompt");
-  assert.equal(c2.nudge.hidden, false);
-
-  await c.run("nudgeYes(c1)");
-  assert.equal(c.run(`statusOf(${JSON.stringify(U1)})`), "applied");
-  assert.equal(c1.nudge.hidden, true);
-  c.run("nudgeNo(c2)");
-  assert.equal(c2.nudge.hidden, true);
-  assert.deepEqual(JSON.parse(store.get("applyNudge")), {}, "both cleared from the store");
-
-  c.run("armNudge(c1)");
-  assert.equal(c1.nudge.hidden, true, "an already-applied card is never nudged");
-  c.ctx.c3 = nudgeCard("https://example.com/jobs/3/");
-  await c.run("patchEntry('https://example.com/jobs/3/', { status: 'closed' })");
-  c.run("armNudge(c3)");
-  assert.equal(c.ctx.c3.nudge.hidden, true, "a board-closed card is never nudged");
+// Radar mode: ✗ and board-closed cards are never re-opened by the auto-viewed
+// hook (Open job / expanding the letter); a saved filter for a status that no
+// longer exists (pre-radar "applied") is dropped instead of showing an empty board.
+test("autoStatus never overrides ✗ or closed; restoreFilters drops unknown statuses", async () => {
+  const U1 = "https://example.com/jobs/1/", U2 = "https://example.com/jobs/2/", U3 = "https://example.com/jobs/3/";
+  const store = new Map([["jobFilters", JSON.stringify({ status: ["applied", "new"], src: [], query: "" })]]);
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
+  assert.equal(c.run("JSON.stringify([...statusSel])"), JSON.stringify(["new"]));
+  for (const [u, st] of [[U1, "rejected"], [U2, "closed"], [U3, "viewed"]]) await c.run(`patchEntry(${JSON.stringify(u)}, { status: ${JSON.stringify(st)} })`);
+  for (const u of [U1, U2, U3]) { c.ctx.card = fakeCard(u); await c.run("autoStatus(card, 'viewed')"); }
+  assert.equal(c.run(`statusOf(${JSON.stringify(U1)})`), "rejected");
+  assert.equal(c.run(`statusOf(${JSON.stringify(U2)})`), "closed");
+  assert.equal(c.run(`statusOf(${JSON.stringify(U3)})`), "viewed");
+  c.ctx.card = fakeCard(U1); await c.run("setStatus(card, 'new')");
+  assert.equal(c.run(`statusOf(${JSON.stringify(U1)})`), "new", "an explicit click still clears ✗");
 });

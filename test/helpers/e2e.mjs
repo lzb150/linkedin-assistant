@@ -1,6 +1,6 @@
 // Shared scaffolding for the black-box CLI tests. (node --test test/ also runs
-// this file as an empty test — one harmless "ok" line.) (jobs.mjs, closed-check.mjs,
-// followup.mjs): a throwaway project dir with the script, a COPY of lib/ (not
+// this file as an empty test — one harmless "ok" line.) (jobs.mjs, closed-check.mjs):
+// a throwaway project dir with the script, a COPY of lib/ (not
 // a symlink — Node resolves ESM through realpath, and a symlinked notify.mjs
 // would compute ROOT as the real repo and queue banners into the user's
 // Jobs.app), a node_modules symlink, fixture packages/state and fake binaries
