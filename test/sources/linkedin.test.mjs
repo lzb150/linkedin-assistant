@@ -126,3 +126,21 @@ test("fetchLinkedInJobs abandons a search at the deadline, keeps the cards gathe
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(page.calls.filter((c) => c.startsWith("click")).length, clicksBefore, "the released loop stops instead of clicking the next card");
 });
+
+// Cards the caller already knows (seen store / excluded title) are returned
+// from their list fields without a click or description — 17–20 of ~30 cards
+// per production run, ~2.2 s each.
+test("fetchLinkedInJobs skips the click for cards the skip() predicate knows, still returns them", async () => {
+  const page = fakePage([
+    { title: "Known SDET", href: "/jobs/view/1/", company: "Acme", location: "Kyiv" },
+    { title: "New AQA", href: "/jobs/view/2/", company: "Beta", location: "" },
+  ]);
+  const seen = [];
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "SDET", location: "Ukraine" }] }, () => {},
+    { sleep: async () => {}, skip: (j) => { seen.push(j); return j.title === "Known SDET"; } });
+  assert.deepEqual(seen.map((j) => [j.title, j.company, j.url]), [["Known SDET", "Acme", "https://www.linkedin.com/jobs/view/1/"], ["New AQA", "Beta", "https://www.linkedin.com/jobs/view/2/"]], "predicate sees list fields + canonical url");
+  assert.equal(page.calls.filter((c) => c.startsWith("click")).length, 1, "only the unknown card is opened");
+  assert.equal(jobs.length, 2, "known card is still returned so the caller can re-stamp it as seen");
+  assert.equal(jobs[0].text, "Known SDET at Acme. Kyiv. ", "no description for a skipped card");
+  assert.match(jobs[1].text, /Job description$/);
+});
