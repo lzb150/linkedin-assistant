@@ -86,7 +86,7 @@ function badge(source) {
 // board's chip disappears by itself once its last package is archived.
 const SOURCE_LABELS = { linkedin: "LinkedIn", dou: "DOU", djinni: "Djinni", jooble: "Jooble", robota: "Robota", workua: "Work.ua", glassdoor: "Glassdoor" };
 const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
-  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource('${esc(src)}')">${esc(SOURCE_LABELS[src] || src)}</button>`)
+  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(SOURCE_LABELS[src] || src)}</button>`)
   .join("\n      ");
 
 const cards = items
@@ -112,11 +112,11 @@ const cards = items
     return `
 <article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
-    <span class="score" style="background:${scoreColor(it.score)}">${it.score}</span>
+    <span class="score" style="background:${scoreColor(it.score)}" aria-label="keyword score ${it.score}">${it.score}</span>
     <div class="titles">
       <h2>${esc(f.title || "—")}</h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
-      ${it.llm != null ? `<div class="llm-row"><span class="llm">🤖 ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
+      ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
       <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
@@ -148,6 +148,7 @@ const html = `<!doctype html>
 <title>Jobs — ${items.length}</title>
 <style>
   :root { font-family: -apple-system, system-ui, sans-serif; }
+  html { scroll-padding-top: 130px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it */
   body { margin: 0; background: #f6f8fa; color: #1f2328; }
   header { position: sticky; top: 0; background: #24292f; color: #fff; padding: 14px 20px; }
   header h1 { margin: 0; font-size: 18px; }
@@ -184,7 +185,7 @@ const html = `<!doctype html>
   .filter-seg button:first-child { border-left: 0; }
   .filter-seg button:hover { background: #32383f; }
   .filter-seg button.active { background: #0969da; color: #fff; }
-  .filter-seg .cnt { opacity: .7; font-size: 11px; }
+  .filter-seg .cnt { font-size: 11px; font-weight: 400; }   /* no opacity: 70% white on the active blue was 3.34:1 */
   .skills { margin: 10px 0 4px; }
   .chip { display: inline-block; background: #eaf2ff; color: #0a66c2; font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
   details { margin-top: 6px; }
@@ -225,7 +226,7 @@ const html = `<!doctype html>
 </style></head>
 <body>
 <header>
-  <h1>🎯 Matching jobs: ${items.length}</h1>
+  <h1><span aria-hidden="true">🎯</span> Matching jobs: ${items.length}</h1>
   <div class="meta" aria-live="polite">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
@@ -234,7 +235,7 @@ const html = `<!doctype html>
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
-      <button data-src="all" class="active" aria-pressed="true" onclick="setSource('all')">All</button>
+      <button data-src="all" class="active" aria-pressed="true" onclick="setSource(this.dataset.src)">All</button>
       ${sourceChips}
     </div>
   </div>
