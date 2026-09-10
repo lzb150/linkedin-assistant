@@ -1,7 +1,7 @@
 // Prune stale duplicate application packages in applications/.
 //
 // applications/ is append-only, so historical runs left many packages for the
-// same vacancy (e.g. a Jooble job whose URL changed every run back when seen
+// same vacancy (e.g. a job whose URL changed every run back when seen
 // was URL-keyed). The dashboard already collapses these at render time; this
 // script reclaims the disk clutter by keeping only the newest package per
 // identity (company+title) and deleting the rest.

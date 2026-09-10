@@ -55,7 +55,7 @@ const parsed = files
 for (const it of parsed) if (it.fm.salary) it.fm.salary = it.fm.salary.replace(/[,\s]+$/, "");
 
 // applications/ is append-only: historical runs left many packages for the same
-// vacancy (e.g. a Jooble job whose URL changed every run when seen was URL-keyed).
+// vacancy (boards used to change a job's URL between runs when seen was URL-keyed).
 // Collapse to one card per identity (company+title), keeping the most recently
 // generated package so the dashboard reflects the latest data.
 const byIdentity = new Map();
@@ -76,7 +76,7 @@ function scoreColor(s) {
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
 // All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4", jooble: "#0a7a5c", robota: "#c2263f", workua: "#1868b3", glassdoor: "#0a7a30" }   /* 5.5:1 on white; the old #0caa41 was 3.07:1 */;
+const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4" };
 function badge(source) {
   const c = (Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : undefined) || "#6e7781";
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
@@ -84,7 +84,7 @@ function badge(source) {
 
 // Source chips only for boards that actually have packages on disk: a disabled
 // board's chip disappears by itself once its last package is archived.
-const SOURCE_LABELS = { linkedin: "LinkedIn", dou: "DOU", djinni: "Djinni", jooble: "Jooble", robota: "Robota", workua: "Work.ua", glassdoor: "Glassdoor" };
+const SOURCE_LABELS = { linkedin: "LinkedIn", dou: "DOU", djinni: "Djinni" };
 const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
   .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(SOURCE_LABELS[src] || src)}</button>`)
   .join("\n      ");

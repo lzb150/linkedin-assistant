@@ -1,12 +1,11 @@
-// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board),
-// Jooble (API), LinkedIn (scrape) and, when enabled, Robota.ua / Work.ua /
-// Glassdoor (browser), scores them against your resume, and
+// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board)
+// and LinkedIn (scrape), scores them against your resume, and
 // writes an application package for each RELEVANT match. IT NEVER SUBMITS
 // ANYTHING — you review and apply manually.
 //
 // Run:  node jobs.mjs              (all sources per jobs.config.json)
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
-//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni + Jooble still run)
+//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
 
 import { readFileSync, readdirSync, mkdirSync } from "node:fs";
 
@@ -25,12 +24,8 @@ import {
 } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
-import { fetchJooble } from "./lib/sources/jooble.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { fetchWorkua, pageHtml } from "./lib/sources/workua.mjs";
 import { pool } from "./lib/sources/html.mjs";
-import { fetchRobota } from "./lib/sources/robota.mjs";
-import { fetchGlassdoor } from "./lib/sources/glassdoor.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser, acquireProfileLock } from "./lib/browser.mjs";
@@ -93,12 +88,11 @@ const health = normalizeHistory(readJson(HEALTH_FILE, {}));
 let jobs = [];
 const summary = newSummary();
 
-// 1–3) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
-// Jooble (official API — needs JOOBLE_API_KEY). Same gather/record/collect shape.
+// 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board).
+// Same gather/record/collect shape.
 const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
   { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
-  { name: "jooble", enabled: config.jooble?.enabled, fetch: fetchJooble },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   if (!s.enabled) continue;
@@ -113,8 +107,9 @@ for (const s of BROWSERLESS_SOURCES) {
   }
 }
 
-// 4–7) Browser sources: LinkedIn (needs login), Robota.ua, Work.ua and Glassdoor
-// (Cloudflare-gated, no login; off by default) share one Playwright context.
+// 3) Browser source: LinkedIn (needs login) in a Playwright context. (Robota.ua,
+// Work.ua and Glassdoor were dropped 2026-09-10: Cloudflare blocks them in
+// headless Chrome and the owner does not want a visible window.)
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
 // so a senior role whose description mentions "junior" (e.g. "mentor junior
 // engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
@@ -140,8 +135,7 @@ const knownJob = (job) => { const id = identityKey(job); return seen.has(id) || 
 const alerts = [];   // breakage lines for the single end-of-run banner (declared before the first push below)
 
 // LinkedIn first checks the session: an expired login is a hard failure for
-// health monitoring (found 0), not an exception. Work.ua fetches through the
-// page instead of taking it.
+// health monitoring (found 0), not an exception.
 async function fetchLinkedInChecked(page, cfg) {
   await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
   if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
@@ -154,9 +148,6 @@ async function fetchLinkedInChecked(page, cfg) {
 }
 const BROWSER_SOURCE_TABLE = [
   { name: "linkedin", label: "LinkedIn", fetch: fetchLinkedInChecked },
-  { name: "robota", label: "Robota.ua", fetch: (page, cfg) => fetchRobota(page, cfg, log) },
-  { name: "workua", label: "Work.ua (browser)", fetch: (page, cfg) => fetchWorkua(cfg, log, pageHtml(page)) },
-  { name: "glassdoor", label: "Glassdoor", fetch: (page, cfg) => fetchGlassdoor(page, cfg, log) },
 ];
 const BROWSER_SOURCES = BROWSER_SOURCE_TABLE.map((s) => s.name);
 if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
@@ -195,7 +186,7 @@ if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
 log(`Total jobs gathered: ${jobs.length}`);
 
 // Drop vacancies physically located abroad — applies to every source (DOU
-// marks them "за кордоном", Jooble UA carries "Краків, Польща", etc).
+// marks them "за кордоном", Djinni "Тільки офіс · Польща", etc).
 {
   const before = jobs.length;
   const keptLoc = filterByLocation(jobs, config.excludeLocation);
@@ -255,8 +246,7 @@ for (const job of jobs) {
   }
   const scored = scoreMessage(job.text);
   // Cold applications: strict gate — high score AND an automation/SDET role match.
-  // A source may set its own minScore (e.g. Jooble's API gives only short
-  // snippets, which score lower than full descriptions) — it overrides the global.
+  // A source may set its own minScore — it overrides the global.
   const minScore = config[job.source]?.minScore ?? config.minScore ?? 25;
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {

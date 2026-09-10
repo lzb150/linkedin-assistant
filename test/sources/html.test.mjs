@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks, pool, siteUrl } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -29,10 +29,10 @@ test("decodeEntities drops NUL and lone surrogates, keeps valid code points", ()
 test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   const logs = [];
   const fakeFetch = async () => ({ ok: false, status: 404, text: async () => "body" });
-  assert.equal(await fetchText("https://x/1", (l) => logs.push(l), "dou", undefined, fakeFetch), "");
+  assert.equal(await fetchText("https://x/1", (l) => logs.push(l), "dou", fakeFetch), "");
   assert.match(logs[0], /dou 404: https:\/\/x\/1/);
   const okFetch = async () => ({ ok: true, status: 200, text: async () => "body" });
-  assert.equal(await fetchText("https://x/1", () => {}, "dou", undefined, okFetch), "body");
+  assert.equal(await fetchText("https://x/1", () => {}, "dou", okFetch), "body");
 });
 
 test("extractDiv ignores a '</div>' string inside <script> and a commented-out <div>", () => {
@@ -111,16 +111,6 @@ test("pool resolves on an empty list without calling the worker", async () => {
   assert.equal(calls, 0);
 });
 
-test("siteUrl keeps links on the site (incl. subdomains) and drops everything else", () => {
-  assert.equal(siteUrl("/v/1?x=1", "https://robota.ua"), "https://robota.ua/v/1?x=1");
-  assert.equal(siteUrl("https://ROBOTA.UA/v/1", "https://robota.ua"), "https://robota.ua/v/1");
-  assert.equal(siteUrl("https://uk.glassdoor.com/j", "https://www.glassdoor.com"), "https://uk.glassdoor.com/j");
-  for (const bad of ["https://evil.com/x", "//evil.com/x", "https://robota.ua.evil.com/x",
-    "https://evilrobota.ua/x", "javascript:alert(1)", "ftp://robota.ua/x", "http://[bad", "", null,
-    "https://evil.com@robota.ua/x", "https://user:pw@robota.ua/x", "https://robota.ua:8443/x"]) {
-    assert.equal(siteUrl(bad, "https://robota.ua"), null, String(bad));
-  }
-});
 
 test("uniqueByUrl keeps the first record per url (was copy-pasted in every source)", async () => {
   const { uniqueByUrl, pool } = await import("../../lib/sources/html.mjs");

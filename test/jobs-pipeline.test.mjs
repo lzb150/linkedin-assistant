@@ -31,8 +31,7 @@ function setupProject(t, feedUrl) {
         minScore: 25, requireRole: true, excludeTitle: ["junior"], excludeLocation: [],
         llm: { enabled: true, model: "haiku", maxPerRun: 15, minScore: 50 },
         dou: { enabled: true, feeds: [feedUrl] },
-        djinni: { enabled: false }, jooble: { enabled: false }, linkedin: { enabled: false },
-        workua: { enabled: false }, robota: { enabled: false }, glassdoor: { enabled: false },
+        djinni: { enabled: false }, linkedin: { enabled: false },
       }),
     },
     // Fake `claude` scores by company name and logs how it was called into the
