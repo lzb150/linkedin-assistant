@@ -277,7 +277,7 @@ let scoring = Promise.resolve();
 if (llmOn) {
   const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
   scoring = pool(toScore, Math.max(1, Number(LLM.concurrency) || 3), async (m) => {
-    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "haiku" }));
+    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "haiku", log }));
   });
 }
 for (const m of toScore) {
