@@ -237,11 +237,12 @@ with the server sources and restarts it when they are newer, so no manual
 selectively on the job site, so the dashboard tracks only what it needs to stay
 readable. A card is **New** until you open the job or expand its letter, which
 marks it **Viewed** automatically; **✗** hides a vacancy that is not for you;
-**Closed** is set by the closed-vacancy check below. That is the whole model —
+**Closed** is set by the closed-vacancy check below; both drop out of the New
+and Viewed views (deselect both tabs to see everything). That is the whole model —
 there is no applied/answered/interview pipeline (the few real applications live
 in your mailbox, not here). You can attach private notes to any card; they are
-saved to disk via the state server. The header shows live counts per status and
-lets you filter by them.
+saved to disk via the state server. The header shows New / Viewed with live
+counts.
 
 ![Card expanded — cover letter, private note](docs/card.png)
 
@@ -259,7 +260,7 @@ Djinni and LinkedIn vacancies that are still **New** or **Viewed** (plain GET, o
 second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
-New view, get a muted "· closed" cue, have their own filter, and are never
+New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
 auto-reopened by clicking them. ✗ cards are left alone. Jooble/Work.ua/Robota.ua/Glassdoor urls are skipped (they answer a plain GET
 with a Cloudflare 403). Tune with `CLOSED_MAX` and
 `CLOSED_RECHECK_DAYS`; it never posts a banner — closures show up as the muted

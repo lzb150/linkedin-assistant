@@ -192,10 +192,10 @@ test("flash then markOffline still shows the offline badge", async () => {
 
 // Radar mode: ✗ and board-closed cards are never re-opened by the auto-viewed
 // hook (Open job / expanding the letter); a saved filter for a status that no
-// longer exists (pre-radar "applied") is dropped instead of showing an empty board.
+// has no header button (pre-radar "applied", "closed") is dropped instead of showing an empty board.
 test("autoStatus never overrides ✗ or closed; restoreFilters drops unknown statuses", async () => {
   const U1 = "https://example.com/jobs/1/", U2 = "https://example.com/jobs/2/", U3 = "https://example.com/jobs/3/";
-  const store = new Map([["jobFilters", JSON.stringify({ status: ["applied", "new"], src: [], query: "" })]]);
+  const store = new Map([["jobFilters", JSON.stringify({ status: ["applied", "closed", "new"], src: [], query: "" })]]);
   const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...statusSel])"), JSON.stringify(["new"]));
