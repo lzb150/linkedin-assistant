@@ -86,3 +86,38 @@ test("fetchLinkedInJobs does not scroll once maxResults is reached", async () =>
   assert.equal(jobs.length, 2);
   assert.equal(page.calls.filter((c) => c.startsWith("scroll")).length, 0);
 });
+
+// One LinkedIn search took 1887s in production (three more took 913s, 1059s,
+// 368s): some await inside the card loop hangs past every per-action timeout.
+// A per-search wall-clock deadline keeps what was gathered and moves on; the
+// abandoned loop must not keep clicking cards on the next search's page.
+test("fetchLinkedInJobs abandons a search at the deadline, keeps the cards gathered so far, and the stalled loop clicks nothing more", async () => {
+  const cards = [
+    { title: "A", href: "/jobs/view/1/", company: "X", location: "Kyiv" },
+    { title: "B", href: "/jobs/view/2/", company: "X", location: "Kyiv" },
+    { title: "C", href: "/jobs/view/3/", company: "X", location: "Kyiv" },
+  ];
+  let release;
+  let hangOnce = true;
+  const page = fakePage(cards);
+  const $$ = page.$$;
+  page.$$ = async () => (await $$()).map((c, i) => (i === 1 ? {
+    ...c,
+    click: async (opts) => {
+      page.calls.push(`click:${opts?.timeout}`);
+      if (hangOnce) { hangOnce = false; await new Promise((r) => { release = r; }); }
+    },
+  } : c));
+  const logs = [];
+  const t0 = Date.now();
+  const cfg = { maxResults: 5, searches: [{ keywords: "qa" }, { keywords: "sdet" }] };
+  const out = await fetchLinkedInJobs(page, cfg, (l) => logs.push(l), { sleep: async () => {}, searchTimeoutMs: 100 });
+  assert.ok(Date.now() - t0 < 2000, "returned without waiting for the hung click");
+  assert.deepEqual(out.map((j) => j.title), ["A", "B", "C"], "A from the aborted search survives; B and C come from the second search");
+  assert.ok(logs.some((l) => /search deadline .*exceeded/.test(l)), logs.join("\n"));
+  const clicksBefore = page.calls.filter((c) => c.startsWith("click")).length;
+  assert.equal(clicksBefore, 5, "search 1: A + hung B; search 2: A, B, C");
+  release();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(page.calls.filter((c) => c.startsWith("click")).length, clicksBefore, "the released loop stops instead of clicking C");
+});
