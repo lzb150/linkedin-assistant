@@ -68,10 +68,11 @@ const items = [...byIdentity.values()].sort(
   (a, b) => (b.llm ?? -1) - (a.llm ?? -1) || b.score - a.score,
 );
 
-function scoreColor(s) {
-  if (s >= 40) return "#1a7f37";   // green
-  if (s >= 30) return "#9a6700";   // amber
-  return "#6e7781";                 // gray
+// Score band → CSS class (colours live in the theme tokens, see <style>).
+function scoreBand(s) {
+  if (s >= 40) return "hi";    // green
+  if (s >= 30) return "mid";   // amber
+  return "lo";                  // gray
 }
 
 // Per-source badge colour. Unknown/future sources fall back to gray.
@@ -112,7 +113,7 @@ const cards = items
     return `
 <article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
-    <span class="score" style="background:${scoreColor(it.score)}" aria-label="keyword score ${it.score}">${it.score}</span>
+    <span class="score ${scoreBand(it.score)}" aria-label="keyword score ${it.score}">${it.score}</span>
     <div class="titles">
       <h2>${esc(f.title || "—")}</h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
@@ -146,82 +147,132 @@ const cards = items
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobs — ${items.length}</title>
+<script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
-  :root { font-family: -apple-system, system-ui, sans-serif; }
+  /* Palette = GitHub Primer: light values are the ones this page always used, the
+     dark block is Primer's "dark default" (canvas #0d1117 / #161b22, border
+     #30363d, fg #e6edf3 / #8b949e, *-emphasis fills for buttons). Every text /
+     background pair was checked ≥ 4.5:1; white on each emphasis fill is 4.6+.
+     Theme: system preference by default; the header toggle sets data-theme on
+     <html> (persisted in localStorage) and wins in both directions. */
+  :root {
+    font-family: -apple-system, system-ui, sans-serif;
+    color-scheme: light;
+    --bg: #f6f8fa; --card: #fff; --card-muted: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a;
+    --header-bg: #24292f; --header-text: #fff; --header-muted: #cdd9e5; --header-border: #57606a; --header-hover: #32383f;
+    --input-bg: #32383f; --placeholder: #9aa5b1;
+    --btn-bg: #fff; --btn-text: #57606a; --btn-hover: #f3f4f6;
+    --accent: #0969da; --accent-fill: #0969da; --focus: #0969da;
+    --success-fill: #1f883d; --success-fill-hover: #1a7f37; --success-text: #1a7f37;
+    --attention-fill: #9a6700; --attention-text: #9a6700;
+    --danger-fill: #cf222e; --danger-text: #cf222e;
+    --done-fill: #8250df; --neutral-fill: #6e7781; --closed-border: #8c959f;
+    --chip-bg: #eaf2ff; --chip-text: #0a66c2;
+    --score-hi: #1a7f37; --score-mid: #9a6700; --score-lo: #6e7781;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d1117; --card: #161b22; --card-muted: #0d1117; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --header-bg: #010409; --header-text: #e6edf3; --header-muted: #c9d1d9; --header-border: #30363d; --header-hover: #21262d;
+    --input-bg: #0d1117; --placeholder: #6e7681;
+    --btn-bg: #21262d; --btn-text: #c9d1d9; --btn-hover: #30363d;
+    --accent: #58a6ff; --accent-fill: #1f6feb; --focus: #58a6ff;
+    --success-fill: #238636; --success-fill-hover: #1a7f37; --success-text: #3fb950;
+    --attention-fill: #9e6a03; --attention-text: #d29922;
+    --danger-fill: #da3633; --danger-text: #f85149;
+    --done-fill: #8957e5; --neutral-fill: #6e7681; --closed-border: #6e7681;
+    --chip-bg: #0d2440; --chip-text: #79c0ff;
+    --score-hi: #238636; --score-mid: #9e6a03; --score-lo: #6e7681;
+  } }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d1117; --card: #161b22; --card-muted: #0d1117; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --header-bg: #010409; --header-text: #e6edf3; --header-muted: #c9d1d9; --header-border: #30363d; --header-hover: #21262d;
+    --input-bg: #0d1117; --placeholder: #6e7681;
+    --btn-bg: #21262d; --btn-text: #c9d1d9; --btn-hover: #30363d;
+    --accent: #58a6ff; --accent-fill: #1f6feb; --focus: #58a6ff;
+    --success-fill: #238636; --success-fill-hover: #1a7f37; --success-text: #3fb950;
+    --attention-fill: #9e6a03; --attention-text: #d29922;
+    --danger-fill: #da3633; --danger-text: #f85149;
+    --done-fill: #8957e5; --neutral-fill: #6e7681; --closed-border: #6e7681;
+    --chip-bg: #0d2440; --chip-text: #79c0ff;
+    --score-hi: #238636; --score-mid: #9e6a03; --score-lo: #6e7681;
+  }
   html { scroll-padding-top: 130px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it */
-  body { margin: 0; background: #f6f8fa; color: #1f2328; }
-  header { position: sticky; top: 0; background: #24292f; color: #fff; padding: 14px 20px; }
+  body { margin: 0; background: var(--bg); color: var(--text); }
+  header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
   header h1 { margin: 0; font-size: 18px; }
   header .meta { font-size: 13px; opacity: .8; margin-top: 2px; }
   main { max-width: 920px; margin: 18px auto; padding: 0 14px; }
-  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
   .head { display: flex; align-items: flex-start; gap: 12px; }
   .score { color: #fff; font-weight: 700; font-size: 15px; min-width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .score.hi { background: var(--score-hi); } .score.mid { background: var(--score-mid); } .score.lo { background: var(--score-lo); }
   .titles { flex: 1; }
   .titles h2 { margin: 0; font-size: 16px; }
-  .sub { font-size: 13px; color: #57606a; margin-top: 4px; }
+  .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
   .llm-row { margin-top: 4px; font-size: 12px; }
-  .llm { background: #8250df; color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
-  .llm-why { color: #57606a; font-style: italic; }
+  .llm { background: var(--done-fill); color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  .llm-why { color: var(--muted); font-style: italic; }
   .src { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
-  .lang { text-transform: uppercase; font-size: 11px; color: #57606a; }
-  .salary { color: #1a7f37; font-size: .8rem; white-space: nowrap; }
+  .lang { text-transform: uppercase; font-size: 11px; color: var(--muted); }
+  .salary { color: var(--success-text); font-size: .8rem; white-space: nowrap; }
   .actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
-  .apply { white-space: nowrap; text-align: center; background: #1f883d; color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
-  .apply:hover { background: #1a7f37; }
-  .status-seg { display: inline-flex; border: 1px solid #d0d7de; border-radius: 7px; overflow: hidden; }
-  .status-seg button { flex: 1; background: #fff; color: #57606a; border: 0; border-left: 1px solid #d0d7de; padding: 6px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .apply { white-space: nowrap; text-align: center; background: var(--success-fill); color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
+  .apply:hover { background: var(--success-fill-hover); }
+  .status-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .status-seg button { flex: 1; background: var(--btn-bg); color: var(--btn-text); border: 0; border-left: 1px solid var(--border); padding: 6px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
   .status-seg button:first-child { border-left: 0; }
-  .status-seg button:hover { background: #f3f4f6; }
-  .status-seg button.active[data-status="new"] { background: #6e7781; color: #fff; }
-  .status-seg button.active[data-status="viewed"] { background: #9a6700; color: #fff; }
+  .status-seg button:hover { background: var(--btn-hover); }
+  .status-seg button.active[data-status="new"] { background: var(--neutral-fill); color: #fff; }
+  .status-seg button.active[data-status="viewed"] { background: var(--attention-fill); color: #fff; }
   /* Muted background + heading (not whole-card opacity, which drops text
      contrast below WCAG 4.5:1). */
-  .card.viewed { background: #f6f8fa; }
-  .card.viewed .titles h2 { color: #57606a; }
+  .card.viewed { background: var(--card-muted); }
+  .card.viewed .titles h2 { color: var(--muted); }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
-  .filter-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
-  .filter-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
-  .filter-seg button:first-child { border-left: 0; }
-  .filter-seg button:hover { background: #32383f; }
-  .filter-seg button.active { background: #0969da; color: #fff; }
+  .filter-seg, .src-seg { display: inline-flex; border: 1px solid var(--header-border); border-radius: 7px; overflow: hidden; }
+  .filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .filter-seg button:first-child, .src-seg button:first-child { border-left: 0; }
+  .filter-seg button:hover, .src-seg button:hover, .theme:hover { background: var(--header-hover); }
+  .filter-seg button.active, .src-seg button.active { background: var(--accent-fill); color: #fff; }
   .filter-seg .cnt { font-size: 11px; font-weight: 400; }   /* no opacity: 70% white on the active blue was 3.34:1 */
+  .theme { border: 1px solid var(--header-border); border-radius: 7px; margin-left: auto; }
   .skills { margin: 10px 0 4px; }
-  .chip { display: inline-block; background: #eaf2ff; color: #0a66c2; font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
+  .chip { display: inline-block; background: var(--chip-bg); color: var(--chip-text); font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
   details { margin-top: 6px; }
-  summary { cursor: pointer; font-size: 13px; color: #0969da; }
-  pre { white-space: pre-wrap; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
-  .copy { background: #0969da; color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-  .resume { font-size: 12px; color: #57606a; margin-left: 10px; }
-  .alt-row { font-size: 12px; color: #57606a; margin: 2px 0 4px; }
-  .alt { color: #0969da; text-decoration: none; margin-right: 8px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+  pre { white-space: pre-wrap; background: var(--card-muted); border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
+  .copy { background: var(--accent-fill); color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  .resume { font-size: 12px; color: var(--muted); margin-left: 10px; }
+  .alt-row { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
+  .alt { color: var(--accent); text-decoration: none; margin-right: 8px; }
   .alt:hover { text-decoration: underline; }
-  .empty { text-align: center; color: #57606a; padding: 40px; }
-  .status-seg button.active[data-status="rejected"] { background: #cf222e; color: #fff; }
-  .card.rejected { background: #f6f8fa; border-left: 4px solid #cf222e; }
-  .card.rejected .titles h2 { color: #57606a; }
-  .card.rejected .titles h2::after { content: " ✗"; color: #cf222e; }   /* non-colour cue next to the red border */
+  .empty { text-align: center; color: var(--muted); padding: 40px; }
+  .status-seg button.active[data-status="rejected"] { background: var(--danger-fill); color: #fff; }
+  .card.rejected { background: var(--card-muted); border-left: 4px solid var(--danger-fill); }
+  .card.rejected .titles h2 { color: var(--muted); }
+  .card.rejected .titles h2::after { content: " ✗"; color: var(--danger-text); }   /* non-colour cue next to the red border */
   /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed, with a text cue. */
-  .card.closed { background: #f6f8fa; border-left: 4px solid #8c959f; }
-  .card.closed .titles h2 { color: #57606a; }
-  .card.closed .titles h2::after { content: " · closed"; color: #57606a; font-weight: 400; font-size: 13px; }
-  .status-seg button:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }   /* blue on white: 5.9:1 */
+  .card.closed { background: var(--card-muted); border-left: 4px solid var(--closed-border); }
+  .card.closed .titles h2 { color: var(--muted); }
+  .card.closed .titles h2::after { content: " · closed"; color: var(--muted); font-weight: 400; font-size: 13px; }
+  .status-seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }   /* blue on white: 5.9:1 */
   /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
      inset one extra px so it sits inside the fill rather than on the border. */
-  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .theme:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .note-wrap summary { color: #57606a; }
-  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid #d0d7de; border-radius: 7px; resize: vertical; }
-  .note-has { color: #9a6700; }
-  .offline, .flash { background: #9a6700; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
-  .card.fresh { box-shadow: inset 3px 0 0 #0969da; }
-  .ribbon { background: #0969da; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
-  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid #57606a; background: #32383f; color: #fff; font-size: 13px; }
-  #q::placeholder { color: #9aa5b1; }
-  .src-seg { display: inline-flex; border: 1px solid #57606a; border-radius: 7px; overflow: hidden; }
-  .src-seg button { background: transparent; color: #cdd9e5; border: 0; border-left: 1px solid #57606a; padding: 5px 10px; font-size: 12px; cursor: pointer; }
-  .src-seg button:first-child { border-left: 0; }
-  .src-seg button.active { background: #0969da; color: #fff; }
+  .note-wrap summary { color: var(--muted); }
+  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; resize: vertical; background: var(--card); color: var(--text); }
+  .note-has { color: var(--attention-text); }
+  .offline, .flash { background: var(--attention-fill); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  .card.fresh { box-shadow: inset 3px 0 0 var(--accent-fill); }
+  .ribbon { background: var(--accent-fill); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--header-border); background: var(--input-bg); color: var(--header-text); font-size: 13px; }
+  #q::placeholder { color: var(--placeholder); }
   @media (max-width: 640px) { .head { flex-wrap: wrap; } .actions { width: 100%; } }
 </style></head>
 <body>
@@ -238,6 +289,7 @@ const html = `<!doctype html>
       <button data-src="all" class="active" aria-pressed="true" onclick="setSource(this.dataset.src)">All</button>
       ${sourceChips}
     </div>
+    <button id="theme" class="theme" type="button" aria-pressed="false" onclick="toggleTheme()">🌙 Dark</button>
   </div>
 </header>
 <main>
