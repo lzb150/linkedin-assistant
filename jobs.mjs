@@ -88,11 +88,33 @@ const health = normalizeHistory(readJson(HEALTH_FILE, {}));
 let jobs = [];
 const summary = newSummary();
 
+// Seniority terms we never apply to. Matched as whole words in the TITLE only,
+// so a senior role whose description mentions "junior" (e.g. "mentor junior
+// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
+// Regexes compiled once at load, not per job.
+const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => ({
+  term: t.toLowerCase(),
+  re: new RegExp(`(^|[^a-z0-9])${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
+}));
+function excludedByTitle(title) {
+  const t = (title || "").toLowerCase();
+  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
+}
+
+// Known before it is opened: already in the seen store (either key spelling) or
+// excluded by title. LinkedIn skips the click + 1.8 s and Djinni the detail-page
+// fetch for such jobs (most of every run); the scoring loop still re-stamps
+// the seen entry because the job is returned from its list fields.
+// ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
+// accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
+const legacyIdOf = (id) => id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
+const knownJob = (job) => { const id = identityKey(job); return seen.has(id) || seen.has(legacyIdOf(id)) || Boolean(excludedByTitle(job.title)); };
+
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board).
 // Same gather/record/collect shape.
 const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
-  { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
+  { name: "djinni", enabled: config.djinni?.enabled, fetch: (cfg, lg) => fetchDjinni(cfg, lg, { skip: knownJob }) },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   if (!s.enabled) continue;
@@ -110,28 +132,6 @@ for (const s of BROWSERLESS_SOURCES) {
 // 3) Browser source: LinkedIn (needs login) in a Playwright context. (Robota.ua,
 // Work.ua and Glassdoor were dropped 2026-09-10: Cloudflare blocks them in
 // headless Chrome and the owner does not want a visible window.)
-// Seniority terms we never apply to. Matched as whole words in the TITLE only,
-// so a senior role whose description mentions "junior" (e.g. "mentor junior
-// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
-// Regexes compiled once at load, not per job.
-const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => ({
-  term: t.toLowerCase(),
-  re: new RegExp(`(^|[^a-z0-9])${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
-}));
-function excludedByTitle(title) {
-  const t = (title || "").toLowerCase();
-  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
-}
-
-// Known before it is opened: already in the seen store (either key spelling) or
-// excluded by title. LinkedIn passes every card through this so it never spends
-// a click + 1.8 s on a vacancy the scoring loop below will drop anyway (17–20
-// of ~30 cards per run); the loop still re-stamps the seen entry.
-// ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
-// accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
-const legacyIdOf = (id) => id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
-const knownJob = (job) => { const id = identityKey(job); return seen.has(id) || seen.has(legacyIdOf(id)) || Boolean(excludedByTitle(job.title)); };
-
 const alerts = [];   // breakage lines for the single end-of-run banner (declared before the first push below)
 
 // LinkedIn first checks the session: an expired login is a hard failure for

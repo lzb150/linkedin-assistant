@@ -35,7 +35,7 @@
   },
 
   "djinni": {
-    "_comment": "Public Djinni jobs board, read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Use primary_keyword=QA+Automation or primary_keyword=QA (Manual) for categories, or all_keywords=TERM for free-text. fullDescription (default true) follows each job link for the complete text so scoring is accurate; set false to score on the listing snippet only.",
+    "_comment": "Public Djinni jobs board, read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Use primary_keyword=QA+Automation or primary_keyword=QA (Manual) for categories, or all_keywords=TERM for free-text. fullDescription (default true) follows each job link for the complete text so scoring is accurate; set false to score on the listing snippet only. pages (default 3): Djinni does not list newest-first, so each search reads this many pages of 15.",
     "enabled": true,
     "fullDescription": true,
     "maxResults": 15,
