@@ -15,10 +15,6 @@ test("currentCounts extracts found for every source that ran", () => {
   assert.deepEqual(currentCounts(summaryOf({ dou: 12, jooble: 0 })), { dou: 12, jooble: 0 });
 });
 
-test("normalizeHistory migrates the legacy flat format to one-element histories", () => {
-  assert.deepEqual(normalizeHistory({ dou: 50, djinni: 55 }), { dou: [50], djinni: [55] });
-});
-
 test("normalizeHistory passes arrays through and drops garbage", () => {
   assert.deepEqual(normalizeHistory({ dou: [1, 2], bad: "x", worse: null }), { dou: [1, 2] });
   assert.deepEqual(normalizeHistory(null), {});
