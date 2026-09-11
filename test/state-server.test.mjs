@@ -10,7 +10,6 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
 
   const health = await fetch(`${base}/health`).then((r) => r.json());
   assert.equal(health.ok, true);
-  assert.ok(Number.isInteger(health.started) && health.started > 1_700_000_000, "started = epoch seconds of the server process");
 
   const post = await fetch(`${base}/state`, {
     method: "POST",

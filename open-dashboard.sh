@@ -1,7 +1,6 @@
 #!/bin/bash
-# Regenerate the dashboard, ensure the state server is running on 127.0.0.1:7777,
-# then open it in the default browser. Idempotent: a second call reuses the
-# already-running server instead of starting a duplicate.
+# Dock-click helper: regenerate the dashboard and open it. The state server on
+# 127.0.0.1:7777 is a launchd agent (com.example.state-server.plist.example).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -11,59 +10,8 @@ if ! NODE="$(command -v node)"; then
 fi
 [ -x "${NODE:-}" ] || { echo "open-dashboard.sh: node not found (PATH or ~/.nvm)" >&2; exit 1; }
 
-# Regenerate applications/index.html (no --open); one corrupt package must not
-# block opening the previous build.
+# One corrupt package must not block opening the previous build.
 "$NODE" dashboard.mjs || echo "dashboard rebuild failed; opening previous build" >&2
 
-# Start the server only if port 7777 is not already listening. The nc check
-# alone is a race (two launchers can both see "not listening"), so the actual
-# start is guarded by an atomic mkdir lock: the winner starts the server and
-# drops the lock once the port is bound; everyone else just waits for the port.
-mkdir -p logs   # ensure the nohup log target exists (fresh clones lack logs/)
-# A server started before the last update keeps old code (status list, store
-# normalizer). /health reports its start time; if any server source is newer,
-# stop it here and let the start block below bring up a fresh one.
-if /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
-  # No "started" in the reply = a server from before this check existed → treat as 0 (stale).
-  # `|| true`: under set -e a hung/unresponsive server (curl fails) must fall into the restart path, not abort the launcher.
-  STARTED="$(curl -s -m 2 http://127.0.0.1:7777/health 2>/dev/null | sed -n 's/.*"started":\([0-9]*\).*/\1/p' || true)"
-  STARTED="${STARTED:-0}"
-  {
-    NEWEST=0
-    for f in state-server.mjs lib/job-state.mjs lib/json-file.mjs lib/dashboard-client-core.cjs; do
-      m="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f")"; [ "$m" -gt "$NEWEST" ] && NEWEST="$m"
-    done
-    if [ "$NEWEST" -gt "$STARTED" ]; then
-      echo "open-dashboard.sh: state server predates an update — restarting" >&2
-      # Kill the verified :7777 listener only — never by argv pattern (that would hit
-      # `node --test test/state-server.test.mjs`, an editor on the file, another clone's server).
-      lsof -ti tcp:7777 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
-      for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 || break; sleep 0.2; done
-    fi
-  }
-fi
-LOCK=state-server.lock
-WON=0
-if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
-  # A launcher killed between mkdir and rmdir would leave the lock forever;
-  # the start window is ~2s, so a lock older than a minute is stale.
-  find "$LOCK" -maxdepth 0 -type d -mmin +1 -exec rmdir {} \; 2>/dev/null || true
-  if mkdir "$LOCK" 2>/dev/null; then
-    WON=1
-    trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT   # released even on Ctrl-C / set -e abort
-    nohup "$NODE" state-server.mjs >> "logs/state-server.log" 2>&1 &   # append: keep earlier crash output
-  fi
-  # Give it a moment to bind before we open the browser.
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 && break
-    sleep 0.2
-  done
-  # Only the mkdir winner drops the lock (via the EXIT trap): a loser removing
-  # it would reopen the start window for a third launcher mid-bind.
-  if ! /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
-    echo "open-dashboard.sh: state server did not start (lock: $LOCK, WON=$WON); see logs/state-server.log" >&2
-    exit 1
-  fi
-fi
-
+/usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1 || echo "open-dashboard.sh: state server not running — install com.example.state-server.plist.example (README → Schedule it)" >&2
 open "http://127.0.0.1:7777/"

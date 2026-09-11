@@ -30,10 +30,6 @@ function readBody(req) {
   });
 }
 
-// Epoch seconds of this process's start; open-dashboard.sh compares it with the
-// server sources' mtime and restarts a server that predates an update.
-const STARTED = Math.floor(Date.now() / 1000);
-
 export function createServer({ statePath, indexPath }) {
   // Any throw (corrupt state file, unwritable dir) → 500. Never let a failed
   // read turn into a truncating write, and never let it crash the server.
@@ -51,7 +47,7 @@ export function createServer({ statePath, indexPath }) {
       return send(res, 403, { error: "forbidden host" });
     }
 
-    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, started: STARTED });
+    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true });
 
     if (req.method === "GET" && req.url === "/state") return send(res, 200, readStore(statePath));
 
