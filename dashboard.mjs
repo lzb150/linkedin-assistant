@@ -152,54 +152,26 @@ const html = `<!doctype html>
      dark block is Primer's "dark default" (canvas #0d1117 / #161b22, border
      #30363d, fg #e6edf3 / #8b949e, *-emphasis fills for buttons). Every text /
      background pair was checked ≥ 4.5:1; white on each emphasis fill is 4.6+.
-     Theme: system preference by default; the header toggle sets data-theme on
-     <html> (persisted in localStorage) and wins in both directions. */
+     Theme: system preference by default via color-scheme + light-dark(); the header
+     toggle sets data-theme on <html> (persisted in localStorage) and pins color-scheme. */
   :root {
     font-family: -apple-system, system-ui, sans-serif;
-    color-scheme: light;
-    --bg: #f6f8fa; --card: #fff; --card-muted: #f6f8fa; --border: #d0d7de;
-    --text: #1f2328; --muted: #57606a;
-    --header-bg: #24292f; --header-text: #fff; --header-muted: #cdd9e5; --header-border: #57606a; --header-hover: #32383f;
-    --input-bg: #32383f; --placeholder: #9aa5b1;
-    --btn-bg: #fff; --btn-text: #57606a; --btn-hover: #f3f4f6;
-    --accent: #0969da; --accent-fill: #0969da; --focus: #0969da;
-    --success-fill: #1f883d; --success-fill-hover: #1a7f37; --success-text: #1a7f37;
-    --attention-fill: #9a6700; --attention-text: #9a6700;
-    --danger-fill: #cf222e; --danger-text: #cf222e;
-    --done-fill: #8250df; --neutral-fill: #6e7781; --closed-border: #8c959f;
-    --chip-bg: #eaf2ff; --chip-text: #0a66c2;
-    --score-hi: #1a7f37; --score-mid: #9a6700; --score-lo: #6e7781;
+    color-scheme: light dark;   /* light-dark() follows the OS; the data-theme pins below win in both directions */
+    --bg: light-dark(#f6f8fa, #0d1117); --card: light-dark(#fff, #161b22); --card-muted: light-dark(#f6f8fa, #0d1117); --border: light-dark(#d0d7de, #30363d);
+    --text: light-dark(#1f2328, #e6edf3); --muted: light-dark(#57606a, #8b949e);
+    --header-bg: light-dark(#24292f, #010409); --header-text: light-dark(#fff, #e6edf3); --header-muted: light-dark(#cdd9e5, #c9d1d9); --header-border: light-dark(#57606a, #30363d); --header-hover: light-dark(#32383f, #21262d);
+    --input-bg: light-dark(#32383f, #0d1117); --placeholder: light-dark(#9aa5b1, #6e7681);
+    --btn-bg: light-dark(#fff, #21262d); --btn-text: light-dark(#57606a, #c9d1d9); --btn-hover: light-dark(#f3f4f6, #30363d);
+    --accent: light-dark(#0969da, #58a6ff); --accent-fill: light-dark(#0969da, #1f6feb); --focus: light-dark(#0969da, #58a6ff);
+    --success-fill: light-dark(#1f883d, #238636); --success-fill-hover: light-dark(#1a7f37, #1a7f37); --success-text: light-dark(#1a7f37, #3fb950);
+    --attention-fill: light-dark(#9a6700, #9e6a03); --attention-text: light-dark(#9a6700, #d29922);
+    --danger-fill: light-dark(#cf222e, #da3633); --danger-text: light-dark(#cf222e, #f85149);
+    --done-fill: light-dark(#8250df, #8957e5); --neutral-fill: light-dark(#6e7781, #6e7681); --closed-border: light-dark(#8c959f, #6e7681);
+    --chip-bg: light-dark(#eaf2ff, #0d2440); --chip-text: light-dark(#0a66c2, #79c0ff);
+    --score-hi: light-dark(#1a7f37, #238636); --score-mid: light-dark(#9a6700, #9e6a03); --score-lo: light-dark(#6e7781, #6e7681);
   }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #0d1117; --card: #161b22; --card-muted: #0d1117; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e;
-    --header-bg: #010409; --header-text: #e6edf3; --header-muted: #c9d1d9; --header-border: #30363d; --header-hover: #21262d;
-    --input-bg: #0d1117; --placeholder: #6e7681;
-    --btn-bg: #21262d; --btn-text: #c9d1d9; --btn-hover: #30363d;
-    --accent: #58a6ff; --accent-fill: #1f6feb; --focus: #58a6ff;
-    --success-fill: #238636; --success-fill-hover: #1a7f37; --success-text: #3fb950;
-    --attention-fill: #9e6a03; --attention-text: #d29922;
-    --danger-fill: #da3633; --danger-text: #f85149;
-    --done-fill: #8957e5; --neutral-fill: #6e7681; --closed-border: #6e7681;
-    --chip-bg: #0d2440; --chip-text: #79c0ff;
-    --score-hi: #238636; --score-mid: #9e6a03; --score-lo: #6e7681;
-  } }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --bg: #0d1117; --card: #161b22; --card-muted: #0d1117; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e;
-    --header-bg: #010409; --header-text: #e6edf3; --header-muted: #c9d1d9; --header-border: #30363d; --header-hover: #21262d;
-    --input-bg: #0d1117; --placeholder: #6e7681;
-    --btn-bg: #21262d; --btn-text: #c9d1d9; --btn-hover: #30363d;
-    --accent: #58a6ff; --accent-fill: #1f6feb; --focus: #58a6ff;
-    --success-fill: #238636; --success-fill-hover: #1a7f37; --success-text: #3fb950;
-    --attention-fill: #9e6a03; --attention-text: #d29922;
-    --danger-fill: #da3633; --danger-text: #f85149;
-    --done-fill: #8957e5; --neutral-fill: #6e7681; --closed-border: #6e7681;
-    --chip-bg: #0d2440; --chip-text: #79c0ff;
-    --score-hi: #238636; --score-mid: #9e6a03; --score-lo: #6e7681;
-  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   html { scroll-padding-top: 130px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it */
   body { margin: 0; background: var(--bg); color: var(--text); }
   header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
