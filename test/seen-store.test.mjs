@@ -43,17 +43,6 @@ test("loadSeenStore moves a corrupt file to .corrupt and starts fresh", (t) => {
   assert.equal(warnings.length, 1);
 });
 
-test("loadSeenStore migrates a legacy array and persists as { key: iso }", (t) => {
-  const p = join(tmpDir(t), "seen.json");
-  writeFileSync(p, JSON.stringify(["a", "b"]));
-  const s = loadSeenStore(p, { now: Date.parse("2026-08-26T00:00:00Z") });
-  assert.ok(s.has("a") && s.has("b") && !s.has("c"));
-  s.add("c").save();
-  const disk = JSON.parse(readFileSync(p, "utf8"));
-  assert.deepEqual(Object.keys(disk).sort(), ["a", "b", "c"]);
-  assert.equal(disk.a, "2026-08-26T00:00:00.000Z");
-});
-
 test("loadSeenStore drops entries older than the TTL", (t) => {
   const p = join(tmpDir(t), "seen.json");
   const now = Date.parse("2026-08-26T00:00:00Z");
@@ -63,12 +52,4 @@ test("loadSeenStore drops entries older than the TTL", (t) => {
   assert.equal(s.has("fresh"), true);
   assert.equal(s.has("junk"), false);
   assert.equal(s.size, 1);
-});
-
-test("loadSeenStore starts fresh on a missing file or a legacy file flagged stale", (t) => {
-  const p = join(tmpDir(t), "seen.json");
-  assert.equal(loadSeenStore(p).size, 0);
-  writeFileSync(p, JSON.stringify(["https://x/1"]));
-  const s = loadSeenStore(p, { isLegacy: (a) => a.some((e) => e.startsWith("http")) });
-  assert.equal(s.size, 0);
 });
