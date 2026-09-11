@@ -141,7 +141,7 @@ test("fetchLinkedInJobs skips the click for cards the skip() predicate knows, st
   assert.deepEqual(seen.map((j) => [j.title, j.company, j.url]), [["Known SDET", "Acme", "https://www.linkedin.com/jobs/view/1/"], ["New AQA", "Beta", "https://www.linkedin.com/jobs/view/2/"]], "predicate sees list fields + canonical url");
   assert.equal(page.calls.filter((c) => c.startsWith("click")).length, 1, "only the unknown card is opened");
   assert.equal(jobs.length, 2, "known card is still returned so the caller can re-stamp it as seen");
-  assert.equal(jobs[0].text, "Known SDET at Acme. Kyiv. ", "no description for a skipped card");
+  assert.equal(jobs[0].text, "Known SDET at Acme. Kyiv.", "no description for a skipped card");
   assert.match(jobs[1].text, /Job description$/);
 });
 

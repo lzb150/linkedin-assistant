@@ -46,13 +46,9 @@ const parsed = files
   .map((x) => ({
     ...x,
     score: Number.isFinite(parseInt(x.fm.score, 10)) ? parseInt(x.fm.score, 10) : 0,
-    llm: /^\d+$/.test(x.fm.llm_score || "") && Number.isFinite(parseInt(x.fm.llm_score, 10)) ? parseInt(x.fm.llm_score, 10) : null,
+    llm: /^\d+$/.test(x.fm.llm_score || "") ? parseInt(x.fm.llm_score, 10) : null,
     generated: x.fm.generated || "",
   }));
-
-// Packages written before the extractSalary trailing-comma fix have values like
-// "$2800–3500," baked into their frontmatter; clean them up at render time.
-for (const it of parsed) if (it.fm.salary) it.fm.salary = it.fm.salary.replace(/[,\s]+$/, "");
 
 // applications/ is append-only: historical runs left many packages for the same
 // vacancy (boards used to change a job's URL between runs when seen was URL-keyed).
@@ -79,7 +75,7 @@ function scoreBand(s) {
 // All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
 const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4" };
 function badge(source) {
-  const c = (Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : undefined) || "#6e7781";
+  const c = Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : "#6e7781";   // hasOwn: source is frontmatter text, "constructor" must not resolve
   return `<span class="src" style="background:${c}">${esc(source)}</span>`;
 }
 

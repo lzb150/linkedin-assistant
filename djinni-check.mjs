@@ -83,9 +83,7 @@ try {
   // leaves the unread bucket) drops out, so if it ever goes unread again it will
   // notify afresh. First run with no seen file notifies for current unread.
   const rawSeen = readJson(SEEN_FILE, []);
-  const seen = Array.isArray(rawSeen) ? rawSeen.map(String) : [];
-
-  const seenSet = new Set(seen);
+  const seenSet = new Set(Array.isArray(rawSeen) ? rawSeen.map(String) : []);
   const fresh = threads.filter((t) => !seenSet.has(t.id));
   if (fresh.length) {
     const first = fresh.find((t) => t.label)?.label;
@@ -128,7 +126,7 @@ try {
       // open the unread bucket.
       writeState(STATE_FILE, {
         count: unreadCount,
-        pending: unreadThreads.map((t) => ({ id: t.id, label: t.label })),
+        pending: unreadThreads,
       });
     } catch (e) {
       log("notify: writeState failed:", e?.message);
