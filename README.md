@@ -47,7 +47,7 @@ click is always yours.
 
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance; cards are
-  marked Viewed as you open them, ✗ hides what is not yours; private notes,
+  marked Viewed as you open them; private notes,
   multi-select filters, search, freshness highlights, and a copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
@@ -233,8 +233,8 @@ with the server sources and restarts it when they are newer, so no manual
 **Statuses** — the tool is a radar: it finds and prepares, you apply
 selectively on the job site, so the dashboard tracks only what it needs to stay
 readable. A card is **New** until you open the job or expand its letter, which
-marks it **Viewed** automatically; **✗** hides a vacancy that is not for you;
-**Closed** is set by the closed-vacancy check below; both drop out of the New
+marks it **Viewed** automatically; **Closed** is set by the closed-vacancy check
+below and drops out of the New
 and Viewed views (deselect both tabs to see everything). That is the whole model —
 there is no applied/answered/interview pipeline (the few real applications live
 in your mailbox, not here). You can attach private notes to any card; they are
@@ -264,7 +264,7 @@ second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
 New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
-auto-reopened by clicking them. ✗ cards are left alone. Tune with `CLOSED_MAX` and
+auto-reopened by clicking them. Tune with `CLOSED_MAX` and
 `CLOSED_RECHECK_DAYS`; it never posts a banner — closures show up as the muted
 "· closed" cue on the dashboard. Install like the weekly report below, with
 `com.example.closed-check.plist.example`.
@@ -406,7 +406,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 | `check.mjs`           | Read unread → score → draft. Never sends.                 |
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
-| `dashboard.mjs`       | Build the HTML dashboard (Viewed / ✗ / Closed, notes, filters). |
+| `dashboard.mjs`       | Build the HTML dashboard (Viewed / Closed, notes, filters). |
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
