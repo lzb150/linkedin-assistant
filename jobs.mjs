@@ -69,15 +69,8 @@ const notify = (msg) =>
 
 // jobs-seen.json stores identity keys (normalize(company)+title) with a
 // last-seen timestamp (90-day TTL), so a vacancy is "seen" regardless of
-// source and the file stops growing forever. Legacy array files migrate on
-// load; the oldest URL-keyed format starts fresh.
-const seen = loadSeenStore(SEEN_FILE, {
-  isLegacy: (arr) => {
-    const stale = arr.some((e) => typeof e === "string" && e.startsWith("http"));
-    if (stale) log("jobs-seen.json is in the legacy URL format — migrating to identity keys (starting fresh)");
-    return stale;
-  },
-});
+// source and the file stops growing forever.
+const seen = loadSeenStore(SEEN_FILE);
 const saveSeen = () => seen.save();
 
 // source-health.json keeps the last 10 runs' `found` counts per source so we
