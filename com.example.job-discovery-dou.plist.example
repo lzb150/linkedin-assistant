@@ -14,9 +14,11 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/YOUR_USERNAME/linkedin-assistant/run-jobs.sh</string>
-    <string>dou</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run.sh</string>
+    <string>jobs.mjs</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>DOU_ONLY</key><string>1</string></dict>
   <key>StartCalendarInterval</key>
   <dict><key>Minute</key><integer>15</integer></dict>
   <key>StandardOutPath</key>
