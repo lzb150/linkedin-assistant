@@ -1,14 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  launchd job: runs closed-check.mjs every morning at 08:30: probes New/Viewed DOU, Djinni and LinkedIn
-  vacancies and marks the ones the board reports inactive as "closed". Replace YOUR_USERNAME (and the node path)
-  with your own.
-  Install:
-    cp com.example.closed-check.plist.example ~/Library/LaunchAgents/com.example.closed-check.plist
-    launchctl load ~/Library/LaunchAgents/com.example.closed-check.plist
-  Uninstall:
-    launchctl unload ~/Library/LaunchAgents/com.example.closed-check.plist
+  Closed-vacancy check (closed-check.mjs), daily at 08:30: marks New/Viewed vacancies the board
+  reports inactive as "closed".
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

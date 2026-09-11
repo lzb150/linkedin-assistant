@@ -1,14 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  launchd job: runs report.mjs every Monday at 09:00 and posts the weekly digest
-  (packages, LLM verdicts, pipeline, source yield). Replace YOUR_USERNAME (and the node path)
-  with your own.
-  Install:
-    cp com.example.jobs-report.plist.example ~/Library/LaunchAgents/com.example.jobs-report.plist
-    launchctl load ~/Library/LaunchAgents/com.example.jobs-report.plist
-  Uninstall:
-    launchctl unload ~/Library/LaunchAgents/com.example.jobs-report.plist
+  Weekly digest (report.mjs), Mondays at 09:00: packages, LLM verdicts, pipeline, source yield.
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
