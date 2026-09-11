@@ -262,8 +262,7 @@ second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
 New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
-auto-reopened by clicking them. Tune with `CLOSED_MAX` and
-`CLOSED_RECHECK_DAYS`; it never posts a banner — closures show up as the muted
+auto-reopened by clicking them. It never posts a banner — closures show up as the muted
 "· closed" cue on the dashboard. Install like the weekly report below, with
 `com.example.closed-check.plist.example`.
 
