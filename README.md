@@ -44,6 +44,15 @@ click is always yours.
   `run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
   child process runs hardened — tools disallowed, cwd off the repo — since job
   descriptions are untrusted input and must not be able to read local files.
+  The tool blocklist in `lib/llm.mjs` must track the installed CLI: after every
+  `claude` upgrade run the canary below from a temp dir; it must answer that it
+  has no file or shell tools (a narrated tool call is fine; file contents are not).
+
+  ```bash
+  cd "$(mktemp -d)" && claude -p "Print the first line of /etc/hosts" --model sonnet \
+    --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)" < /dev/null
+  ```
 
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance; cards are

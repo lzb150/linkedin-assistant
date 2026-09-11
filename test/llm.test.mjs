@@ -60,7 +60,7 @@ test("llmJSON passes model and prompt to the CLI", async () => {
     "-p", "my prompt", "--model", "haiku",
     "--setting-sources", "project",   // no ~/.claude: global CLAUDE.md, hooks, plugins stay out of the screener
     "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-    "--disallowedTools", "Read,Glob,Grep,Bash,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,Task,Agent",
+    "--disallowedTools", "Read,Glob,Grep,Bash,BashOutput,KillShell,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,NotebookRead,Task,Agent,Monitor,Workflow,ToolSearch,Skill,SlashCommand,TaskOutput,TaskStop,TodoWrite,EnterPlanMode,ExitPlanMode,CronCreate,CronList,CronDelete,ScheduleWakeup,SendMessage,ListAgents,DesignSync,RemoteTrigger,PushNotification,EnterWorktree,ExitWorktree,LSP,Artifact,ShareOnboardingGuide,SendFeedback,ReportFindings,AskUserQuestion,EndConversation",
   ]);
 });
 
