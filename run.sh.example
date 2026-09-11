@@ -1,19 +1,27 @@
 #!/bin/bash
-# Wrapper for scheduled runs (launchd/cron strip your PATH, so set it explicitly).
+# One wrapper for every scheduled script (launchd strips PATH, so it is set here).
+#   run.sh check.mjs                 LinkedIn inbox check      → logs/check_YYYYMMDD.log
+#   run.sh jobs.mjs                  full job discovery        → logs/jobs_YYYYMMDD.log
+#   DOU_ONLY=1 run.sh jobs.mjs       RSS/board-only discovery  → logs/jobs_dou_YYYYMMDD.log
+#   run.sh djinni-check.mjs          Djinni inbox check        → logs/djinni-check_YYYYMMDD.log
 # Copy to run.sh and fill in your own values (run.sh is gitignored).
 set -euo pipefail
 
 # Point this at the node that has playwright installed (adjust the version).
-export PATH="$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# ~/.local/bin holds the claude CLI (LLM re-scoring).
+export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/<YOUR_NODE_VERSION>/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export RESUME_PATH="$HOME/Downloads/your-resume.docx"   # attach hint in drafts and packages
+export CANDIDATE_NAME="Your Name"                       # signature in drafts and cover notes
 
 cd "$(dirname "$0")"
 mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
 find "$PWD/logs" -name '*.log' ! -name 'state-server.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (the server holds its log open)
-STAMP="$(date +%Y%m%d)"   # one log file per day; each run appends after a "=== run" separator
-# Keep your resume path in one place for the draft attach hint.
-export RESUME_PATH="$HOME/Downloads/your-resume.docx"
-# Your name for the cover-note / reply signature.
-export CANDIDATE_NAME="Your Name"
+find "$PWD/applications/archive" -name '*.md' -mtime +180 -delete 2>/dev/null || true   # archived packages: nothing reads them
 
-{ echo "=== run $(date -u +%FT%TZ) ==="; node check.mjs; } >> "logs/run_${STAMP}.log" 2>&1
-echo "log: logs/run_${STAMP}.log"
+SCRIPT="${1##*/}"
+LOG="logs/${SCRIPT%.mjs}${DOU_ONLY:+_dou}_$(date +%Y%m%d).log"   # one file per day; each run appends after a "=== run" separator
+# caffeinate: launchd fires a missed schedule inside a short DarkWake and the Mac
+# sleeps again under the run — timers pause and a 1-minute run stretches to an hour.
+# -i keeps the system awake while the script runs; -s adds a hard hold on AC power.
+{ echo "=== run $(date -u +%FT%TZ) ==="; caffeinate -i -s node "$@"; } >> "$LOG" 2>&1
+echo "log: $LOG"

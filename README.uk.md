@@ -43,7 +43,7 @@
   (`enabled`, `model`, `maxPerRun`, `concurrency` — паралельні виклики CLI, типово 3, `minScore` — 0 робить LLM лише дорадчим). Збіги
   понад ліміт `maxPerRun` відкладаються на наступний запуск, а не пишуться без оцінки.
   У wrapper-скрипті бінарник `claude` має бути в `PATH` (`~/.local/bin`, див.
-  `run-jobs.sh.example`), інакше кожен пакет тихо деградує до keyword-only. Картки з LLM-оцінкою
+  `run.sh.example`), інакше кожен пакет тихо деградує до keyword-only. Картки з LLM-оцінкою
   мають бейдж 🤖 на дашборді. Дочірній процес `claude` запускається у
   захищеному режимі — інструменти вимкнені, робоча тека поза репозиторієм —
   бо текст вакансій є недовіреним входом і не повинен читати локальні файли.
@@ -161,7 +161,6 @@ Djinni (`https://djinni.co/my/inbox?bucket=unread`), ніколи не відк�
 Запуск щогодини через launchd:
 
 ```bash
-cp run-djinni.sh.example run-djinni.sh                      # потім відредагуйте PATH/версію
 cp com.example.djinni-inbox.plist.example \
    ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # потім відредагуйте шляхи
 launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
@@ -306,7 +305,7 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
    `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
 3. **Резюме** — замініть `resume.txt` (керує LLM-оцінкою та листами).
-4. **Вкладення** — оновіть `RESUME_PATH` у `run.sh` / `run-jobs.sh`.
+4. **Вкладення** — оновіть `RESUME_PATH` у `run.sh`.
 
 Повний покроковий гайд — від назви посади (напр. «Senior Fullstack Developer»)
 до робочого конфіга, включно з сеньйорністю та тестами, прив'язаними до
@@ -334,7 +333,7 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 gitignore):
 
 ```bash
-cp run.sh.example run.sh && cp run-jobs.sh.example run-jobs.sh   # потім відредагуйте версію node + RESUME_PATH
+cp run.sh.example run.sh   # потім відредагуйте версію node + RESUME_PATH
 cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # замініть YOUR_USERNAME всередині
 cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist

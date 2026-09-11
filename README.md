@@ -41,7 +41,7 @@ click is always yours.
   `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only). Matches past
   the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
   script must have the `claude` binary on `PATH` (`~/.local/bin`, see
-  `run-jobs.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
+  `run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
   child process runs hardened — tools disallowed, cwd off the repo — since job
   descriptions are untrusted input and must not be able to read local files.
 
@@ -153,7 +153,6 @@ Clicking the badge or a Djinni banner opens the unread thread (or the unread buc
 Run it hourly via launchd:
 
 ```bash
-cp run-djinni.sh.example run-djinni.sh                      # then edit PATH/version
 cp com.example.djinni-inbox.plist.example \
    ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # then edit the paths
 launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
@@ -299,7 +298,7 @@ entirely in config. To hunt, say, developer jobs instead:
    `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
 3. **Resume** — replace `resume.txt` (drives LLM scoring and letters).
-4. **Attachment** — update `RESUME_PATH` in `run.sh` / `run-jobs.sh`.
+4. **Attachment** — update `RESUME_PATH` in `run.sh`.
 
 The full walkthrough — from a job title like "Senior Fullstack Developer" to a
 working config, including seniority handling and the profile-coupled tests —
@@ -326,7 +325,7 @@ your resume location), so they ship as `*.example` templates. Copy each, fill in
 your own values, and the real copies stay local (gitignored):
 
 ```bash
-cp run.sh.example run.sh && cp run-jobs.sh.example run-jobs.sh   # then edit node version + RESUME_PATH
+cp run.sh.example run.sh   # then edit node version + RESUME_PATH
 cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # replace YOUR_USERNAME inside
 cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist

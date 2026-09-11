@@ -22,7 +22,8 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/YOUR_USERNAME/linkedin-assistant/run-djinni.sh</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run.sh</string>
+    <string>djinni-check.mjs</string>
   </array>
 
   <!-- Runs every hour at minute 0 (00:00, 01:00, 02:00 ... 23:00). -->
