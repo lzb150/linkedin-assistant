@@ -1,19 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { loadSeenStore } from "../lib/seen-store.mjs";
+import { tmpDir } from "./helpers/e2e.mjs";
 import { writeJsonAtomic } from "../lib/json-file.mjs";
 
-function tmp(t) {
-  const dir = mkdtempSync(join(tmpdir(), "seen-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return join(dir, "seen.json");
-}
-
 test("writeJsonAtomic writes the value and leaves no temp file", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   writeJsonAtomic(p, { a: 1 });
   assert.deepEqual(JSON.parse(readFileSync(p, "utf8")), { a: 1 });
   assert.throws(() => readFileSync(`${p}.${process.pid}.tmp`));
@@ -21,7 +15,7 @@ test("writeJsonAtomic writes the value and leaves no temp file", (t) => {
 });
 
 test("writeJsonAtomic leaves no temp file and no clobbered target when the write fails", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   writeJsonAtomic(p, { ok: 1 });
   assert.throws(() => writeJsonAtomic(p, { big: 1n })); // BigInt is not serialisable
   assert.deepEqual(readdirSync(dirname(p)), ["seen.json"]);
@@ -29,7 +23,7 @@ test("writeJsonAtomic leaves no temp file and no clobbered target when the write
 });
 
 test("seen-store add() on an existing key refreshes the stamp to last-seen", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   writeFileSync(p, JSON.stringify({ a: "2026-08-01T00:00:00.000Z" }));
   const s = loadSeenStore(p, { now: Date.parse("2026-08-26T00:00:00Z") });
   s.add("a").save();
@@ -37,7 +31,7 @@ test("seen-store add() on an existing key refreshes the stamp to last-seen", (t)
 });
 
 test("loadSeenStore moves a corrupt file to .corrupt and starts fresh", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   writeFileSync(p, "{not json");
   const warnings = [];
   const s = loadSeenStore(p, { warn: (m) => warnings.push(m) });
@@ -50,7 +44,7 @@ test("loadSeenStore moves a corrupt file to .corrupt and starts fresh", (t) => {
 });
 
 test("loadSeenStore migrates a legacy array and persists as { key: iso }", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   writeFileSync(p, JSON.stringify(["a", "b"]));
   const s = loadSeenStore(p, { now: Date.parse("2026-08-26T00:00:00Z") });
   assert.ok(s.has("a") && s.has("b") && !s.has("c"));
@@ -61,7 +55,7 @@ test("loadSeenStore migrates a legacy array and persists as { key: iso }", (t) =
 });
 
 test("loadSeenStore drops entries older than the TTL", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   const now = Date.parse("2026-08-26T00:00:00Z");
   writeFileSync(p, JSON.stringify({ old: "2026-01-01T00:00:00Z", fresh: "2026-08-01T00:00:00Z", junk: "nope" }));
   const s = loadSeenStore(p, { now, ttlDays: 90 });
@@ -72,7 +66,7 @@ test("loadSeenStore drops entries older than the TTL", (t) => {
 });
 
 test("loadSeenStore starts fresh on a missing file or a legacy file flagged stale", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "seen.json");
   assert.equal(loadSeenStore(p).size, 0);
   writeFileSync(p, JSON.stringify(["https://x/1"]));
   const s = loadSeenStore(p, { isLegacy: (a) => a.some((e) => e.startsWith("http")) });

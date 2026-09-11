@@ -10,6 +10,27 @@ import { mkdtempSync, rmSync, writeFileSync, copyFileSync, cpSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import { spawn } from "node:child_process";
+import { createServer } from "../../state-server.mjs";
+
+// A throwaway dir, removed after the test.
+export function tmpDir(t, prefix = "t-") {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+// A state server on a random loopback port over a fresh temp dir, closed after
+// the test. statePath/indexPath point it at a prepared store (corrupt,
+// unwritable); by default index.html is a stub so GET / has a body.
+export async function startStateServer(t, { statePath, indexPath } = {}) {
+  const dir = tmpDir(t, "srv-");
+  if (!indexPath) writeFileSync((indexPath = join(dir, "index.html")), "<html></html>");
+  statePath ??= join(dir, "job-state.json");
+  const srv = createServer({ statePath, indexPath });
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  const port = await new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port)));
+  return { dir, srv, port, base: `http://127.0.0.1:${port}`, statePath, indexPath };
+}
 
 export const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
 // Frozen QA skill profile. The live skills.json is USER config (README says

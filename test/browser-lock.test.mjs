@@ -1,20 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireProfileLock } from "../lib/browser.mjs";
+import { tmpDir } from "./helpers/e2e.mjs";
 import { explainLaunchError } from "../lib/browser.mjs";
 
-function tmp(t) {
-  const dir = mkdtempSync(join(tmpdir(), "lock-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return join(dir, "profile");
-}
-
 test("acquireProfileLock creates the lock, rejects a second holder, releases", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "profile");
   const release = acquireProfileLock(p);
   assert.ok(existsSync(`${p}.lock`));
   assert.throws(() => acquireProfileLock(p), /profile busy: another run holds .*profile\.lock/);
@@ -23,7 +17,7 @@ test("acquireProfileLock creates the lock, rejects a second holder, releases", (
 });
 
 test("acquireProfileLock takes over a stale lock (no pid file → mtime fallback)", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "profile");
   mkdirSync(`${p}.lock`);
   // pretend "now" is 3h in the future so the fresh dir looks stale
   const release = acquireProfileLock(p, { now: Date.now() + 3 * 3600_000 });
@@ -33,7 +27,7 @@ test("acquireProfileLock takes over a stale lock (no pid file → mtime fallback
 });
 
 test("acquireProfileLock takes over a fresh lock whose pid is dead", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "profile");
   mkdirSync(`${p}.lock`);
   // a child that has already exited: its pid is guaranteed dead
   const dead = spawnSync("true").pid;
@@ -44,7 +38,7 @@ test("acquireProfileLock takes over a fresh lock whose pid is dead", (t) => {
 });
 
 test("acquireProfileLock takes over an ancient lock even if its pid is alive (pid reuse)", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "profile");
   mkdirSync(`${p}.lock`);
   writeFileSync(join(`${p}.lock`, "pid"), String(process.pid));
   // Within staleMs an alive pid holds the lock...
@@ -56,7 +50,7 @@ test("acquireProfileLock takes over an ancient lock even if its pid is alive (pi
 });
 
 test("release() leaves a lock alone once another pid has taken it over", (t) => {
-  const p = tmp(t);
+  const p = join(tmpDir(t), "profile");
   const release = acquireProfileLock(p);
   // Simulate a takeover by another run (e.g. one that misjudged our pid dead).
   writeFileSync(join(`${p}.lock`, "pid"), "999999");
