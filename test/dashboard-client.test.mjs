@@ -122,15 +122,6 @@ test("reconnect: a network failure mid-push keeps the unpushed dirty urls and th
   assert.equal(server[A].status, "viewed", "first patch did land");
 });
 
-// A cache from before dirty-tracking (no list at all) must still get its
-// one-time "push what the server lacks" migration when booted offline.
-test("offline boot with a legacy cache seeds dirty with every entry", async () => {
-  const U = "https://example.com/jobs/legacy/";
-  const store = new Map([["jobStatus", JSON.stringify({ _meta: {}, [U]: "viewed" })]]);
-  await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
-  assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), [U]);
-});
-
 // Regression (#52): flash() used the .offline class, so a flash badge in the
 // header made markOffline()'s idempotence guard skip the real offline badge.
 test("flash then markOffline still shows the offline badge", async () => {

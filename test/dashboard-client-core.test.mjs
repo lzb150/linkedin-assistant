@@ -42,7 +42,7 @@ test("isNew: baseline rules", () => {
   assert.equal(core.isNew("junk", "2026-07-29T00:00:00Z"), false);
 });
 
-test("offlinePatches: dirty urls push full-override patches, deletions clear, legacy migrates missing only", () => {
+test("offlinePatches: dirty urls push full-override patches, deletions clear", () => {
   const local = {
     _meta: { lastVisit: "x" },
     "https://a/": { status: "rejected", note: "hi" },
@@ -51,13 +51,11 @@ test("offlinePatches: dirty urls push full-override patches, deletions clear, le
   };
   const server = { _meta: {}, "https://a/": { status: "viewed" }, "https://d/": { status: "rejected" } };
   // Dirty tracking: only a (edited existing) and d (deleted offline) go out; b/c untouched.
-  assert.deepEqual(core.offlinePatches(local, ["https://a/", "https://d/"], server), [
+  assert.deepEqual(core.offlinePatches(local, ["https://a/", "https://d/"]), [
     { url: "https://a/", patch: { status: "rejected", note: "hi" } },
     { url: "https://d/", patch: { status: "new", note: "" } },
   ]);
-  assert.deepEqual(core.offlinePatches(local, [], server), []);
-  // Legacy cache (no dirty list): one-time migration of what the server lacks.
-  assert.deepEqual(core.offlinePatches(local, null, server).map((p) => p.url), ["https://b/", "https://c/"]);
+  assert.deepEqual(core.offlinePatches(local, []), []);
   // The clearing patch really empties an entry via the shared merge.
   assert.equal(core.mergeEntryLocal(server["https://d/"], core.entryToPatch(undefined)), null);
 });
