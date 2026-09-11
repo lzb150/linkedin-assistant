@@ -15,6 +15,9 @@ test("filterByLocation: foreign terms drop a job unless it is a remote DOU listi
   ];
   const kept = filterByLocation(jobs, ["польща", "poland"]);
   assert.deepEqual(kept.map((j) => j.title), ["A", "C", "D", "H"]);
+  // Another candidate: living in Poland, F (Канада, Польща, Сербія) becomes eligible and H (Європи та Україна) does not
+  const pl = filterByLocation(jobs, ["ukraine"], ["Poland", "Польща"]);
+  assert.deepEqual(pl.map((j) => j.title), ["A", "B", "C", "D", "E", "F"]);
 });
 
 test("djinniEligible: the countries segment must name Ukraine or the whole world; no segment means keep", () => {
@@ -25,6 +28,7 @@ test("djinniEligible: the countries segment must name Ukraine or the whole world
   const no = ["Тільки віддалено · Канада, Польща, Сербія · 5 років досвіду · Англійська - B2", "Гібридний формат роботи · Польща · 3 роки досвіду", "Тільки віддалено · Країни ЄС · 3 роки досвіду",
     "Тільки віддалено · Аргентина, Бразилія, Канада, Мексика, Сполучені Штати · 5 років досвіду"];
   for (const l of no) assert.equal(djinniEligible(l), false, l);
+  assert.equal(djinniEligible("Тільки віддалено · Країни ЄС · 3 роки досвіду", ["Poland", "Польща", "Країни ЄС"]), true, "an EU candidate can list the board's region wording as a spelling");
 });
 
 test("filterByLocation coerces non-string patterns and is a no-op without a list", () => {

@@ -100,6 +100,14 @@ browser's filters — that keeps parameters valid:
 The global `minScore` (18) is only a keyword pre-gate; the LLM gate
 (`llm.minScore`, 70) does the real screening.
 
+### 5b. Country — `candidateCountry`
+
+Where the candidate lives and works remotely from, in every spelling the boards
+use (`["Ukraine", "Україна"]` ships). Djinni's countries segment must name one
+of these or the whole world; the LLM gate scores a vacancy closed to that
+country at most 10. Someone in Poland sets `["Poland", "Польща", "Країни ЄС"]`
+and moves `"Poland"`/`"Польща"` out of `excludeLocation`.
+
 ### 6. Resume
 
 Replace `resume.txt` with your plain-text resume (it drives LLM re-scoring

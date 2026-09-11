@@ -189,7 +189,7 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Djinni "Тільки офіс · Польща", etc).
 {
   const before = jobs.length;
-  const keptLoc = filterByLocation(jobs, config.excludeLocation);
+  const keptLoc = filterByLocation(jobs, config.excludeLocation, config.candidateCountry || undefined);
   if (keptLoc.length < before) {
     const kept = new Set(keptLoc);
     log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
@@ -285,7 +285,7 @@ let scoring = Promise.resolve();
 if (llmOn) {
   const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
   scoring = pool(toScore, Math.max(1, Number(LLM.concurrency) || 3), async (m) => {
-    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text)), { model: LLM.model || "sonnet", log }));
+    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: config.candidateCountry?.[0] }), { model: LLM.model || "sonnet", log }));
   });
 }
 for (const m of toScore) {
