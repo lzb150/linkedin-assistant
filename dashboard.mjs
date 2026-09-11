@@ -83,7 +83,7 @@ function badge(source) {
 // board's chip disappears by itself once its last package is archived.
 const SOURCE_LABELS = { linkedin: "LinkedIn", dou: "DOU", djinni: "Djinni" };
 const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
-  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(SOURCE_LABELS[src] || src)}</button>`)
+  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(Object.hasOwn(SOURCE_LABELS, src) ? SOURCE_LABELS[src] : src)}</button>`)
   .join("\n      ");
 
 const cards = items
