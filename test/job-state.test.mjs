@@ -25,8 +25,8 @@ test("normalize keeps a note-only entry (status defaults to new)", () => {
 
 test("mergeEntry sets status without mutating the input", () => {
   const before = {};
-  const after = mergeEntry(before, U, { status: "rejected" });
-  assert.equal(after[U].status, "rejected");
+  const after = mergeEntry(before, U, { status: "closed" });
+  assert.equal(after[U].status, "closed");
   assert.ok(after[U].updatedAt);
   assert.deepEqual(before, {}); // unchanged
 });
@@ -44,7 +44,7 @@ test("mergeEntry keeps the entry when a note remains after clearing status", () 
 
 test("validatePatch rejects an unknown status and accepts a valid one", () => {
   assert.equal(validatePatch({ status: "offer" }), false);
-  assert.equal(validatePatch({ status: "rejected" }), true);
+  assert.equal(validatePatch({ status: "closed" }), true);
   assert.equal(validatePatch({ note: "ok" }), true);
   assert.equal(validatePatch({ appliedAt: "2026-06-15T10:00:00Z" }), true, "unknown patch keys are ignored, not rejected");
   assert.equal(validatePatch({ note: 5 }), false);
@@ -53,9 +53,9 @@ test("validatePatch rejects an unknown status and accepts a valid one", () => {
 test("readStore round-trips through writeStore atomically", (t) => {
   const dir = tmpDir(t);
   const p = join(dir, "job-state.json");
-  writeStore(p, mergeEntry({ _meta: { lastVisit: "t" } }, U, { status: "rejected" }));
+  writeStore(p, mergeEntry({ _meta: { lastVisit: "t" } }, U, { status: "closed" }));
   const back = readStore(p);
-  assert.equal(back[U].status, "rejected");
+  assert.equal(back[U].status, "closed");
   assert.equal(back._meta.lastVisit, "t");
 });
 
@@ -71,7 +71,7 @@ test("readStore throws on malformed JSON (a corrupt store must never be silently
 });
 
 test("normalize keeps every stored status", () => {
-  for (const st of ["viewed", "rejected", "closed"]) {
+  for (const st of ["viewed", "closed"]) {
     const out = normalize({ [U]: { status: st } });
     assert.equal(out[U].status, st, st);
     assert.equal(statusOf(out, U), st);
@@ -118,7 +118,7 @@ test("writeStore keeps one snapshot per day, never overwrites it, prunes to 7", 
   writeStore(p, { _meta: {}, u1: { status: "viewed" } }, { now: day(1) });
   assert.deepEqual(snaps(), [], "nothing to snapshot before the first file exists");
 
-  writeStore(p, { _meta: {}, u1: { status: "rejected" } }, { now: day(2) });
+  writeStore(p, { _meta: {}, u1: { status: "closed" } }, { now: day(2) });
   assert.deepEqual(snaps(), ["job-state.2026-09-02.bak"]);
   assert.equal(JSON.parse(readFileSync(join(dir, "job-state.2026-09-02.bak"), "utf8")).u1.status, "viewed", "snapshot holds the file as it was before the day's first write");
 

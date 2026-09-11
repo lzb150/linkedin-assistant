@@ -57,8 +57,8 @@ for (const { url, source } of todo) {
 // ponytail: still a race with a click in that same instant; POST to the state
 // server instead if it ever bites.
 let stateMap = readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved");
-// A status the user set while we were probing (✗) wins over
-// the board's verdict — candidates were New/Viewed at the start, re-check now.
+// A status set while we were probing (a concurrent closed-check, a newer
+// build's status) wins over the board's verdict — candidates were New/Viewed at the start, re-check now.
 let saved = 0;
 for (const url of closedUrls) {
   const st = stateMap[url]?.status;

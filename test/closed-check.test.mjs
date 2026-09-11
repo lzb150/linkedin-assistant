@@ -18,7 +18,7 @@ const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexi
 // The fixture board lives on loopback; the host allowlist must be told so.
 const LOCAL = { CLOSED_EXTRA_HOSTS: JSON.stringify({ dou: "127.0.0.1" }) };
 
-test("closed-check: edits landing during the run win — another url's status survives, and ✗ on the probed url beats the closure", async (t) => {
+test("closed-check: edits landing during the run win — another url's status survives, and a status set on the probed url beats the closure", async (t) => {
   const U = `${await server404(t)}/vacancies/1/`;
   const p = makeProject(t, {
     scripts: ["closed-check.mjs"],
@@ -33,16 +33,17 @@ test("closed-check: edits landing during the run win — another url's status su
   // test would pass without racing anything.
   const run = spawnScript(p, "closed-check.mjs", LOCAL);
   await run.output(/probing \d+ of/);
+  const now = new Date().toISOString();   // a fresh closure: not yet due for archiving
   writeFileSync(p.path("job-state.json"), JSON.stringify({ _meta: {},
-    "https://other/": { status: "rejected" },
-    [U]: { status: "rejected" } }));
+    "https://other/": { status: "closed", updatedAt: now },
+    [U]: { status: "closed", updatedAt: now } }));
   const out = await run.done;
 
   assert.match(out, /✗ closed \[404\]/, "the board did report it closed");
-  assert.match(out, /0 closed, 1 probed/, "…but the user's ✗ wins, so nothing was saved as closed");
+  assert.match(out, /0 closed, 1 probed/, "…but the status set during the run wins, so nothing was saved by the probe");
   const state = p.json("job-state.json");
-  assert.equal(state[U].status, "rejected", "✗ set during the run is not overwritten by the closure");
-  assert.equal(state["https://other/"].status, "rejected", "the concurrent edit on another url survived");
+  assert.equal(state[U].status, "closed", "status set during the run is not overwritten by the probe");
+  assert.equal(state["https://other/"].status, "closed", "the concurrent edit on another url survived");
   assert.ok(Object.keys(p.json("closed-check-state.json")).includes(U), "check stamp written");
 });
 
