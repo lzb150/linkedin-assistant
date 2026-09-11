@@ -62,6 +62,7 @@ click is always yours.
 | Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
 | Weekly report (`jobs-report`)                    | Monday 09:00           |
 | Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |
+| Dashboard state server (`state-server`)         | always on (KeepAlive)  |
 
 A `jobs.mjs` run posts **at most one macOS banner**: the new packages it wrote
 (strongest first, up to 3 names) preceded by any breakage alerts — a source far
@@ -216,18 +217,16 @@ generated one. You see each vacancy once even when older packages linger on disk
 
 **State server (`state-server.mjs`)** replaces in-browser localStorage as the
 persistence layer. The dashboard is served by a tiny local HTTP server at
-`http://127.0.0.1:7777/` (localhost only, never exposed). Clicking the Jobs.app
-Dock icon runs `open-dashboard.sh`, which regenerates the dashboard, starts the
-server if it is not already running, and opens the browser. Job state (status,
+`http://127.0.0.1:7777/` (localhost only, never exposed), kept running by the
+`state-server` launchd agent. Clicking the Jobs.app Dock icon runs
+`open-dashboard.sh`, which regenerates the dashboard and opens the browser. Job state (status,
 per-card notes, last-visit timestamp) is written to `job-state.json` on disk, so
 it survives a browser reset or a full OS restart. If the server is unreachable
 the dashboard falls back to `localStorage` and shows an **"offline — not saved
 to disk"** badge. Before the first write of each day the store is snapshotted to
 `job-state.YYYY-MM-DD.bak` (last 7 kept) — to roll back a bad day, copy a
-snapshot over `job-state.json`. The server keeps running across updates; the
-Dock-click launcher (`open-dashboard.sh`) compares its start time (`/health`)
-with the server sources and restarts it when they are newer, so no manual
-`pkill` is needed after pulling a new version.
+snapshot over `job-state.json`. After pulling a new version restart the server
+with `launchctl kickstart -k gui/$UID/com.<you>.state-server`.
 
 **Statuses** — the tool is a radar: it finds and prepares, you apply
 selectively on the job site, so the dashboard tracks only what it needs to stay
@@ -333,7 +332,8 @@ launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 
 Unload to stop: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assistant.plist`.
 Discovery has its own templates: `com.example.job-discovery-dou.plist.example`
-and `com.example.job-discovery-linkedin.plist.example`.
+and `com.example.job-discovery-linkedin.plist.example`; the dashboard's state
+server is `com.example.state-server.plist.example` (always on, also set the node path).
 
 ## When it breaks
 
@@ -368,7 +368,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
-├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
+├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
@@ -390,7 +390,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
-| `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
+| `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, open browser. |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
 | `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |
