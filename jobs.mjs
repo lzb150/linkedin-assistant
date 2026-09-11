@@ -139,37 +139,26 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
-const BROWSER_SOURCE_TABLE = [
-  { name: "linkedin", label: "LinkedIn", fetch: fetchLinkedInChecked },
-];
-const BROWSER_SOURCES = BROWSER_SOURCE_TABLE.map((s) => s.name);
-if (!DOU_ONLY && BROWSER_SOURCES.some((s) => config[s]?.enabled)) {
+if (!DOU_ONLY && config.linkedin?.enabled) {
   let ctx;
   try {
     ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
     const page = ctx.pages()[0] || (await ctx.newPage());
-    // Each source has its own try/catch so one failing does not skip the others or hide from health monitoring.
-    for (const s of BROWSER_SOURCE_TABLE) {
-      if (!config[s.name]?.enabled) continue;
-      if (s.name !== "linkedin") log(`Gathering ${s.label}...`);
-      try {
-        const found = await s.fetch(page, config[s.name]);
-        recordFound(summary, s.name, found.length);
-        jobs.push(...found);
-      } catch (e) { log(`${s.label} error:`, e.message); recordFound(summary, s.name, 0); }
-    }
+    // Own try/catch so a scrape failure is logged and counted as 0 for health monitoring.
+    try {
+      const found = await fetchLinkedInChecked(page, config.linkedin);
+      recordFound(summary, "linkedin", found.length);
+      jobs.push(...found);
+    } catch (e) { log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
   } catch (e) {
     log("Browser sources error:", e.message);
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
-    // no 0-counts either — leaving the sources out of the summary keeps a
+    // no 0-count either — leaving the source out of the summary keeps a
     // skipped run from looking like a scraper outage to health monitoring.
     if (!/profile busy/.test(e.message)) {
       if (!ctx) notify(`Browser launch failed: ${e.message}`);
-      // Launch/lock failure happens before the per-source catches: record 0 for
-      // every enabled browser source so health monitoring sees the outage.
-      for (const s of BROWSER_SOURCES) {
-        if (config[s]?.enabled && !summary.sources[s]) recordFound(summary, s, 0);
-      }
+      // Launch/lock failure happens before the inner catch: record 0 so health monitoring sees the outage.
+      if (!summary.sources.linkedin) recordFound(summary, "linkedin", 0);
     }
   } finally {
     await ctx?.close();
