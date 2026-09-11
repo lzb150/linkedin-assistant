@@ -124,7 +124,6 @@ const cards = items
       ${live ? `<div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" aria-pressed="false" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" aria-pressed="false" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
-        <button data-status="rejected" aria-pressed="false" aria-label="Not for me" title="Not for me" onclick="setStatus(this.closest('.card'),'rejected')">✗</button>
       </div>` : ""}
     </div>
   </div>
@@ -252,7 +251,6 @@ const html = `<!doctype html>
   .alt { color: var(--accent); text-decoration: none; margin-right: 8px; }
   .alt:hover { text-decoration: underline; }
   .empty { text-align: center; color: var(--muted); padding: 40px; }
-  .status-seg button.active[data-status="rejected"] { background: var(--danger-fill); color: #fff; }
   .card.rejected { background: var(--card-muted); border-left: 4px solid var(--danger-fill); }
   .card.rejected .titles h2 { color: var(--muted); }
   .card.rejected .titles h2::after { content: " ✗"; color: var(--danger-text); }   /* non-colour cue next to the red border */
