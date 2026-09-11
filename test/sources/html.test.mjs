@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDiv, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -35,12 +35,11 @@ test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   assert.equal(await fetchText("https://x/1", () => {}, "dou", okFetch), "body");
 });
 
-test("extractDiv ignores a '</div>' string inside <script> and a commented-out <div>", () => {
-  const re = /<div id="d">/;
-  const script = `<div id="d"><SCRIPT>var s = "</div>";</SCRIPT><p>body</p></div><p>after</p>`;
-  assert.equal(stripHtml(extractDiv(script, re)), "body");
-  const comment = `<div id="d"><!-- <div class="old"> --><p>body</p></div><p>after</p>`;
-  assert.equal(stripHtml(extractDiv(comment, re)), "body");
+test("extractDivByClass ignores a '</div>' string inside <script> and a commented-out <div>", () => {
+  const script = `<div class="d"><SCRIPT>var s = "</div>";</SCRIPT><p>body</p></div><p>after</p>`;
+  assert.equal(stripHtml(extractDivByClass(script, "d")), "body");
+  const comment = `<div class="d"><!-- <div class="old"> --><p>body</p></div><p>after</p>`;
+  assert.equal(stripHtml(extractDivByClass(comment, "d")), "body");
 });
 
 test("stripHtml / extractDivByClass stay linear on junk full of unclosed '<' (ReDoS guard)", () => {

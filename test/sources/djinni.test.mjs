@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { splitCards, parseCard, extractDivByClass, fetchDjinni } from "../../lib/sources/djinni.mjs";
+import { splitCards, parseCard, fetchDjinni } from "../../lib/sources/djinni.mjs";
+import { extractDivByClass } from "../../lib/sources/html.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const listing = readFileSync(join(__dir, "../fixtures/sources/djinni-listing.html"), "utf8");

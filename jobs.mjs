@@ -7,7 +7,8 @@
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
 
-import { readFileSync, readdirSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -56,10 +57,7 @@ const DOU_ONLY = process.env.DOU_ONLY === "1";
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
 
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
-function loadResume() {
-  try { return readFileSync(join(__dir, "resume.txt"), "utf8"); } catch { return ""; }
-}
-const RESUME_TXT = loadResume();
+const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
 const LLM = config.llm || {};
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
@@ -71,7 +69,6 @@ const notify = (msg) =>
 // last-seen timestamp (90-day TTL), so a vacancy is "seen" regardless of
 // source and the file stops growing forever.
 const seen = loadSeenStore(SEEN_FILE);
-const saveSeen = () => seen.save();
 
 // source-health.json keeps the last 10 runs' `found` counts per source so we
 // can warn when a source degrades well below its recent norm (a likely sign
@@ -286,7 +283,7 @@ for (const m of toScore) {
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
     recordOutcome(summary, job.source, "low");
     seen.add(id);
-    saveSeen();
+    seen.save();
     continue;
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
@@ -298,12 +295,12 @@ for (const m of toScore) {
   seen.add(id);
   // Persist after every package: a crash mid-run must not forget written
   // packages (the next run would re-score and re-pay the LLM for them).
-  saveSeen();
+  seen.save();
   written++;
 }
 await scoring;   // every worker has finished (all verdicts were consumed above; this just joins the pool)
 
-saveSeen();
+seen.save();
 log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
 
 // Per-source digest of this run (scraper health + the day's catch).
@@ -319,7 +316,6 @@ writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {
-  const { execFileSync } = await import("node:child_process");
   execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: "ignore", timeout: 60_000 });
 } catch (e) {
   log("dashboard refresh skipped:", e.message);

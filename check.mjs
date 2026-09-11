@@ -40,7 +40,6 @@ const SEL = {
   unreadHint: ".msg-conversation-card--unread, .notification-badge--show, .msg-conversation-card__unread-count, [class*='unread-indicator'], [class*='unread']",
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
-  threadTitle: "#thread-detail-jump-target, .msg-thread__title, h2",
 };
 
 // Unread detection: class/badge markers OR a bold participant name (LinkedIn bolds unread).

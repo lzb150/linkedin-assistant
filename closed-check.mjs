@@ -26,7 +26,7 @@ const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
 const todo = selectCandidates({ packages, stateMap: stateAtStart, checked });   // 150 per run, each url at most every 3 days
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
-const closed = [], closedUrls = [];
+const closedUrls = [];
 for (const { url, source } of todo) {
   let status = 0, html = "";
   try {
@@ -37,8 +37,7 @@ for (const { url, source } of todo) {
   if (isClosed({ source, status, html })) {
     closedUrls.push(url);   // applied to a FRESH read of the store below, not to stateAtStart
     const p = packages.find((x) => x.url === url);
-    closed.push(p ? `${p.title} @ ${p.company}` : url);
-    log(`  ✗ closed [${status}] ${source}: ${closed.at(-1)}`);
+    log(`  ✗ closed [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url}`);
   }
   await new Promise((r) => setTimeout(r, 1000));
 }

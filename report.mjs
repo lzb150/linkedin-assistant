@@ -18,20 +18,18 @@ const days = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 const now = new Date();
 const since = now.getTime() - days * 86400000;
 
-const readJson = (f) => readJsonFile(join(dir, f), {});
-const files = (sub, ext) => (existsSync(join(dir, sub)) ? readdirSync(join(dir, sub)).filter((x) => x.endsWith(ext)).map((x) => join(dir, sub, x)) : []);
-
 const packages = readPackages(join(dir, "applications"));
-// Only log files touched inside the window (daily files since Sep 2026, per-run before).
-const logText = files("logs", ".log")
-  .filter((f) => /jobs_(dou|full)_/.test(f) && statSync(f).mtimeMs >= since)
-  .map((f) => readFileSync(f, "utf8")).join("\n");
+// jobs.mjs logs (run.sh: jobs_<date>.log, jobs_dou_<date>.log; jobs_full_ before 2026-09-11) touched inside the window.
+const logsDir = join(dir, "logs");
+const logText = (existsSync(logsDir) ? readdirSync(logsDir) : [])
+  .filter((f) => /^jobs_(dou_|full_)?\d{8}\.log$/.test(f) && statSync(join(logsDir, f)).mtimeMs >= since)
+  .map((f) => readFileSync(join(logsDir, f), "utf8")).join("\n");
 
 const { text, notification } = buildReport({
   now, days,
   packages,
   logText,
-  health: readJson("source-health.json"),
+  health: readJsonFile(join(dir, "source-health.json"), {}),
 });
 console.log(text);
 if (process.argv.includes("--notify")) notify("Weekly job report", notification);

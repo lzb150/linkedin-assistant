@@ -59,7 +59,7 @@ func djinniUnread() -> (count: Int, ids: [String]) {
     else { return (0, []) }
     let count = max(0, (obj["count"] as? NSNumber)?.intValue ?? 0)
     let pending = (obj["pending"] as? [[String: Any]]) ?? []
-    let ids = pending.compactMap { ($0["id"] as? String) ?? ($0["id"] as? NSNumber)?.stringValue }
+    let ids = pending.compactMap { $0["id"] as? String }   // djinni-check.mjs always writes string ids
     return (count, ids)
 }
 
@@ -120,7 +120,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var timer: Timer?
     let launchedAt = Date()
     var lastBadge: String? = "unset"
-    var lastBadgeSetting: Int = -1
     var notifGranted = false
     let center = UNUserNotificationCenter.current()
 
@@ -135,8 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { NSApp.hide(nil) }
         dbg("launched; background=\(isBackground) state=\(statePath)")
         center.delegate = self
-        center.requestAuthorization(options: [.alert, .badge]) { [weak self] granted, err in
-            DispatchQueue.main.async { self?.notifGranted = granted }
+        center.requestAuthorization(options: [.alert, .badge]) { granted, err in   // poll() re-reads the setting every tick
             dbg("notifications granted=\(granted) error=\(String(describing: err))")
         }
         poll()                                          // immediate first pass
@@ -165,10 +163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         center.getNotificationSettings { [weak self] st in
             DispatchQueue.main.async {
                 self?.notifGranted = st.authorizationStatus == .authorized
-                if self?.lastBadgeSetting != st.badgeSetting.rawValue {
-                    self?.lastBadgeSetting = st.badgeSetting.rawValue
-                    dbg("notification settings: auth=\(st.authorizationStatus.rawValue) alert=\(st.alertSetting.rawValue) badge=\(st.badgeSetting.rawValue)")
-                }
             }
         }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
