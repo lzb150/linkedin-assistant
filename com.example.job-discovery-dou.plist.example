@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  DOU job discovery via RSS — runs hourly at minute 15 (ToS-clean, safe to run often).
-  Copy to com.<you>.job-discovery-dou.plist, replace YOUR_USERNAME, then:
-    cp com.<you>.job-discovery-dou.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.<you>.job-discovery-dou.plist
-  Uninstall: launchctl unload ~/Library/LaunchAgents/com.<you>.job-discovery-dou.plist
+  Board/RSS job discovery (DOU_ONLY=1 run.sh jobs.mjs), hourly at :15 — ToS-clean, safe to run often.
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

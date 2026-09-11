@@ -1,14 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Full job discovery incl. LinkedIn scraping — runs EVERY 3 HOURS at :45 (offset from
-  the DOU agent at :15). Frequent scraping is more detectable by LinkedIn anti-bot
-  systems than a once-a-day cadence — drop to a daily StartCalendarInterval
-  (Hour + Minute) if you prefer the safer default. Also re-checks DOU (deduped).
-  Copy to com.<you>.job-discovery-linkedin.plist, replace YOUR_USERNAME, then:
-    cp com.<you>.job-discovery-linkedin.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.<you>.job-discovery-linkedin.plist
-  Uninstall: launchctl unload ~/Library/LaunchAgents/com.<you>.job-discovery-linkedin.plist
+  Full job discovery incl. LinkedIn scraping (run.sh jobs.mjs), every 3 hours at :45 (offset from
+  the DOU agent). Frequent scraping is more detectable than a daily cadence — drop to one
+  Hour+Minute entry below if you prefer the safer default.
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
