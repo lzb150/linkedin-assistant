@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeMeta } from "../lib/job-state.mjs";
+import { tmpDir } from "./helpers/e2e.mjs";
 import {
   normalize, mergeEntry, validatePatch, readStore, writeStore, statusOf,
 } from "../lib/job-state.mjs";
@@ -11,12 +11,6 @@ import {
 const U = "https://example.com/jobs/1/";
 // creates a temp dir and registers its removal via t.after so cleanup
 // runs even when an assert throws
-function tmp(t) {
-  const dir = mkdtempSync(join(tmpdir(), "js-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
-
 test("normalize upgrades the legacy string shape to an entry object", () => {
   const out = normalize({ [U]: "viewed" });
   assert.equal(out[U].status, "viewed");
@@ -64,7 +58,7 @@ test("validatePatch rejects an unknown status and accepts a valid one", () => {
 });
 
 test("readStore round-trips through writeStore atomically", (t) => {
-  const dir = tmp(t);
+  const dir = tmpDir(t);
   const p = join(dir, "job-state.json");
   writeStore(p, mergeEntry({ _meta: { lastVisit: "t" } }, U, { status: "rejected" }));
   const back = readStore(p);
@@ -77,7 +71,7 @@ test("readStore returns an empty store for a missing file", () => {
 });
 
 test("readStore throws on malformed JSON (a corrupt store must never be silently emptied)", (t) => {
-  const dir = tmp(t);
+  const dir = tmpDir(t);
   const p = join(dir, "job-state.json");
   writeFileSync(p, "{ not json");
   assert.throws(() => readStore(p), SyntaxError);
@@ -123,8 +117,7 @@ test("normalize keeps entries with a status this build does not know", () => {
 // A single ".bak" would be replaced by the next dashboard click seconds after
 // a bad write — as happened on 2026-09-07, when a stale server wiped 448 entries.
 test("writeStore keeps one snapshot per day, never overwrites it, prunes to 7", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "state-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = tmpDir(t);
   const p = join(dir, "job-state.json");
   const day = (n) => new Date(Date.UTC(2026, 8, n, 12));   // Sep n, 2026
   const snaps = () => readdirSync(dir).filter((f) => /^job-state\.\d{4}-\d{2}-\d{2}\.bak$/.test(f)).sort();

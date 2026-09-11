@@ -3,25 +3,14 @@
 // status+note survive a round-trip and migration shape is accepted.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { createServer } from "../state-server.mjs";
-
-function listen(srv) { return new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port))); }
+import { startStateServer } from "./helpers/e2e.mjs";
 
 test("status and note persist across a server restart", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "dash-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const statePath = join(dir, "job-state.json");
-  const indexPath = join(dir, "index.html");
-  writeFileSync(indexPath, "<html></html>");
+  let { srv, port, statePath, indexPath } = await startStateServer(t);
   const U = "https://example.com/jobs/7/";
-
-  let srv = createServer({ statePath, indexPath });
-  // closes whichever server instance is current, even if an assert throws
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  let port = await listen(srv);
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ url: U, patch: { status: "rejected" } }) });
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
@@ -30,7 +19,8 @@ test("status and note persist across a server restart", async (t) => {
 
   // Restart against the same file → state survived to disk.
   srv = createServer({ statePath, indexPath });
-  port = await listen(srv);
+  t.after(() => new Promise((r) => srv.close(() => r())));
+  port = await new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port)));
   const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
   assert.equal(state[U].status, "rejected");
   assert.equal(state[U].note, "recruiter Anna");
@@ -40,12 +30,7 @@ test("status and note persist across a server restart", async (t) => {
 });
 
 test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "dash-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "index.html"), "<html></html>");
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const port = await listen(srv);
+  const { port } = await startStateServer(t);
   // Same postState as lib/dashboard-client-dom.js: a non-ok response throws with .status.
   async function postState(body) {
     const r = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -69,8 +54,6 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
 
 // Boot the inlined client (core + dom) in a vm against a fake window.
 async function bootClient({ fetch, store, document }) {
-  const { readFileSync } = await import("node:fs");
-  const vm = await import("node:vm");
   const ctx = vm.createContext({
     setTimeout, clearTimeout, Date, JSON, console, fetch,
     localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
@@ -86,12 +69,7 @@ const fakeCard = (url) => ({ dataset: { url }, classList: { toggle() {} }, query
 // After an online session the cache stays as a read mirror of the server, so
 // an offline reload shows the real statuses and notes.
 test("online session mirrors server state to localStorage; offline reload keeps statuses and notes", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "dash-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "index.html"), "<html></html>");
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const port = await listen(srv);
+  const { port } = await startStateServer(t);
   const store = new Map();
   const U = "https://example.com/jobs/1/";
 
@@ -113,34 +91,19 @@ test("online session mirrors server state to localStorage; offline reload keeps 
 // The offline branch of initState must restore the dirty list saved by an
 // earlier offline session, or those edits never reach the server.
 test("offline: dirty urls from a previous session survive a reload", async () => {
-  const { readFileSync } = await import("node:fs");
-  const vm = await import("node:vm");
   const store = new Map([
     ["jobStatus", JSON.stringify({ _meta: {}, "https://old/": { status: "viewed" } })],
     ["jobStatusDirty", JSON.stringify(["https://old/"])],
   ]);
-  const ctx = vm.createContext({
-    setTimeout, clearTimeout, Date, JSON, console,
-    fetch: () => Promise.reject(new Error("offline")),
-    localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
-    document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
-  });
-  vm.runInContext(readFileSync(new URL("../lib/dashboard-client-core.cjs", import.meta.url), "utf8"), ctx);
-  vm.runInContext(readFileSync(new URL("../lib/dashboard-client-dom.js", import.meta.url), "utf8"), ctx);
-  await vm.runInContext("ready", ctx);
-  await vm.runInContext("patchEntry('https://new/', { status: 'rejected' })", ctx);
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  await c.run("patchEntry('https://new/', { status: 'rejected' })");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")).sort(), ["https://new/", "https://old/"]);
 });
 
 // Reconnect push loop: the dirty list on disk must shrink one url at a time, so a
 // network failure on patch N+1 leaves N+1.. (and their mirror entries) for next time.
 test("reconnect: a network failure mid-push keeps the unpushed dirty urls and their entries", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "dash-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "index.html"), "<html></html>");
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const port = await listen(srv);
+  const { port } = await startStateServer(t);
   const A = "https://example.com/jobs/a/", B = "https://example.com/jobs/b/";
   const store = new Map([
     ["jobStatus", JSON.stringify({ _meta: {}, [A]: { status: "viewed" }, [B]: { status: "rejected", note: "keep me" } })],

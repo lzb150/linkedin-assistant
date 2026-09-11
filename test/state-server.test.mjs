@@ -1,22 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createServer } from "../state-server.mjs";
-
-function listen(srv) {
-  return new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port)));
-}
+import { startStateServer, tmpDir } from "./helpers/e2e.mjs";
 
 test("POST /state persists a patch and GET /state reads it back", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const statePath = join(dir, "job-state.json");
-  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const port = await listen(srv);
-  const base = `http://127.0.0.1:${port}`;
+  const { base } = await startStateServer(t);
   const U = "https://example.com/jobs/9/";
 
   const health = await fetch(`${base}/health`).then((r) => r.json());
@@ -50,11 +39,7 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
 });
 
 test("rejects cross-origin shaped requests: foreign Host and non-JSON POST", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const { base } = await startStateServer(t);
 
   // DNS-rebinding shape: request reaches the server with a foreign Host header.
   // (fetch strips a custom Host — it's a forbidden header — so use node:http.)
@@ -87,11 +72,7 @@ test("rejects cross-origin shaped requests: foreign Host and non-JSON POST", asy
 });
 
 test("oversize POST body is dropped without hanging the request", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const { base } = await startStateServer(t);
 
   // >1MB body → server destroys the connection; the client sees an error
   // instead of an eternally pending request (the old behavior).
@@ -105,11 +86,7 @@ test("oversize POST body is dropped without hanging the request", async (t) => {
 });
 
 test("rejects non-http(s) urls and oversized notes", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const { base } = await startStateServer(t);
   const post = (body) => fetch(`${base}/state`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   }).then((r) => r.status);
@@ -121,12 +98,7 @@ test("rejects non-http(s) urls and oversized notes", async (t) => {
 });
 
 test("multi-byte body split across two chunks mid-character round-trips intact", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const statePath = join(dir, "job-state.json");
-  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const port = await listen(srv);
+  const { port, base } = await startStateServer(t);
 
   const note = "Київ — QA 🚀";
   const body = Buffer.from(JSON.stringify({ url: "https://x/", patch: { note } }));
@@ -141,19 +113,15 @@ test("multi-byte body split across two chunks mid-character round-trips intact",
     setTimeout(() => r.end(body.subarray(cut)), 20);
   });
   assert.equal(status, 200);
-  const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
+  const state = await fetch(`${base}/state`).then((r) => r.json());
   assert.equal(state["https://x/"].note, note);
 });
 
 test("corrupt state file → GET /state 500, file left byte-identical", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const statePath = join(dir, "job-state.json");
+  const statePath = join(tmpDir(t), "job-state.json");
   const corrupt = '{"https://x/": {"status": "rejected" ';
   writeFileSync(statePath, corrupt);
-  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const { base } = await startStateServer(t, { statePath });
 
   assert.equal((await fetch(`${base}/state`)).status, 500);
   // A POST must not turn the failed read into a truncating write.
@@ -166,13 +134,9 @@ test("corrupt state file → GET /state 500, file left byte-identical", async (t
 });
 
 test("unwritable state path → POST 500, server still alive", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = tmpDir(t);
   writeFileSync(join(dir, "notadir"), "");
-  const statePath = join(dir, "notadir", "job-state.json"); // ENOTDIR on write
-  const srv = createServer({ statePath, indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const { base } = await startStateServer(t, { statePath: join(dir, "notadir", "job-state.json") }); // ENOTDIR on write
 
   const post = await fetch(`${base}/state`, {
     method: "POST", headers: { "content-type": "application/json" },
@@ -182,27 +146,15 @@ test("unwritable state path → POST 500, server still alive", async (t) => {
   assert.equal((await fetch(`${base}/health`).then((r) => r.json())).ok, true);
 });
 
-test("POST /state accepts an upper-case scheme like the dashboard's safeUrl does", async () => {
-  const { mkdtempSync } = await import("node:fs");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const { createServer } = await import("../state-server.mjs");
-  const dir = mkdtempSync(join(tmpdir(), "ss-"));
-  const server = createServer({ statePath: join(dir, "s.json"), indexPath: "/dev/null" });
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const port = server.address().port;
-  const res = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
+test("POST /state accepts an upper-case scheme like the dashboard's safeUrl does", async (t) => {
+  const { base } = await startStateServer(t);
+  const res = await fetch(`${base}/state`, { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ url: "HTTPS://djinni.co/jobs/1", patch: { status: "viewed" } }) });
   assert.equal(res.status, 200);
-  server.close();
 });
 
 test("POST /state rejects an unparseable _meta.lastVisit with 400 on a healthy store", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "srv-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const srv = createServer({ statePath: join(dir, "job-state.json"), indexPath: join(dir, "index.html") });
-  t.after(() => new Promise((r) => srv.close(() => r())));
-  const base = `http://127.0.0.1:${await listen(srv)}`;
+  const { base } = await startStateServer(t);
   const bad = await fetch(`${base}/state`, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ _meta: { lastVisit: "t" } }),

@@ -1,20 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readState, writeState } from "../lib/notify-state.mjs";
+import { tmpDir } from "./helpers/e2e.mjs";
 
 // creates a temp dir and registers its removal via t.after so cleanup
 // runs even when an assert throws
-function tmp(t) {
-  const dir = mkdtempSync(join(tmpdir(), "ns-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
-
 test("writeState then readState round-trips count and pending", (t) => {
-  const dir = tmp(t);
+  const dir = tmpDir(t);
   const p = join(dir, "notify-state.json");
   writeState(p, { count: 2, pending: [{ id: "a", sender: "Helen", text: "hi" }] });
   const s = readState(p);
@@ -30,7 +24,7 @@ test("readState returns defaults for a missing file", () => {
 });
 
 test("readState tolerates malformed JSON", (t) => {
-  const dir = tmp(t);
+  const dir = tmpDir(t);
   const p = join(dir, "notify-state.json");
   writeFileSync(p, "{ not json");
   const s = readState(p);
@@ -39,7 +33,7 @@ test("readState tolerates malformed JSON", (t) => {
 });
 
 test("writeState clamps negative/fractional count to a non-negative integer", (t) => {
-  const dir = tmp(t);
+  const dir = tmpDir(t);
   const p = join(dir, "notify-state.json");
   writeState(p, { count: -3 });
   assert.equal(readState(p).count, 0);
@@ -48,7 +42,7 @@ test("writeState clamps negative/fractional count to a non-negative integer", (t
 });
 
 test("writeState defaults pending to an empty array", (t) => {
-  const dir = tmp(t);
+  const dir = tmpDir(t);
   const p = join(dir, "notify-state.json");
   writeState(p, { count: 0 });
   assert.deepEqual(readState(p).pending, []);
