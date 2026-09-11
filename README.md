@@ -251,6 +251,12 @@ daily closed-check run (see "Clean up stale packages").
 
 ![Multi-select filters, source chips and search](docs/filters.png)
 
+**Theme** — follows the system light/dark preference; the header button pins
+one or the other (per browser). The palette is GitHub Primer in both modes,
+every text/background pair ≥ 4.5:1.
+
+![Dark theme](docs/dashboard-dark.png)
+
 **Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
 (`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU,
 Djinni and LinkedIn vacancies that are still **New** or **Viewed** (plain GET, one per
