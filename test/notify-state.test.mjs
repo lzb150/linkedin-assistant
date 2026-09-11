@@ -1,49 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readState, writeState } from "../lib/notify-state.mjs";
+import { writeState } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 
-// creates a temp dir and registers its removal via t.after so cleanup
-// runs even when an assert throws
-test("writeState then readState round-trips count and pending", (t) => {
-  const dir = tmpDir(t);
-  const p = join(dir, "notify-state.json");
-  writeState(p, { count: 2, pending: [{ id: "a", sender: "Helen", text: "hi" }] });
-  const s = readState(p);
+const read = (p) => JSON.parse(readFileSync(p, "utf8"));
+
+test("writeState writes count, pending and updatedAt as the Jobs.app daemon reads them", (t) => {
+  const p = join(tmpDir(t), "notify-state.json");
+  const s = writeState(p, { count: 2, pending: [{ id: "a", sender: "Helen", text: "hi" }] });
+  assert.deepEqual(read(p), s);
   assert.equal(s.count, 2);
-  assert.equal(s.pending.length, 1);
   assert.equal(s.pending[0].sender, "Helen");
-  assert.ok(s.updatedAt);
+  assert.ok(Date.parse(s.updatedAt));
 });
 
-test("readState returns defaults for a missing file", () => {
-  const s = readState("/no/such/notify-state.json");
-  assert.deepEqual(s, { count: 0, pending: [], updatedAt: "" });
-});
-
-test("readState tolerates malformed JSON", (t) => {
-  const dir = tmpDir(t);
-  const p = join(dir, "notify-state.json");
-  writeFileSync(p, "{ not json");
-  const s = readState(p);
-  assert.equal(s.count, 0);
-  assert.deepEqual(s.pending, []);
-});
-
-test("writeState clamps negative/fractional count to a non-negative integer", (t) => {
-  const dir = tmpDir(t);
-  const p = join(dir, "notify-state.json");
+test("writeState clamps negative/fractional count and defaults pending to []", (t) => {
+  const p = join(tmpDir(t), "notify-state.json");
   writeState(p, { count: -3 });
-  assert.equal(readState(p).count, 0);
-  writeState(p, { count: 2.9 });
-  assert.equal(readState(p).count, 2);
-});
-
-test("writeState defaults pending to an empty array", (t) => {
-  const dir = tmpDir(t);
-  const p = join(dir, "notify-state.json");
-  writeState(p, { count: 0 });
-  assert.deepEqual(readState(p).pending, []);
+  assert.equal(read(p).count, 0);
+  assert.deepEqual(read(p).pending, []);
+  writeState(p, { count: 2.9, pending: "nope" });
+  assert.equal(read(p).count, 2);
+  assert.deepEqual(read(p).pending, []);
 });
