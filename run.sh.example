@@ -15,7 +15,7 @@ export CANDIDATE_NAME="Your Name"                       # signature in drafts an
 
 cd "$(dirname "$0")"
 mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
-find "$PWD/logs" -name '*.log' ! -name 'state-server.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (the server holds its log open)
+find "$PWD/logs" -name '*.log' ! -name 'state-server.log' ! -name 'jobs-badge.*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (launchd holds the server's and the badge daemon's logs open)
 find "$PWD/applications/archive" -name '*.md' -mtime +180 -delete 2>/dev/null || true   # archived packages: nothing reads them
 
 SCRIPT="${1##*/}"
