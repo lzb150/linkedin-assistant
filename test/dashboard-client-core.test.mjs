@@ -58,4 +58,8 @@ test("offlinePatches: dirty urls push full-override patches, deletions clear", (
   assert.deepEqual(core.offlinePatches(local, []), []);
   // The clearing patch really empties an entry via the shared merge.
   assert.equal(core.mergeEntryLocal(server["https://d/"], core.entryToPatch(undefined)), null);
+  // A status this build does not know (newer closed-check/dashboard) survives a
+  // note edit through this client — locally and in the patch pushed on reconnect.
+  assert.deepEqual(core.mergeEntryLocal({ status: "from-the-future" }, { note: "x" }), { status: "from-the-future", note: "x" });
+  assert.deepEqual(core.entryToPatch({ status: "from-the-future", note: "x" }), { note: "x" }, "unknown status is left out, not pushed as new");
 });

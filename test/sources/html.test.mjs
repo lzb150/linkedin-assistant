@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, bodyText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -120,4 +120,14 @@ test("uniqueByUrl keeps the first record per url (was copy-pasted in every sourc
   const ran = [];
   await pool([1, 2, 3], "five", async (n) => { ran.push(n); });
   assert.deepEqual(ran.sort(), [1, 2, 3]);
+});
+
+test("bodyText caps a board response at 5 MB: content-length, streamed body, and stub text()", async () => {
+  const headers = (len) => ({ get: (k) => (k === "content-length" ? len : null) });
+  const stream = (...parts) => ({ async *[Symbol.asyncIterator]() { for (const p of parts) yield Buffer.from(p); } });
+  await assert.rejects(bodyText({ headers: headers("6000000"), text: async () => "x" }), /body over/);
+  await assert.rejects(bodyText({ headers: headers(null), body: stream("a".repeat(3_000_000), "b".repeat(3_000_000)) }), /body over/);
+  await assert.rejects(bodyText({ text: async () => "x".repeat(5_000_001) }), /body over/, "stub without a stream body");
+  assert.equal(await bodyText({ headers: headers("11"), body: stream("hello ", "world") }), "hello world");
+  assert.equal(await bodyText({ text: async () => "plain" }), "plain");
 });

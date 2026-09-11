@@ -249,7 +249,7 @@ for (const job of jobs) {
 matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 const label = (job) => `${job.title} @ ${job.company}`;
-const toScore = llmOn ? matches.slice(0, LLM.maxPerRun ?? 15) : matches;
+const toScore = llmOn ? matches.slice(0, Math.max(1, Number(LLM.maxPerRun) || 15)) : matches;   // "0"/"abc" must not mean "defer everything forever"
 for (const { job, scored } of (llmOn ? matches.slice(toScore.length) : [])) {
   log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
 }
