@@ -59,7 +59,7 @@ async function cardIsUnread(card) {
 }
 
 // Thread ids already processed; entries expire after 90 days so the file
-// stops growing forever (legacy array files migrate on load).
+// stops growing forever.
 const seen = loadSeenStore(SEEN_FILE);
 
 let ctx;

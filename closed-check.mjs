@@ -13,6 +13,7 @@ import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
+import { bodyText } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +32,7 @@ for (const { url, source } of todo) {
   let status = 0, html = "";
   try {
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000), redirect: "follow" });
-    status = res.status; html = status === 200 ? await res.text() : "";
+    status = res.status; html = status === 200 ? await bodyText(res) : "";
   } catch (e) { log(`  · ${url} — ${e.message}`); continue; }   // network trouble: not checked, retried next run
   checked[url] = new Date().toISOString();
   if (isClosed({ source, status, html })) {

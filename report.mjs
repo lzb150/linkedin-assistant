@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { readPackages } from "./lib/packages.mjs";
 import { readJson as readJsonFile } from "./lib/json-file.mjs";
+import { normalizeHistory } from "./lib/source-health.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { notify } from "./lib/notify.mjs";
@@ -29,7 +30,7 @@ const { text, notification } = buildReport({
   now, days,
   packages,
   logText,
-  health: readJsonFile(join(dir, "source-health.json"), {}),
+  health: normalizeHistory(readJsonFile(join(dir, "source-health.json"), {})),
 });
 console.log(text);
 if (process.argv.includes("--notify")) notify("Weekly job report", notification);

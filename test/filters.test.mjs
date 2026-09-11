@@ -36,4 +36,6 @@ test("filterByLocation coerces non-string patterns and is a no-op without a list
   assert.deepEqual(filterByLocation(jobs, [42]), []);
   assert.deepEqual(filterByLocation(jobs, undefined), jobs);
   assert.deepEqual(filterByLocation(jobs, []), jobs);
+  const abroad = [{ title: "B", source: "djinni", location: "Тільки віддалено · Польща" }];
+  assert.deepEqual(filterByLocation(abroad, []), [], "Djinni country eligibility applies even without an exclude list");
 });

@@ -109,7 +109,7 @@ const cards = items
     return `
 <article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
-    <span class="score ${scoreBand(it.score)}" aria-label="keyword score ${it.score}">${it.score}</span>
+    <span class="score ${scoreBand(it.score)}"><span class="sr-only">keyword score </span>${it.score}</span>
     <div class="titles">
       <h2>${esc(f.title || "—")}</h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
@@ -252,7 +252,7 @@ const html = `<!doctype html>
       <button data-src="all" class="active" aria-pressed="true" onclick="setSource(this.dataset.src)">All</button>
       ${sourceChips}
     </div>
-    <button id="theme" class="theme" type="button" aria-pressed="false" onclick="toggleTheme()">🌙 Dark</button>
+    <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">🌙 Dark</button>
   </div>
 </header>
 <main>
