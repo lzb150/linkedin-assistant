@@ -19,15 +19,12 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
 const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }
-// CLOSED_EXTRA_HOSTS='{"dou":"127.0.0.1"}' — extra allowed host per board (tests point a board at a local server).
-let extraHosts = {};
-try { extraHosts = JSON.parse(process.env.CLOSED_EXTRA_HOSTS || "{}") || {}; } catch {}
 
 const packages = readPackages(APPS);
 const checked = readJson(CHECKED, null) || {};
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
-const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, extraHosts });   // 150 per run, each url at most every 3 days
+const todo = selectCandidates({ packages, stateMap: stateAtStart, checked });   // 150 per run, each url at most every 3 days
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
 const closed = [], closedUrls = [];
 for (const { url, source } of todo) {

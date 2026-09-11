@@ -16,7 +16,7 @@ async function server404(t) {
 }
 const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
 // The fixture board lives on loopback; the host allowlist must be told so.
-const LOCAL = { CLOSED_EXTRA_HOSTS: JSON.stringify({ dou: "127.0.0.1" }) };
+const LOCAL = { CLOSED_HOSTS: JSON.stringify({ dou: "127.0.0.1" }) };
 
 test("closed-check: edits landing during the run win — another url's status survives, and a status set on the probed url beats the closure", async (t) => {
   const U = `${await server404(t)}/vacancies/1/`;
