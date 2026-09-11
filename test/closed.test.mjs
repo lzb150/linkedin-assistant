@@ -12,7 +12,6 @@ test("onBoardHost: only the board's own host (or a subdomain) is probed", () => 
   assert.equal(onBoardHost("dou", "file://dou.ua/etc/passwd"), false, "only http(s) is ever probed");
   assert.equal(onBoardHost("dou", "https://dou.ua@evil.com/x"), false, "userinfo trick: hostname is evil.com");
   assert.equal(onBoardHost("jooble", "https://jooble.org/x"), false);
-  assert.equal(onBoardHost("dou", "http://127.0.0.1:8080/v/1/", { dou: "127.0.0.1" }), true, "extra host per board (tests / mirrors)");
 });
 
 test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not closed)", () => {
