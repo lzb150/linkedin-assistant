@@ -5,6 +5,9 @@
   "minScore": 18,
   "requireRole": true,
 
+  "_candidateCountryComment": "Where the candidate lives and works remotely from — every spelling the boards use (English + local). Drives two things: the LLM gate scores a vacancy open only to residents of OTHER countries (or requiring relocation / an office abroad) at most 10, and Djinni's countries segment ('Тільки віддалено · Канада, Польща, Сербія') must name one of these or the whole world. The first entry is used in the English LLM prompt.",
+  "candidateCountry": ["Ukraine", "Україна"],
+
   "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles and manual-only QA. Matched in the title only (Latin words, whole-word), so senior roles that merely mention these words in the description are kept. Note: 'manual' also drops hybrid titles like 'QA Engineer (Manual + Automation)' — deliberate, the LLM gate is the fallback for descriptions.",
   "excludeTitle": ["junior", "intern", "internship", "trainee", "manual"],
 
