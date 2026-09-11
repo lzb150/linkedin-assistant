@@ -184,7 +184,7 @@ back with a visible browser.
   Jobs whose location contains any substring from the top-level
   `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
   across **all** sources before scoring.
-- Cold applications pass a keyword pre-gate — `minScore` (default 18) + `requireRole` — and then the LLM gate (`llm.minScore`, 70), which does the real screening. A remote listing is never dropped by `excludeLocation` for also naming a foreign office.
+- Cold applications pass a keyword pre-gate — `minScore` (default 18) + `requireRole` — and then the LLM gate (`llm.minScore`, 70), which does the real screening. `excludeLocation` still keeps a remote DOU listing that merely lists a foreign office. Djinni is judged by its own countries segment instead: candidates must be able to live in Ukraine ("Україна", "Країни Європи та Україна", "Весь світ"), so "Тільки віддалено · Канада, Польща, Сербія" or "Країни ЄС" is dropped even though remote.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
   differs per board) is collapsed into one record before scoring. The record with
   the fullest description is kept; the other source links are recorded under
