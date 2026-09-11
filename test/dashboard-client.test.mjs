@@ -12,7 +12,7 @@ test("status and note persist across a server restart", async (t) => {
   let { srv, port, statePath, indexPath } = await startStateServer(t);
   const U = "https://example.com/jobs/7/";
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: U, patch: { status: "rejected" } }) });
+    body: JSON.stringify({ url: U, patch: { status: "closed" } }) });
   await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ url: U, patch: { note: "recruiter Anna" } }) });
   await new Promise((r) => srv.close(r));
@@ -22,7 +22,7 @@ test("status and note persist across a server restart", async (t) => {
   t.after(() => new Promise((r) => srv.close(() => r())));
   port = await new Promise((res) => srv.listen(0, "127.0.0.1", () => res(srv.address().port)));
   const state = await fetch(`http://127.0.0.1:${port}/state`).then((r) => r.json());
-  assert.equal(state[U].status, "rejected");
+  assert.equal(state[U].status, "closed");
   assert.equal(state[U].note, "recruiter Anna");
   // GET / serves the generated dashboard html.
   const html = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.text());
@@ -40,7 +40,7 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
   let state = {}, offline = false;
   const patches = [
     { url: "javascript:alert(1)", patch: { status: "viewed" } },          // 400
-    { url: "https://example.com/jobs/1/", patch: { status: "rejected" } }, // ok
+    { url: "https://example.com/jobs/1/", patch: { status: "closed" } }, // ok
   ];
   try {
     for (const body of patches) {
@@ -49,7 +49,7 @@ test("a rejected (4xx) offline patch is skipped, the rest still reach the server
     }
   } catch { offline = true; }
   assert.equal(offline, false);
-  assert.equal(state["https://example.com/jobs/1/"].status, "rejected");
+  assert.equal(state["https://example.com/jobs/1/"].status, "closed");
 });
 
 // Boot the inlined client (core + dom) in a vm against a fake window.
@@ -75,13 +75,13 @@ test("online session mirrors server state to localStorage; offline reload keeps 
 
   const on = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
   on.ctx.card = fakeCard(U);
-  await on.run("setStatus(card, 'rejected')");
+  await on.run("setStatus(card, 'closed')");
   await on.run(`patchEntry(${JSON.stringify(U)}, { note: 'no relocation' })`);
   assert.equal(JSON.parse(store.get("jobStatus"))[U].note, "no relocation", "mirror holds the server state");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), []);
 
   const off = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
-  assert.equal(off.run(`statusOf(${JSON.stringify(U)})`), "rejected");
+  assert.equal(off.run(`statusOf(${JSON.stringify(U)})`), "closed");
   off.ctx.card = fakeCard(U);
   await off.run("setStatus(card, 'viewed')");
   assert.equal(off.run(`entryOf(${JSON.stringify(U)}).note`), "no relocation", "a status change keeps the note");
@@ -96,7 +96,7 @@ test("offline: dirty urls from a previous session survive a reload", async () =>
     ["jobStatusDirty", JSON.stringify(["https://old/"])],
   ]);
   const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
-  await c.run("patchEntry('https://new/', { status: 'rejected' })");
+  await c.run("patchEntry('https://new/', { status: 'viewed' })");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")).sort(), ["https://new/", "https://old/"]);
 });
 
@@ -106,7 +106,7 @@ test("reconnect: a network failure mid-push keeps the unpushed dirty urls and th
   const { port } = await startStateServer(t);
   const A = "https://example.com/jobs/a/", B = "https://example.com/jobs/b/";
   const store = new Map([
-    ["jobStatus", JSON.stringify({ _meta: {}, [A]: { status: "viewed" }, [B]: { status: "rejected", note: "keep me" } })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [A]: { status: "viewed" }, [B]: { status: "closed", note: "keep me" } })],
     ["jobStatusDirty", JSON.stringify([A, B])],
   ]);
   let posts = 0;
@@ -144,20 +144,19 @@ test("flash then markOffline still shows the offline badge", async () => {
   assert.ok(children.some((el) => el.className === "flash"));
 });
 
-// Radar mode: ✗ and board-closed cards are never re-opened by the auto-viewed
-// hook (Open job / expanding the letter); a saved filter for a status that no
-// has no header button (pre-radar "applied", "closed") is dropped instead of showing an empty board.
-test("autoStatus never overrides ✗ or closed; restoreFilters drops unknown statuses", async () => {
-  const U1 = "https://example.com/jobs/1/", U2 = "https://example.com/jobs/2/", U3 = "https://example.com/jobs/3/";
+// Radar mode: board-closed cards are never re-opened by the auto-viewed hook
+// (Open job / expanding the letter); a saved filter for a status that has no
+// header button (pre-radar "applied", "closed") is dropped instead of showing an empty board.
+test("autoStatus never overrides closed; restoreFilters drops unknown statuses", async () => {
+  const U2 = "https://example.com/jobs/2/", U3 = "https://example.com/jobs/3/";
   const store = new Map([["jobFilters2", JSON.stringify({ status: ["applied", "closed", "new"], src: [], query: "" })]]);
   const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...statusSel])"), JSON.stringify(["new"]));
-  for (const [u, st] of [[U1, "rejected"], [U2, "closed"], [U3, "viewed"]]) await c.run(`patchEntry(${JSON.stringify(u)}, { status: ${JSON.stringify(st)} })`);
-  for (const u of [U1, U2, U3]) { c.ctx.card = fakeCard(u); await c.run("autoStatus(card, 'viewed')"); }
-  assert.equal(c.run(`statusOf(${JSON.stringify(U1)})`), "rejected");
+  for (const [u, st] of [[U2, "closed"], [U3, "viewed"]]) await c.run(`patchEntry(${JSON.stringify(u)}, { status: ${JSON.stringify(st)} })`);
+  for (const u of [U2, U3]) { c.ctx.card = fakeCard(u); await c.run("autoStatus(card, 'viewed')"); }
   assert.equal(c.run(`statusOf(${JSON.stringify(U2)})`), "closed");
   assert.equal(c.run(`statusOf(${JSON.stringify(U3)})`), "viewed");
-  c.ctx.card = fakeCard(U1); await c.run("setStatus(card, 'new')");
-  assert.equal(c.run(`statusOf(${JSON.stringify(U1)})`), "new", "an explicit click still clears ✗");
+  c.ctx.card = fakeCard(U2); await c.run("setStatus(card, 'new')");
+  assert.equal(c.run(`statusOf(${JSON.stringify(U2)})`), "new", "an explicit status change still clears closed");
 });

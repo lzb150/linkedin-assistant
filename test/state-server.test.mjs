@@ -14,12 +14,12 @@ test("POST /state persists a patch and GET /state reads it back", async (t) => {
   const post = await fetch(`${base}/state`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: U, patch: { status: "rejected", note: "not remote" } }),
+    body: JSON.stringify({ url: U, patch: { status: "closed", note: "not remote" } }),
   });
   assert.equal(post.status, 200);
 
   const state = await fetch(`${base}/state`).then((r) => r.json());
-  assert.equal(state[U].status, "rejected");
+  assert.equal(state[U].status, "closed");
   assert.equal(state[U].note, "not remote");
 
   const meta = await fetch(`${base}/state`, {
@@ -57,7 +57,7 @@ test("rejects cross-origin shaped requests: foreign Host and non-JSON POST", asy
   const csrf = await fetch(`${base}/state`, {
     method: "POST",
     headers: { "content-type": "text/plain" },
-    body: JSON.stringify({ url: "https://x/", patch: { status: "rejected" } }),
+    body: JSON.stringify({ url: "https://x/", patch: { status: "viewed" } }),
   });
   assert.equal(csrf.status, 415);
 
@@ -118,7 +118,7 @@ test("multi-byte body split across two chunks mid-character round-trips intact",
 
 test("corrupt state file → GET /state 500, file left byte-identical", async (t) => {
   const statePath = join(tmpDir(t), "job-state.json");
-  const corrupt = '{"https://x/": {"status": "rejected" ';
+  const corrupt = '{"https://x/": {"status": "viewed" ';
   writeFileSync(statePath, corrupt);
   const { base } = await startStateServer(t, { statePath });
 

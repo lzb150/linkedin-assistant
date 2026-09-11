@@ -223,9 +223,6 @@ const html = `<!doctype html>
   .alt { color: var(--accent); text-decoration: none; margin-right: 8px; }
   .alt:hover { text-decoration: underline; }
   .empty { text-align: center; color: var(--muted); padding: 40px; }
-  .card.rejected { background: var(--card-muted); border-left: 4px solid var(--danger-fill); }
-  .card.rejected .titles h2 { color: var(--muted); }
-  .card.rejected .titles h2::after { content: " ✗"; color: var(--danger-text); }   /* non-colour cue next to the red border */
   /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed, with a text cue. */
   .card.closed { background: var(--card-muted); border-left: 4px solid var(--closed-border); }
   .card.closed .titles h2 { color: var(--muted); }
