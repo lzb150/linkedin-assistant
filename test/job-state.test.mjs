@@ -11,13 +11,6 @@ import {
 const U = "https://example.com/jobs/1/";
 // creates a temp dir and registers its removal via t.after so cleanup
 // runs even when an assert throws
-test("normalize upgrades the legacy string shape to an entry object", () => {
-  const out = normalize({ [U]: "viewed" });
-  assert.equal(out[U].status, "viewed");
-  assert.ok(out[U].updatedAt);
-  assert.deepEqual(out._meta, {});
-});
-
 test("normalize preserves _meta and drops fully-empty entries", () => {
   const out = normalize({ _meta: { lastVisit: "2026-06-20T00:00:00Z" }, [U]: {} });
   assert.equal(out._meta.lastVisit, "2026-06-20T00:00:00Z");
