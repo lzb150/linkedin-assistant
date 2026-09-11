@@ -284,24 +284,6 @@ cp com.example.jobs-report.plist.example \
 launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 ```
 
-## Clean up stale packages — `prune-applications.mjs`
-
-The dashboard hides on-disk duplicates, but you can reclaim the space. This
-script keeps the newest package per identity and deletes the rest. It also
-moves packages whose vacancy has been **Closed** (see the closed-vacancy check)
-for 14+ days, and **Viewed** packages you have not touched for 30+ days, into
-`applications/archive/` — nothing reads that folder, so the dashboard sheds
-those cards. The daily `closed-check.mjs` run does the same archiving on its
-own (`CLOSED_ARCHIVE_DAYS` / `VIEWED_ARCHIVE_DAYS` to tune), drops the
-`job-state.json` entries of packages that are no longer live (once they are a
-day old), and `run-jobs.sh` deletes archived packages after 180 days.
-
-```bash
-node prune-applications.mjs                      # dry run — lists what would be removed / archived
-node prune-applications.mjs --apply              # delete the stale duplicates, archive closed 14+ days
-node prune-applications.mjs --closed-days 0 --apply   # archive every closed package right now
-```
-
 ## Adapting to another profession
 
 Nothing in the code knows you are a QA engineer — the profession lives
@@ -388,7 +370,6 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
-├── prune-applications.mjs  remove stale duplicate packages from applications/
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
@@ -411,7 +392,6 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
-| `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
 | `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |
