@@ -18,8 +18,9 @@ mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redi
 find "$PWD/logs" -name '*.log' ! -name 'state-server.log' ! -name 'jobs-badge.*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (launchd holds the server's and the badge daemon's logs open)
 find "$PWD/applications/archive" -name '*.md' -mtime +180 -delete 2>/dev/null || true   # archived packages: nothing reads them
 
-SCRIPT="${1##*/}"
-LOG="logs/${SCRIPT%.mjs}${DOU_ONLY:+_dou}_$(date +%Y%m%d).log"   # one file per day; each run appends after a "=== run" separator
+SCRIPT="${1:?usage: run.sh <script.mjs> [args]}"; SCRIPT="${SCRIPT##*/}"
+DOU="$([ "${DOU_ONLY:-}" = 1 ] && echo _dou || true)"   # jobs.mjs honours only DOU_ONLY=1; DOU_ONLY=0 is a full run
+LOG="logs/${SCRIPT%.mjs}${DOU}_$(date +%Y%m%d).log"   # one file per day; each run appends after a "=== run" separator
 # caffeinate: launchd fires a missed schedule inside a short DarkWake and the Mac
 # sleeps again under the run — timers pause and a 1-minute run stretches to an hour.
 # -i keeps the system awake while the script runs; -s adds a hard hold on AC power.

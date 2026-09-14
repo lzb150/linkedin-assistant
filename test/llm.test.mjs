@@ -58,14 +58,15 @@ test("llmJSON resolves parsed JSON from stdout", async () => {
 
 test("llmJSON passes model and prompt to the CLI", async () => {
   let seen;
-  const exec = (cmd, args, _opts, cb) => { seen = { cmd, args }; cb(null, "{}"); };
+  const exec = (cmd, args, _opts, cb) => { seen = { cmd, args }; cb(null, "{}"); return { stdin: { end: (s) => { seen.stdin = s; } } }; };
   await llmJSON("my prompt", { model: "haiku", exec });
   assert.equal(seen.cmd, "claude");
+  assert.equal(seen.stdin, "my prompt", "prompt goes over stdin, never argv (ps-visible, 128 KB argv cap on Linux)");
   assert.deepEqual(seen.args, [
-    "-p", "my prompt", "--model", "haiku",
+    "-p", "--model", "haiku",
     "--setting-sources", "project",   // no ~/.claude: global CLAUDE.md, hooks, plugins stay out of the screener
     "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-    "--disallowedTools", "Read,Glob,Grep,Bash,BashOutput,KillShell,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,NotebookRead,Task,Agent,Monitor,Workflow,ToolSearch,Skill,SlashCommand,TaskOutput,TaskStop,TodoWrite,EnterPlanMode,ExitPlanMode,CronCreate,CronList,CronDelete,ScheduleWakeup,SendMessage,ListAgents,DesignSync,RemoteTrigger,PushNotification,EnterWorktree,ExitWorktree,LSP,Artifact,ShareOnboardingGuide,SendFeedback,ReportFindings,AskUserQuestion,EndConversation",
+    "--disallowedTools", "Read,Glob,Grep,Bash,BashOutput,KillShell,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,NotebookRead,Task,Agent,Monitor,Workflow,ToolSearch,Skill,SlashCommand,TaskOutput,TaskStop,TodoWrite,EnterPlanMode,ExitPlanMode,CronCreate,CronList,CronDelete,ScheduleWakeup,SendMessage,ListAgents,DesignSync,RemoteTrigger,PushNotification,EnterWorktree,ExitWorktree,LSP,LS,Artifact,ShareOnboardingGuide,SendFeedback,ReportFindings,AskUserQuestion,EndConversation,ListMcpResourcesTool,ReadMcpResourceTool,ReadMcpResourceDirTool",
   ]);
 });
 
