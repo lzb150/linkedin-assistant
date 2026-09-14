@@ -15,7 +15,7 @@ import { createServer } from "../../state-server.mjs";
 // A throwaway dir, removed after the test.
 export function tmpDir(t, prefix = "t-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));   // fire-and-forget children (fake notify) may still be writing: ENOTEMPTY on macOS CI
   return dir;
 }
 
@@ -53,7 +53,7 @@ const LOG_ARGS = (dir, file) => `#!/bin/sh\necho "$*" >> "${dir}/${file}"\n`;
  */
 export function makeProject(t, { scripts = [], packages = {}, state, files = {}, bins = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "e2e-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   for (const f of scripts) copyFileSync(join(ROOT, f), join(dir, f));
   cpSync(join(ROOT, "lib"), join(dir, "lib"), { recursive: true });
   symlinkSync(join(ROOT, "node_modules"), join(dir, "node_modules"));
