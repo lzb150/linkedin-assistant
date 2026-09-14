@@ -43,6 +43,7 @@ const SEL = {
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
 };
+const SEL_WAIT = { card: SEL.conversationCard, list: SEL.conversationList, txt: SEL.emptyUnread };
 
 // Thread ids already processed; entries expire after 90 days so the file
 // stops growing forever.
@@ -80,6 +81,10 @@ try {
   // Selector drift is not "inbox empty": without the list we must not zero the badge.
   const listFound = await page.waitForSelector(SEL.conversationList, { timeout: 20000 }).then(() => true, () => false);
   if (!listFound) log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
+  // The list container renders before its cards: a manual run at 15:18 (2026-09-14)
+  // found 0 cards and no empty-state text while one unread thread was there.
+  // Wait for either a card or the empty-state text before counting.
+  if (listFound) await page.waitForFunction(({ card, list, txt }) => document.querySelector(card) || [...document.querySelectorAll(list)].some((e) => e.innerText.includes(txt)), SEL_WAIT, { timeout: 15000 }).catch(() => {});
 
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
