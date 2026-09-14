@@ -39,6 +39,11 @@ test("extractJSON pulls JSON out of surrounding prose", () => {
   );
 });
 
+test("extractJSON escapes raw control characters inside strings (multi-line cover letter)", () => {
+  assert.deepEqual(extractJSON('{"score": 28, "cover": "Dear team,\n\nI am\ta fit."}'), { score: 28, cover: "Dear team,\n\nI am\ta fit." });
+  assert.equal(extractJSON('{"score": 28, "cover": "cut off'), null);   // truncated output stays null
+});
+
 test("extractJSON returns null on missing or broken JSON", () => {
   assert.equal(extractJSON("no json here"), null);
   assert.equal(extractJSON('{"score": }'), null);
@@ -128,7 +133,8 @@ test("llmJSON logs the head of unparseable output, capped", async () => {
   const exec = (_cmd, _args, _opts, cb) => cb(null, "I refuse to answer in JSON ".repeat(50));
   assert.equal(await llmJSON("p", { exec, log: (...a) => lines.push(a.join(" ")), retryDelayMs: 0 }), null);
   assert.match(lines[0], /llm failed: no JSON in output: I refuse/);
-  assert.ok(lines[0].length < 300, `capped, got ${lines[0].length}`);
+  assert.ok(lines[0].length < 400, `capped, got ${lines[0].length}`);
+  assert.match(lines[0], / … .*JSON $/, "tail of the output is logged (truncation vs. parse error)");
 });
 
 test("llmJSON resolves null when exec itself throws synchronously", async () => {
