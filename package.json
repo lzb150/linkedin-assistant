@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Draft-only LinkedIn message assistant: reads your own inbox, scores job messages against your resume, writes draft replies. Never sends.",
+  "description": "Draft-only LinkedIn message assistant and job radar: reads your own inbox, scores job messages against your resume, writes draft replies; finds matching vacancies on LinkedIn/DOU/Djinni and prepares application packages. Never sends or applies.",
   "scripts": {
     "login": "node login.mjs",
     "check": "node check.mjs",
+    "jobs": "node jobs.mjs",
     "test": "node --test test/"
   },
   "engines": {

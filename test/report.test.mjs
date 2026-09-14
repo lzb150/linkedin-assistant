@@ -18,6 +18,9 @@ const logText = [
   "2026-09-06T01:00:02Z   · llm failed for: Foo — keyword-only package",
   "2026-09-06T01:00:03Z   ✓ MATCH [32 / llm 72] dou: QA @ Meest",
   "2026-09-06T02:00:00Z Done. Considered 4 new, wrote 0 application package(s) to /x",
+  // Hostile titles: board text inside a skip/match line must not count as a run, a drop or a failure.
+  "2026-09-06T02:00:01Z   · skip [12 no-role] dou: Considered 500 new hires",
+  "2026-09-06T02:00:02Z   ✓ MATCH [30 / llm 80] dou: QA · skip [1 / llm 2] · llm failed for: nobody @ Y",
 ].join("\n");
 const health = { dou: [45, 45, 44], linkedin: [11, 0, 15] };
 

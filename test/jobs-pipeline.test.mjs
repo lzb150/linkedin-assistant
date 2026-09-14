@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
-import { makeProject, runScript, waitFor, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
+import { makeProject, runScript, waitFor, pkg, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
 
 const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map((i) =>
   `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link><description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
@@ -21,15 +21,27 @@ const FEED = rss([
   { title: "Senior SDET (Playwright) в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/1/", desc: AQA }, // same url twice in the feed
 ]);
 
-function setupProject(t, feedUrl) {
+// Local HTTP server playing the DOU feed; `body()` is read per request so a
+// test can change the feed between runs.
+async function serveFeed(t, body) {
+  const srv = createServer((_req, res) => { res.setHeader("content-type", "application/rss+xml"); res.end(body()); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  return `http://127.0.0.1:${srv.address().port}/rss`;
+}
+
+// `llm` overrides the llm config block, `packages` pre-existing applications/*.md,
+// `claude` replaces the fake CLI below.
+function setupProject(t, feedUrl, { llm = {}, packages, claude } = {}) {
   return makeProject(t, {
     scripts: ["jobs.mjs", "dashboard.mjs"],
+    packages,
     files: {
       "skills.json": SKILLS_FIXTURE,
       "resume.txt": "Eugene, Senior SDET. Playwright, TypeScript, API testing.",
       "jobs.config.json": JSON.stringify({
         minScore: 25, requireRole: true, excludeTitle: ["junior"], excludeLocation: [],
-        llm: { enabled: true, model: "haiku", maxPerRun: 15, minScore: 50 },
+        llm: { enabled: true, model: "haiku", maxPerRun: 15, minScore: 50, ...llm },
         dou: { enabled: true, feeds: [feedUrl] },
         djinni: { enabled: false }, linkedin: { enabled: false },
       }),
@@ -39,7 +51,7 @@ function setupProject(t, feedUrl) {
     // untrusted board text.
     // Each call sleeps 0.6 s and logs start/end (ms) so the test can prove the
     // two gate-passers were scored concurrently, not one after the other.
-    bins: { claude: `#!/bin/sh
+    bins: { claude: claude || `#!/bin/sh
 LOG="$(dirname "$0")/../claude.log"; now() { node -e 'process.stdout.write(String(Date.now()))'; }
 echo "start=$(now)" >> "$LOG"; sleep 0.6
 PROMPT="$(cat)"   # the prompt arrives on stdin, never in argv (ps-visible; 128 KB argv cap on Linux)
@@ -53,10 +65,7 @@ case "$PROMPT" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "c
 const runJobs = (p) => runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf" });
 
 test("jobs.mjs end-to-end: feed → gates → package → seen → health → dashboard → notification", async (t) => {
-  const srv = createServer((_req, res) => { res.setHeader("content-type", "application/rss+xml"); res.end(FEED); });
-  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
-  t.after(() => srv.close());
-  const p = setupProject(t, `http://127.0.0.1:${srv.address().port}/rss`);
+  const p = setupProject(t, await serveFeed(t, () => FEED));
 
   const out = await runJobs(p);
   assert.match(out, /DOU feed ok \(4\)/, "all four feed items parsed");
@@ -102,4 +111,64 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.match(out2, /Considered 0 new, wrote 0 application package/);
   assert.equal(readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).length, 1);
   assert.equal((p.read("claude.log").match(/^args=/gm) || []).length, 2, "no LLM calls on the second run");
+});
+
+const mdFiles = (p) => readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));
+const claudeCalls = (p) => (existsSync(p.path("claude.log")) ? p.read("claude.log").match(/^args=/gm) || [] : []).length;
+const ACME = { title: "Senior SDET (Playwright) в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/1/", desc: AQA };
+const BETA = { title: "SDET Automation Engineer в Beta, Львів", link: "https://jobs.dou.ua/companies/beta/vacancies/2/", desc: AQA };
+const GAMMA = { title: "Test Automation Engineer в Gamma, Одеса", link: "https://jobs.dou.ua/companies/gamma/vacancies/3/", desc: AQA };
+
+test("jobs.mjs: LLM failing on every call → keyword-only packages + breakage alert", async (t) => {
+  // Exits non-zero without reading stdin (logs each attempt; llmJSON retries once per job).
+  const claude = `#!/bin/sh\necho "args=$*" >> "$(dirname "$0")/../claude.log"; exit 1\n`;
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME, BETA, GAMMA])), { claude });
+  const out = await runJobs(p);
+  assert.equal((out.match(/llm failed for: .* — keyword-only package/g) || []).length, 3);
+  assert.match(out, /wrote 3 application package/);
+  assert.equal(claudeCalls(p), 6, "each of the three jobs was retried once");
+  for (const f of mdFiles(p)) assert.doesNotMatch(p.read("applications", f), /^llm_score:/m, `${f} is keyword-only`);
+  const notify = await waitFor(p.path("notify.log"), /LLM failed/);
+  assert.match(notify, /LLM failed 3× — keyword-only packages/, "llmFailed > 2 alert reaches the banner");
+});
+
+test("jobs.mjs: llm.maxPerRun defers the weaker match to the next run (not written, not seen)", async (t) => {
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME, BETA])), { llm: { maxPerRun: 1 } });
+  const out = await runJobs(p);
+  assert.match(out, /· deferred \[\d+\] dou: .* — llm\.maxPerRun reached, next run/);
+  assert.match(out, /wrote 1 application package/);
+  assert.equal(claudeCalls(p), 1, "exactly one LLM call");
+  assert.equal(mdFiles(p).length, 1);
+  assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1, "the deferred job is not marked seen");
+  // Next run picks the deferred one up.
+  await runJobs(p);
+  assert.equal(claudeCalls(p), 2);
+  assert.equal(mdFiles(p).length, 2);
+});
+
+test("jobs.mjs: a card without a description is retried, not buried as seen", async (t) => {
+  const item = { title: "QA Engineer в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/7/", desc: "Short." };
+  const p = setupProject(t, await serveFeed(t, () => rss([item])));
+  const out = await runJobs(p);
+  assert.match(out, /· skip \[\d+\] dou: QA Engineer \(no description — will retry\)/);
+  assert.match(out, /wrote 0 application package/);
+  assert.deepEqual(p.json("jobs-seen.json"), {}, "not marked seen");
+  item.desc = AQA;   // the board now serves the full description
+  const out2 = await runJobs(p);
+  assert.match(out2, /✓ MATCH \[\d+ \/ llm 85\] dou: QA Engineer @ Acme/);
+  assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1);
+});
+
+test("jobs.mjs: the same vacancy from another board joins the existing package as an alt link", async (t) => {
+  const existing = pkg({ source: "djinni", title: "Senior SDET (Playwright)", company: "Acme", url: "https://djinni.co/jobs/1" });
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME])), { packages: { "old.md": existing } });
+  const out = await runJobs(p);
+  assert.match(out, /· dup-of-existing \(old\.md\) dou: Senior SDET \(Playwright\)/);
+  assert.match(out, /Considered 0 new, wrote 0 application package/);
+  assert.equal(claudeCalls(p), 0, "no LLM call for a known vacancy");
+  assert.deepEqual(mdFiles(p), ["old.md"], "no second package");
+  const md = p.read("applications", "old.md");
+  assert.match(md, /^alt_links: dou\|https:\/\/jobs\.dou\.ua\/companies\/acme\/vacancies\/1\/$/m);
+  assert.ok(md.endsWith("# Senior SDET (Playwright)\n"), "body untouched");
+  assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1, "marked seen so it is not re-appended");
 });

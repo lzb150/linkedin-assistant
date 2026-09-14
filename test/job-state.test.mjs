@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { normalizeMeta } from "../lib/job-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 import {
-  normalize, mergeEntry, validatePatch, readStore, writeStore, statusOf,
+  normalize, mergeEntry, validatePatch, readStore, writeStore,
 } from "../lib/job-state.mjs";
 
 const U = "https://example.com/jobs/1/";
@@ -20,7 +20,7 @@ test("normalize preserves _meta and drops fully-empty entries", () => {
 test("normalize keeps a note-only entry (status defaults to new)", () => {
   const out = normalize({ [U]: { note: "call Anna" } });
   assert.equal(out[U].note, "call Anna");
-  assert.equal(statusOf(out, U), "new");
+  assert.equal(out[U].status, undefined);
 });
 
 test("mergeEntry sets status without mutating the input", () => {
@@ -74,16 +74,14 @@ test("normalize keeps every stored status", () => {
   for (const st of ["viewed", "closed"]) {
     const out = normalize({ [U]: { status: st } });
     assert.equal(out[U].status, st, st);
-    assert.equal(statusOf(out, U), st);
   }
 });
 
 // Radar mode dropped applied/answered/interview; an old store may still hold
 // them (or a newer build may add one). Keep the entry, read it as "new".
-test("normalize keeps an unknown (legacy/newer) status verbatim; statusOf reads it as new; validatePatch rejects it", () => {
+test("normalize keeps an unknown (legacy/newer) status verbatim; validatePatch rejects it", () => {
   const out = normalize({ [U]: { status: "applied", appliedAt: "2026-07-01T00:00:00Z" } });
   assert.equal(out[U].status, "applied");
-  assert.equal(statusOf(out, U), "new");
   assert.equal(validatePatch({ status: "applied" }), false);
   assert.equal(validatePatch({ status: "ghosted" }), false);
 });
@@ -102,7 +100,6 @@ test("normalize keeps entries with a status this build does not know", () => {
   const out = normalize({ _meta: {}, "u1": { status: "from-the-future", updatedAt: "2026-09-07T00:00:00Z" }, "u2": { status: "viewed" } });
   assert.equal(out.u1.status, "from-the-future");
   assert.equal(out.u2.status, "viewed");
-  assert.equal(statusOf(out, "u1"), "new", "unknown reads as new for display");
 });
 
 // Daily snapshots: the first writeStore of a day copies the previous file to

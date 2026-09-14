@@ -30,11 +30,6 @@ banners/
 run.sh
 com.*.plist
 
-# Machine-specific Windows wrappers & task registration — use the *.example templates
-scripts/windows/run.ps1
-scripts/windows/run-jobs.ps1
-scripts/windows/register-tasks.ps1
-
 # Personal resume — kept local only
 resume.txt
 
@@ -58,18 +53,15 @@ job-state.json
 job-state.*.bak
 closed-check-state.json
 
-# Stray applet backup from an old build-jobs.sh (committed by mistake once)
-Jobs.app.orig/
-
 # Browser-profile / run locks (lib/browser.mjs acquireProfileLock: `<name>.lock/` dirs)
 .browser-profile.lock/
 .djinni-profile.lock/
 jobs-run.lock/
 
-# Local tooling scratch dirs
-.superpowers/
-.playwright-cli/
-
 # Atomic-write temp files and quarantined corrupt state files
 *.tmp
 *.corrupt
+
+# Local tooling scratch dirs
+.superpowers/
+.playwright-cli/

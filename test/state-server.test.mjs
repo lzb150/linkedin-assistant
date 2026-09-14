@@ -161,3 +161,10 @@ test("POST /state rejects an unparseable _meta.lastVisit with 400 on a healthy s
   assert.equal(bad.status, 400);
   assert.deepEqual(await fetch(`${base}/state`).then((r) => r.json()), { _meta: {} }); // nothing written
 });
+
+test("GET / with no generated dashboard → 404 with a hint, not a crash", async (t) => {
+  const { base } = await startStateServer(t, { indexPath: join(tmpDir(t), "missing.html") });
+  const res = await fetch(`${base}/`);
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /node dashboard\.mjs/);
+});

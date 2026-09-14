@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # One wrapper for every scheduled script (launchd strips PATH, so it is set here).
 #   run.sh check.mjs                 LinkedIn inbox check      → logs/check_YYYYMMDD.log
 #   run.sh jobs.mjs                  full job discovery        → logs/jobs_YYYYMMDD.log
@@ -19,7 +19,7 @@ find "$PWD/logs" -name '*.log' ! -name 'state-server.log' ! -name 'jobs-badge.*.
 find "$PWD/applications/archive" -name '*.md' -mtime +180 -delete 2>/dev/null || true   # archived packages: nothing reads them
 
 SCRIPT="${1:?usage: run.sh <script.mjs> [args]}"; SCRIPT="${SCRIPT##*/}"
-DOU="$([ "${DOU_ONLY:-}" = 1 ] && echo _dou || true)"   # jobs.mjs honours only DOU_ONLY=1; DOU_ONLY=0 is a full run
+DOU="$([[ "${DOU_ONLY:-}" == 1 ]] && echo _dou || true)"   # jobs.mjs honours only DOU_ONLY=1; DOU_ONLY=0 is a full run
 LOG="logs/${SCRIPT%.mjs}${DOU}_$(date +%Y%m%d).log"   # one file per day; each run appends after a "=== run" separator
 # caffeinate: launchd fires a missed schedule inside a short DarkWake and the Mac
 # sleeps again under the run — timers pause and a 1-minute run stretches to an hour.

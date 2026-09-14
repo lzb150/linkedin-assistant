@@ -7,7 +7,7 @@
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
 
-import { readFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
@@ -29,7 +29,7 @@ import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { pool } from "./lib/sources/html.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
-import { launchBrowser, acquireProfileLock } from "./lib/browser.mjs";
+import { launchBrowser, acquireProfileLock, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
 
@@ -48,7 +48,7 @@ try {
 }
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
-// Fresh clone has no applications/ yet; readdirSync/writeTextAtomic below need it.
+// Fresh clone has no applications/ yet; readPackages/writeTextAtomic below need it.
 mkdirSync(APPS, { recursive: true });
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
@@ -128,7 +128,7 @@ const alerts = [];   // breakage lines for the single end-of-run banner (declare
 // health monitoring (found 0), not an exception.
 async function fetchLinkedInChecked(page, cfg) {
   await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 30000 });
-  if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
+  if (LINKEDIN_LOGGED_OUT.test(page.url())) {
     log("⚠️  LinkedIn session expired — skipping LinkedIn jobs. Run: node login.mjs");
     alerts.push("⚠️ LinkedIn session expired — run: node login.mjs");
     return [];

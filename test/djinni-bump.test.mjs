@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dueForCheck, nextBumpState } from "../lib/djinni-bump.mjs";
+import { dueForCheck, nextBumpState, freshThreads, bumpProfile } from "../lib/djinni-bump.mjs";
 
 const NOW = Date.parse("2026-09-01T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -50,4 +50,46 @@ test("nextBumpState: cooldown/unverified keep lastBumpAt and retry in a day", ()
     assert.equal(s.lastBumpAt, "2026-08-15T00:00:00.000Z");
     assert.equal(s.nextCheckAt, new Date(NOW + DAY).toISOString());
   }
+});
+
+test("freshThreads: only threads not in the seen set notify; wording is singular/plural with the first labelled thread", () => {
+  const threads = [{ id: "1", label: "" }, { id: "2", label: "Acme" }, { id: "3", label: "Beta" }];
+  assert.deepEqual(freshThreads(threads, ["2", "3"]), { fresh: [{ id: "1", label: "" }], message: "New message" });
+  assert.deepEqual(freshThreads(threads, [1]).message, "2 new messages (incl. Acme)", "seen ids are compared as strings");
+  assert.deepEqual(freshThreads(threads, ["1", "3"]), { fresh: [{ id: "2", label: "Acme" }], message: "New message: Acme" });
+  assert.deepEqual(freshThreads(threads, "garbage").fresh.length, 3, "a non-array seen file means nothing was seen");
+  assert.deepEqual(freshThreads([], []), { fresh: [], message: "0 new messages" });
+  assert.deepEqual(freshThreads(threads, ["1", "2", "3"]).fresh, [], "nothing new — the caller does not notify");
+});
+
+// bumpProfile against a fake Playwright page: `button` is the bump button's
+// state (null = missing), `modalText` what the confirm modal shows (undefined =
+// no modal ever appears). The confirm click is recorded so a test can prove an
+// unrelated modal was never pressed.
+function fakeProfilePage({ button, modalText }) {
+  const calls = [];
+  const btn = {
+    count: async () => (button ? 1 : 0),
+    isDisabled: async () => button === "disabled" || (button === "enabled" && calls.includes("confirm")),   // Djinni disables it once the bump lands
+    getAttribute: async () => null,
+    click: async () => calls.push("open"),
+  };
+  const modal = {
+    waitFor: async () => { if (modalText === undefined) throw new Error("timeout"); },
+    innerText: async () => modalText,
+    locator: () => ({ first: () => ({ click: async () => calls.push("confirm") }) }),
+  };
+  return { calls, goto: async () => {}, reload: async () => {}, waitForTimeout: async () => {}, locator: (sel) => ({ first: () => (sel.startsWith("button") ? btn : modal) }) };
+}
+
+test("bumpProfile: missing button → unverified, disabled → cooldown, unrelated modal → unverified without pressing it, bump modal → bumped", async () => {
+  assert.equal(await bumpProfile(fakeProfilePage({ button: null })), "unverified");
+  assert.equal(await bumpProfile(fakeProfilePage({ button: "disabled" })), "cooldown");
+  const survey = fakeProfilePage({ button: "enabled", modalText: "Take our 2-minute survey" });
+  assert.equal(await bumpProfile(survey), "unverified");
+  assert.deepEqual(survey.calls, ["open"], "the survey's first button was never clicked");
+  const bump = fakeProfilePage({ button: "enabled", modalText: "Bump my profile?" });
+  assert.equal(await bumpProfile(bump), "bumped");
+  assert.deepEqual(bump.calls, ["open", "confirm"]);
+  assert.equal(await bumpProfile(fakeProfilePage({ button: "enabled" })), "unverified", "no modal and the button stays enabled — nothing registered");
 });

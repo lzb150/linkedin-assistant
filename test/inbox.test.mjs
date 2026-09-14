@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadIdFrom, threadOutcome } from "../lib/inbox.mjs";
+import { threadIdFrom, threadOutcome, threadOpened } from "../lib/inbox.mjs";
 
 test("threadIdFrom: the /thread/<id> segment, query and hash never leak; url-less falls back to name + OLDEST bubble hash", () => {
   assert.equal(threadIdFrom("https://www.linkedin.com/messaging/thread/2-abc==/?x=1#y", "Anna", "hi"), "2-abc==");
@@ -22,4 +22,11 @@ test("threadOutcome: already seen → re-stamp; bubbles without job text → not
   assert.deepEqual(threadOutcome({ bubbleCount: 2, text: "", extractFailed: false, alreadySeen: false, isJob: false }), { action: "not-job", markSeen: true }, "bubbles exist but carry no text (images only)");
   assert.deepEqual(threadOutcome({ bubbleCount: 2, text: "thanks!", extractFailed: false, alreadySeen: false, isJob: false }), { action: "not-job", markSeen: true });
   assert.deepEqual(threadOutcome({ bubbleCount: 2, text: "We are hiring an SDET", extractFailed: false, alreadySeen: false, isJob: true }), { action: "process", markSeen: false });
+});
+
+test("threadOpened: with a card href only that thread's id counts; without one any url change does, and card 0 may keep the auto-opened url", () => {
+  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-abc/", before: "https://l/messaging/", index: 3 }), true);
+  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/", index: 0 }), false, "wrong thread — even for card 0");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 0 }), true, "card 0: LinkedIn auto-opens it, so an unchanged url is expected");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1 }), false, "card 1 with the previous thread still open");
 });

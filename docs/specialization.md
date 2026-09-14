@@ -11,7 +11,7 @@ in four places.
 | `skills.json` | Scoring profile: `roles`, `skills`, `synonyms`, `antiKeywords`, `profile` | yes |
 | `jobs.config.json` | Where to search: per-source feeds and queries | yes |
 | `resume.txt` | Plain-text resume — grounds LLM re-scoring and cover letters | no (gitignored) |
-| `run.sh` / `run-jobs.sh` | `RESUME_PATH` — the PDF/DOCX attached to drafts; `CANDIDATE_NAME` — the signature on cover letters | no (gitignored) |
+| `run.sh` | `RESUME_PATH` — the PDF/DOCX attached to drafts; `CANDIDATE_NAME` — the signature on cover letters | no (gitignored) |
 
 ## From a job title to config
 
@@ -111,7 +111,7 @@ and moves `"Poland"`/`"Польща"` out of `excludeLocation`.
 ### 6. Resume
 
 Replace `resume.txt` with your plain-text resume (it drives LLM re-scoring
-and letters), and in `run.sh` / `run-jobs.sh` point `RESUME_PATH` at the
+and letters), and in `run.sh` point `RESUME_PATH` at the
 PDF/DOCX to attach and set `CANDIDATE_NAME` to the name that signs your
 cover letters. All three files are gitignored.
 
@@ -136,7 +136,7 @@ to your resume.
 2. `jobs.config.json` — searches repointed for **every enabled** source;
    `excludeTitle` still fits.
 3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
-   `run.sh` / `run-jobs.sh`.
+   `run.sh`.
 4. Verify: `node --test test/` (the suite runs on a frozen fixture profile,
    so it stays green regardless of your `skills.json`), then one
    `node jobs.mjs` run — the newest file in `applications/` should read
