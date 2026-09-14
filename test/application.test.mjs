@@ -204,3 +204,9 @@ test("with llm.model the frontmatter records llm_model", () => {
   const { markdown } = buildApplication(job, scored, { score: 71, why: "ok", red_flags: [], cover: "x", model: "sonnet" });
   assert.match(markdown, /^llm_model: sonnet$/m);
 });
+
+test("the LLM cover is capped at 4000 chars — the only other bound on that field is the 1 MB stdout buffer", () => {
+  const llm = { score: 85, why: "fit", red_flags: [], cover: "x".repeat(10_000) };
+  const { markdown } = buildApplication(job, scored, llm);
+  assert.ok(markdown.length < 6000, `package is ${markdown.length} chars`);
+});

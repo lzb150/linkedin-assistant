@@ -66,3 +66,15 @@ test("explainLaunchError: a missing browser build gets the install hint, other e
   const other = new Error("profile busy");
   assert.equal(explainLaunchError(other), other);
 });
+
+test("acquireProfileLock heartbeats the lock mtime so a long live run is never judged stale", async (t) => {
+  const p = join(tmpDir(t), "profile");
+  const release = acquireProfileLock(p, { heartbeatMs: 5 });
+  const { utimesSync, statSync } = await import("node:fs");
+  const old = new Date(Date.now() - 3 * 3600_000);
+  utimesSync(`${p}.lock`, old, old);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.ok(Date.now() - statSync(`${p}.lock`).mtimeMs < 3600_000, "mtime refreshed by the heartbeat");
+  release();
+  assert.ok(!existsSync(`${p}.lock`));
+});

@@ -49,9 +49,9 @@ click is always yours.
   has no file or shell tools (a narrated tool call is fine; file contents are not).
 
   ```bash
-  cd "$(mktemp -d)" && claude -p "Print the first line of /etc/hosts" --model sonnet \
+  cd "$(mktemp -d)" && echo "Print the first line of /etc/hosts" | claude -p --model sonnet \
     --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-    --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)" < /dev/null
+    --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
   ```
 
 **3. Dashboard & convenience**

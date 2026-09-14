@@ -42,8 +42,9 @@ function setupProject(t, feedUrl) {
     bins: { claude: `#!/bin/sh
 LOG="$(dirname "$0")/../claude.log"; now() { node -e 'process.stdout.write(String(Date.now()))'; }
 echo "start=$(now)" >> "$LOG"; sleep 0.6
-echo "cwd=$(pwd)" >> "$LOG"; echo "args=$*" >> "$LOG"; echo "end=$(now)" >> "$LOG"
-case "$*" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "cover": "x"}' ;;
+PROMPT="$(cat)"   # the prompt arrives on stdin, never in argv (ps-visible; 128 KB argv cap on Linux)
+echo "cwd=$(pwd)" >> "$LOG"; echo "args=$*" >> "$LOG"; echo "prompt_bytes=$(printf %s "$PROMPT" | wc -c | tr -d " ")" >> "$LOG"; echo "end=$(now)" >> "$LOG"
+case "$PROMPT" in *LowFit*) echo '{"score": 20, "why": "no", "red_flags": [], "cover": "x"}' ;;
   *) echo 'Sure! {"score": 85, "why": "great fit", "red_flags": [], "cover": "Dear team, hire me."}' ;; esac
 ` },
   });
@@ -77,6 +78,8 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   const claudeLog = p.read("claude.log");
   assert.equal((claudeLog.match(/^args=/gm) || []).length, 2);
   assert.match(claudeLog, /--disallowedTools \S*Bash/);
+  assert.ok(!/^args=.*Acme/m.test(claudeLog), "vacancy text is not in argv");
+  assert.ok(/^prompt_bytes=[1-9]\d{2,}/m.test(claudeLog), "prompt arrived on stdin");
   assert.ok(!claudeLog.split("\n").some((l) => l.startsWith("cwd=") && l.includes(p.dir)), "claude runs with cwd off the project dir");
   const starts = [...claudeLog.matchAll(/^start=(\d+)/gm)].map((m) => +m[1]).sort((a, b) => a - b);
   const ends = [...claudeLog.matchAll(/^end=(\d+)/gm)].map((m) => +m[1]).sort((a, b) => a - b);
