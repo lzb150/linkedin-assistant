@@ -2,12 +2,13 @@
 // threads, scores each against your resume profile, and writes a draft reply for
 // any relevant one. IT NEVER SENDS ANYTHING and never clicks "Send".
 //
-// Run:  node check.mjs              (headless; UNREAD threads only)
+// Run:  node check.mjs              (headless; UNREAD threads only, via LinkedIn's own
+//                                     ?filter=unread list — see the note at the goto below)
 //       HEADFUL=1 node check.mjs    (watch it work — useful for fixing selectors)
 //       MAX=10 node check.mjs       (cap how many threads to open)
 //       SCAN_ALL=1 node check.mjs   (scan recent threads regardless of read state;
-//                                     useful for a first pass / when unread marker is missed.
-//                                     seen.json still prevents duplicate drafts.)
+//                                     useful for a first pass. seen.json still prevents
+//                                     duplicate drafts. Does not touch the Dock badge.)
 
 import { launchBrowser, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { mkdirSync } from "node:fs";
@@ -37,8 +38,8 @@ const SEL = {
   conversationList: ".msg-conversations-container__conversations-list",
   // Only the real <li> rows (avoids the duplicate inner .pillar cards).
   conversationCard: "li.msg-conversation-listitem",
-  // Multiple unread strategies; checked within each card (so the nav badge can't leak in).
-  unreadHint: ".msg-conversation-card--unread, .notification-badge--show, .msg-conversation-card__unread-count, [class*='unread-indicator'], [class*='unread']",
+  // Rendered inside the list container when ?filter=unread has nothing to show.
+  emptyUnread: "No unread messages",
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
 };
@@ -59,7 +60,14 @@ let counted = false;
 try {
   ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
   const page = ctx.pages()[0] || (await ctx.newPage());
-  await page.goto("https://www.linkedin.com/messaging/", { waitUntil: "domcontentloaded", timeout: 30000 });
+  // /messaging/ auto-opens the newest thread on load, and an opened thread is
+  // read: every hourly check was silently reading the newest message before
+  // the unread scan ran (2026-09-14: a 14:50 message, 0 unread at 14:53; only
+  // one detection in three months of logs, when two threads were unread at
+  // once). LinkedIn's own unread filter lists exactly the unread threads and
+  // does not auto-open when empty; opening its first card is what we do anyway.
+  const INBOX = SCAN_ALL ? "https://www.linkedin.com/messaging/" : "https://www.linkedin.com/messaging/?filter=unread";
+  await page.goto(INBOX, { waitUntil: "domcontentloaded", timeout: 30000 });
 
   // Detect a logged-out session early and bail with a clear message.
   if (LINKEDIN_LOGGED_OUT.test(page.url())) {
@@ -80,31 +88,21 @@ try {
   // Keep the Dock-badge daemon (Jobs.app) alive, then count ALL unread threads
   // (independent of MAX and the job-relevance filter) — this drives the badge.
   ensureJobsApp();
-  // Unread detection for ALL cards in one round-trip (was two per card):
-  // class/badge markers OR a bold participant name (LinkedIn bolds unread).
-  // Computed once; reused by the scan loop below. A failed evaluate reads as
-  // "nothing unread", as a failed per-card check did.
-  let unread = [];
-  try {
-    unread = await page.$$eval(SEL.conversationCard, (els, hint) => els.map((el) => {
-      if (el.querySelector(hint)) return true;
-      const n = el.querySelector("[class*='participant-names']");
-      if (!n) return false;
-      const w = getComputedStyle(n).fontWeight;
-      return parseInt(w, 10) >= 600 || w === "bold";
-    }), SEL.unreadHint);
-  } catch {}
-  unreadCount = unread.filter(Boolean).length;
-  log(`Unread threads: ${unreadCount}`);
-  // Zero cards on a rendered list is the card selector drifting, not an empty inbox.
-  counted = listFound && cards.length > 0;
+  // On the unread filter every card is unread. If LinkedIn auto-opened the first
+  // one (url is a thread), the list may already have dropped it as read — count
+  // at least that one. SCAN_ALL walks the unfiltered list and leaves the badge alone.
+  const autoOpened = /\/messaging\/thread\//.test(page.url());
+  unreadCount = SCAN_ALL ? 0 : Math.max(cards.length, autoOpened ? 1 : 0);
+  if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);
+  // A rendered list with zero cards is either LinkedIn's empty state (honest 0)
+  // or the card selector drifting (must not zero the badge) — the text decides.
+  const emptyState = cards.length === 0 && await page.$$eval(SEL.conversationList, (els, t) => els.some((e) => e.innerText.includes(t)), SEL.emptyUnread).catch(() => false);
+  if (listFound && cards.length === 0 && !emptyState) log("⚠️  Empty list without the empty-state text — card selector may have drifted. Run with HEADFUL=1 to inspect.");
+  counted = !SCAN_ALL && listFound && (cards.length > 0 || emptyState);
 
   for (const [i, card] of cards.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
-
-    // Is it unread? (best-effort, multi-strategy). SCAN_ALL bypasses this filter.
-    if (!SCAN_ALL && !unread[i]) continue;
 
     let name = "Recruiter";
     try {
@@ -171,7 +169,7 @@ try {
     } catch (e) {
       log("notify: writeState failed:", e?.message);
     }
-  } else {
+  } else if (!SCAN_ALL) {
     log("notify: scan failed before counting — keeping previous badge state");
   }
   await ctx?.close();
