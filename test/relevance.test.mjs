@@ -180,13 +180,24 @@ test("scoreMessage keeps a rich real vacancy above the cold-application gate", (
   assert.ok(r.score >= 25, `rich vacancy score ${r.score} must clear minScore 25`);
 });
 
-// Live profile (skills.json): title forms that real postings use and that the
-// role gate rejected in production — "[35 no-role] Senior/Lead AQA Engineer",
-// "[34 no-role] Test Automation Middle Engineer". (Lead-only titles are not
-// sought: "QA Lead" / "QA Team Lead" stay out of the roles list on purpose.)
-test("scoreMessage (live skills.json) recognises AQA / General QA / Test Automation … Engineer as roles, not lead-only titles", () => {
+// Title forms that real postings use and that the role gate rejected in
+// production — "[35 no-role] Senior/Lead AQA Engineer", "[34 no-role] Test
+// Automation Middle Engineer". Scored against the frozen fixture plus the three
+// roles added for them (not the live skills.json, which is user config); the
+// roles are added HERE, not to QA, because "test automation" as a role would
+// change the role-less score pins above. (Lead-only titles are not sought:
+// "QA Lead" / "QA Team Lead" stay out of the roles list on purpose.)
+test("scoreMessage recognises AQA / General QA / Test Automation … Engineer as roles, not lead-only titles", () => {
+  const withTitleRoles = { ...QA, roles: [...QA.roles, "aqa", "general qa", "test automation"] };
   for (const title of ["Senior/Lead AQA Engineer (Python)", "General QA (Manual + Automation)", "Test Automation Middle Engineer"]) {
-    assert.ok(scoreMessage(title).matchedRole, `role expected for: ${title}`);
+    assert.ok(scoreMessage(title, withTitleRoles).matchedRole, `role expected for: ${title}`);
   }
-  assert.equal(scoreMessage("QA Team Lead").matchedRole, null, "a lead-only title is not a role we search for");
+  assert.equal(scoreMessage("QA Team Lead", withTitleRoles).matchedRole, null, "a lead-only title is not a role we search for");
+});
+
+test("scoreMessage: an anti-keyword lowers the score and is reported in penalties", () => {
+  const clean = scoreMessage("Playwright, TypeScript", QA);
+  const r = scoreMessage("Playwright, TypeScript. Unpaid internship.", QA);
+  assert.ok(r.score < clean.score, `${r.score} should be below ${clean.score}`);
+  assert.deepEqual(r.penalties, ["unpaid", "internship"]);
 });

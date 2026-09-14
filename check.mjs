@@ -114,7 +114,10 @@ try {
   const autoOpened = /\/messaging\/thread\//.test(page.url());
   const openId = autoOpened ? threadIdFrom(page.url()) : null;
   const ids = await page.$$eval(`${SEL.conversationCard} a[href*='/messaging/thread/']`, (as) => as.map((a) => a.href)).then((hrefs) => hrefs.map((h) => threadIdFrom(h)), () => []);
-  const openListed = autoOpened && ids.includes(openId);
+  // No thread anchors at all (selector drift) while cards exist: the open thread
+  // is a card, not an extra — else the badge reads N+1 and it is scanned twice.
+  if (cards.length && !ids.length) log("⚠️  cards without a thread link — card selector may have drifted. Run with HEADFUL=1 to inspect.");
+  const openListed = autoOpened && (ids.length ? ids.includes(openId) : cards.length > 0);
   const verdict = unreadVerdict({ cards: cards.length, autoOpened, openListed, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
   ({ unreadCount, counted } = verdict);
   if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);

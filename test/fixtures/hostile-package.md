@@ -12,6 +12,7 @@ llm_score: 9
 llm_why: "><img src=x onerror=alert(1)>
 matched_skills: xss, "><img src=x onerror=alert(1)>
 resume: ~/resume.docx
+file: ../../evil.md
 ---
 
 # hostile fixture — every field is attacker-controlled scraped text

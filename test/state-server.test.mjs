@@ -168,3 +168,10 @@ test("GET / with no generated dashboard → 404 with a hint, not a crash", async
   assert.equal(res.status, 404);
   assert.match(await res.text(), /node dashboard\.mjs/);
 });
+
+test("GET / forbids framing (the page auto-POSTs lastVisit; a framing site would clear every NEW ribbon)", async (t) => {
+  const { base } = await startStateServer(t);
+  const res = await fetch(`${base}/`);
+  assert.equal(res.headers.get("x-frame-options"), "DENY");
+  assert.equal(res.headers.get("content-security-policy"), "frame-ancestors 'none'");
+});

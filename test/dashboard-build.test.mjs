@@ -5,15 +5,17 @@
 // same hostile fixture idea; this pins the rules where node --test runs.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
 import { makeProject, runScript } from "./helpers/e2e.mjs";
 
 const fm = (fields) => `---\n${Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n# x\n`;
 
-test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascript: url", async (t) => {
+test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascript: url, sort order, dir.md", async (t) => {
   const p = makeProject(t, {
     scripts: ["dashboard.mjs"],
     packages: {
       "hostile.md": fm({ source: "dou", title: "<script>alert(1)</script>", company: 'Evil" onmouseover="x</script', url: "javascript:alert(1)", generated: "2026-09-01T00:00:00Z", score: 50 }),
+      "beta.md": fm({ source: "dou", title: "BETA-TITLE", company: "Beta", url: "https://b.example/1", generated: "2026-09-01T00:00:00Z", score: 60 }),
       "acme-old.md": fm({ source: "dou", title: "SDET", company: "Acme", url: "https://a.example/1", generated: "2026-09-01T00:00:00Z", score: 40, llm_score: 80, llm_why: "OLD-VERDICT" }),
       "acme-new.md": fm({
         source: "dou", title: "SDET", company: "Acme", url: "https://a.example/2", generated: "2026-09-02T00:00:00Z", score: 40, llm_score: 90, llm_why: "NEW-VERDICT",
@@ -21,10 +23,18 @@ test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascr
       }),
     },
   });
+  // A directory named *.md (readFileSync throws EISDIR) is skipped with a warning, not a crashed build.
+  mkdirSync(p.path("applications", "dir.md"));
   const out = await runScript(p, "dashboard.mjs");
-  assert.match(out, /\(2 jobs\)$/m, "three packages → two cards");
+  assert.match(out, /\(3 jobs\)$/m, "four packages → three cards (identity collapse), dir.md ignored");
+  assert.match(out, /unreadable package skipped: dir\.md/);
   const html = p.read("applications", "index.html");
-  assert.equal((html.match(/<article class="card"/g) || []).length, 2);
+  assert.equal((html.match(/<article class="card"/g) || []).length, 3);
+
+  // Cards: LLM-scored first (desc), then keyword score (desc) — an LLM 90 with keyword 40
+  // beats every unscored card, and among the unscored keyword 60 beats 50.
+  const at = (s) => { const i = html.indexOf(s); assert.notEqual(i, -1, s); return i; };
+  assert.ok(at("NEW-VERDICT") < at("BETA-TITLE") && at("BETA-TITLE") < at("&lt;script&gt;alert(1)"), "sort: llm desc, then score desc");
 
   // (a) every scraped field is escaped; the raw markup never reaches the page.
   assert.ok(!html.includes("<script>alert"), "raw <script> from a title");
@@ -43,5 +53,5 @@ test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascr
 
   // (d) a javascript: url is never an href; the card renders read-only (no data-url → no status/notes).
   assert.ok(!html.includes('href="javascript:'));
-  assert.equal((html.match(/ data-url="/g) || []).length, 1, "only the http(s) card is live");
+  assert.equal((html.match(/ data-url="/g) || []).length, 2, "only the http(s) cards are live");
 });
