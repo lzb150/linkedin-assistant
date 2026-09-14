@@ -93,6 +93,9 @@ try {
     || (document.querySelector(S.conversationCard) && "cards")
     || ([...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)) && "empty"),
   SEL, { timeout: 15000 }).then((h) => h.jsonValue(), () => null);
+  // The url flips to the thread before the list renders: give the cards (or the
+  // empty-state text) up to 3 s more, else the count below reads a list that is not there yet.
+  if (settled === "thread") await page.waitForFunction((S) => document.querySelector(S.conversationCard) || [...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)), SEL, { timeout: 3000 }).catch(() => {});
 
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
@@ -102,22 +105,26 @@ try {
   // (independent of MAX and the job-relevance filter) — this drives the badge.
   ensureJobsApp();
   // On the unread filter every card is unread. If LinkedIn auto-opened the first
-  // one (url is a thread), the list may already have dropped it as read — count
-  // at least that one, and do not read an empty list as drift. A rendered list
-  // with zero cards and no thread is either LinkedIn's empty state (honest 0) or
-  // the card selector drifting (must not zero the badge) — the text decides.
+  // one (url is a thread), the list may already have dropped it as read: decided
+  // by id (is the open thread among the cards' hrefs?), not by count — with 2+
+  // unread an empty-list check missed it, so it was never scanned and the badge
+  // showed N−1. Do not read an empty list as drift then. A rendered list with
+  // zero cards and no thread is either LinkedIn's empty state (honest 0) or the
+  // card selector drifting (must not zero the badge) — the text decides.
   const autoOpened = /\/messaging\/thread\//.test(page.url());
-  const verdict = unreadVerdict({ cards: cards.length, autoOpened, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
+  const openId = autoOpened ? threadIdFrom(page.url()) : null;
+  const ids = await page.$$eval(`${SEL.conversationCard} a[href*='/messaging/thread/']`, (as) => as.map((a) => a.href)).then((hrefs) => hrefs.map((h) => threadIdFrom(h)), () => []);
+  const openListed = autoOpened && ids.includes(openId);
+  const verdict = unreadVerdict({ cards: cards.length, autoOpened, openListed, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
   ({ unreadCount, counted } = verdict);
   if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);
   if (verdict.drift) log("⚠️  Empty list without the empty-state text — card selector may have drifted. Run with HEADFUL=1 to inspect.");
 
-  // Threads to scan: the listed cards — or, when the only unread thread was
-  // auto-opened and already dropped from the filtered list, the open thread
-  // itself (`null` card): opening it marked it read, so this run is the last
-  // chance to draft for it.
-  const targets = !SCAN_ALL && autoOpened && cards.length === 0 ? [null] : cards;
-  if (targets[0] === null) log("· auto-opened thread not in list — scanning it directly");
+  // Threads to scan: the listed cards — preceded, when the auto-opened thread was
+  // already dropped from the filtered list, by the open thread itself (`null`
+  // card): opening it marked it read, so this run is the last chance to draft for it.
+  const targets = verdict.scanOpenFirst ? [null, ...cards] : cards;
+  if (verdict.scanOpenFirst) log("· auto-opened thread not in list — scanning it first");
   for (const [i, card] of targets.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
@@ -141,6 +148,9 @@ try {
       // LinkedIn the late navigation used to land inside the next card's window.
       if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
       else await page.waitForTimeout(1500);
+      // `i` is the index within `targets` on purpose: threadOpened's "card 0 may keep
+      // its url" rule is for the auto-opened card, and with the `null` target first
+      // that card is NOT listed — the first real card must change the url like any other.
       if (!threadOpened({ wantId, url: page.url(), before, index: i })) { log(`· could not open thread, skipping: ${name}`); continue; }
     }
     const url = page.url();

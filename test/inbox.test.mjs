@@ -31,13 +31,14 @@ test("threadOpened: with a card href only that thread's id counts; without one a
   assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1 }), false, "card 1 with the previous thread still open");
 });
 
-test("unreadVerdict: cards count; an auto-opened thread the list already dropped counts as one and is not drift; empty state is an honest 0; no list or SCAN_ALL never counts", () => {
+test("unreadVerdict: cards count; an auto-opened thread the list dropped (decided by id, not count) adds one and is scanned first; empty state is an honest 0; no list or SCAN_ALL never counts", () => {
   const base = { autoOpened: false, emptyState: false, listFound: true, scanAll: false };
-  assert.deepEqual(unreadVerdict({ ...base, cards: 3 }), { unreadCount: 3, counted: true, drift: false });
-  assert.deepEqual(unreadVerdict({ ...base, cards: 0, autoOpened: true }), { unreadCount: 1, counted: true, drift: false }, "first unread thread auto-opened and gone from the filtered list");
-  assert.deepEqual(unreadVerdict({ ...base, cards: 2, autoOpened: true }), { unreadCount: 2, counted: true, drift: false }, "the open thread is still listed — no double count");
-  assert.deepEqual(unreadVerdict({ ...base, cards: 0, emptyState: true }), { unreadCount: 0, counted: true, drift: false });
-  assert.deepEqual(unreadVerdict({ ...base, cards: 0 }), { unreadCount: 0, counted: false, drift: true }, "list without cards, text or thread: selector drift, badge kept");
-  assert.deepEqual(unreadVerdict({ ...base, cards: 0, listFound: false }), { unreadCount: 0, counted: false, drift: false }, "no list at all is reported separately");
-  assert.deepEqual(unreadVerdict({ ...base, cards: 5, autoOpened: true, scanAll: true }), { unreadCount: 0, counted: false, drift: false });
+  assert.deepEqual(unreadVerdict({ ...base, cards: 3 }), { unreadCount: 3, counted: true, drift: false, scanOpenFirst: false });
+  assert.deepEqual(unreadVerdict({ ...base, cards: 2, autoOpened: true, openListed: true }), { unreadCount: 2, counted: true, drift: false, scanOpenFirst: false }, "the open thread is still listed — no double count, cards only");
+  assert.deepEqual(unreadVerdict({ ...base, cards: 2, autoOpened: true, openListed: false }), { unreadCount: 3, counted: true, drift: false, scanOpenFirst: true }, "2+ unread, the open thread already dropped: count it and scan it before the cards");
+  assert.deepEqual(unreadVerdict({ ...base, cards: 0, autoOpened: true, openListed: false }), { unreadCount: 1, counted: true, drift: false, scanOpenFirst: true }, "the only unread thread auto-opened and gone from the filtered list");
+  assert.deepEqual(unreadVerdict({ ...base, cards: 0, emptyState: true }), { unreadCount: 0, counted: true, drift: false, scanOpenFirst: false });
+  assert.deepEqual(unreadVerdict({ ...base, cards: 0 }), { unreadCount: 0, counted: false, drift: true, scanOpenFirst: false }, "list without cards, text or thread: selector drift, badge kept");
+  assert.deepEqual(unreadVerdict({ ...base, cards: 0, listFound: false }), { unreadCount: 0, counted: false, drift: false, scanOpenFirst: false }, "no list at all is reported separately");
+  assert.deepEqual(unreadVerdict({ ...base, cards: 5, autoOpened: true, openListed: false, scanAll: true }), { unreadCount: 0, counted: false, drift: false, scanOpenFirst: false });
 });
