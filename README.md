@@ -108,10 +108,10 @@ up after 6 minutes without saving anything — just re-run it.
 ## Inbox assistant — `check.mjs`
 
 ```bash
-node check.mjs              # headless; UNREAD threads only
+node check.mjs              # headless; UNREAD threads only (LinkedIn's ?filter=unread list)
 HEADFUL=1 node check.mjs    # watch it (useful when selectors break)
 MAX=5 node check.mjs        # cap unread threads opened this run
-SCAN_ALL=1 node check.mjs   # scan recent threads regardless of read state
+SCAN_ALL=1 node check.mjs   # scan recent threads regardless of read state; leaves the Dock badge alone
 ```
 
 New drafts land in `drafts/`. Each draft is a markdown file: their message, a
