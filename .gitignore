@@ -45,7 +45,7 @@ djinni-notify-state.json
 # Ids of Djinni threads already notified about (written by djinni-check.mjs)
 djinni-seen.json
 
-# Monthly profile-bump throttle state (written by djinni-check.mjs)
+# Profile-bump throttle state (written by djinni-check.mjs)
 djinni-bump-state.json
 
 # Dashboard job state and follow-up notify dedupe (machine-local runtime state)

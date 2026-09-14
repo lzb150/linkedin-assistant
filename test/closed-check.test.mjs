@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { makeProject, pkg, spawnScript, runScript } from "./helpers/e2e.mjs";
 
 // A board that reports every vacancy gone.
@@ -77,4 +77,17 @@ test("closed-check: archived and orphaned state entries are dropped; an empty ap
   const empty = makeProject(t, { scripts: ["closed-check.mjs"], packages: {}, state: { _meta: {}, [orphan]: { status: "closed" } }, bins: quiet });
   await runScript(empty, "closed-check.mjs");
   assert.ok(empty.json("job-state.json")[orphan], "an empty applications/ must not wipe the store");
+});
+
+// The state entry used to be pruned before the rename: a failed rename left the
+// package in applications/ with no entry, and it came back as New.
+test("closed-check: a package whose archive rename fails keeps its state entry", async (t) => {
+  const old = new Date(Date.now() - 40 * 86400000).toISOString();
+  const gone = "https://example.com/v/8/";
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "gone.md": pkg({ url: gone }) }, state: { _meta: {}, [gone]: { status: "viewed", updatedAt: old } }, bins: quiet });
+  mkdirSync(p.path("applications", "archive", "gone.md"), { recursive: true });   // a file cannot be renamed onto a directory
+  const out = await runScript(p, "closed-check.mjs");
+  assert.match(out, /could not archive gone\.md, keeping it/);
+  assert.match(out, /0 package\(s\) archived .*0 stale state entries dropped/);
+  assert.equal(p.json("job-state.json")[gone].status, "viewed", "entry kept with the package");
 });

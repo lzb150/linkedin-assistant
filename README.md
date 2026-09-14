@@ -254,7 +254,7 @@ counts, both selected by default.
 keywords; source chips (one per board that has packages on disk) narrow the
 list further. Cards that arrived since your last visit are highlighted with a
 **NEW** ribbon. Viewed cards you have not touched for 30 days are archived by the
-daily closed-check run (see "Clean up stale packages").
+daily closed-check run (see "State server, statuses & filters").
 
 ![Multi-select filters, source chips and search](docs/filters.png)
 

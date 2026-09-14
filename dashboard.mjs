@@ -150,7 +150,7 @@ const html = `<!doctype html>
   /* Palette = GitHub Primer: light values are the ones this page always used, the
      dark block is Primer's "dark default" (canvas #0d1117 / #161b22, border
      #30363d, fg #e6edf3 / #8b949e, *-emphasis fills for buttons). Every text /
-     background pair was checked ≥ 4.5:1; white on each emphasis fill is 4.6+.
+     background pair was checked ≥ 4.5:1; white on each emphasis fill is 4.5+.
      Theme: system preference by default via color-scheme + light-dark(); the header
      toggle sets data-theme on <html> (persisted in localStorage) and pins color-scheme. */
   :root {
@@ -172,10 +172,11 @@ const html = `<!doctype html>
   :root[data-theme="light"] { color-scheme: light; }
   :root[data-theme="dark"] { color-scheme: dark; }
   html { scroll-padding-top: 130px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it */
+  @media (max-width: 640px) { html { scroll-padding-top: 230px; } }   /* the header wraps to 170 px at 400 px and 223 px at 320 px */
   body { margin: 0; background: var(--bg); color: var(--text); }
   header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
   header h1 { margin: 0; font-size: 18px; }
-  header .meta { font-size: 13px; opacity: .8; margin-top: 2px; }
+  header .meta { font-size: 13px; color: var(--header-muted); margin-top: 2px; }   /* a colour, not opacity: the offline/flash badges are appended inside this line */
   main { max-width: 920px; margin: 18px auto; padding: 0 14px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
   .head { display: flex; align-items: flex-start; gap: 12px; }
@@ -217,10 +218,9 @@ const html = `<!doctype html>
   summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; }
   pre { white-space: pre-wrap; background: var(--card-muted); border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
   .copy { background: var(--accent-fill); color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-  .resume { font-size: 12px; color: var(--muted); margin-left: 10px; }
+  .resume { font-size: 12px; color: var(--muted); margin-left: 10px; overflow-wrap: anywhere; }   /* one unbreakable path token overran 320 px */
   .alt-row { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
-  .alt { color: var(--accent); text-decoration: none; margin-right: 8px; }
-  .alt:hover { text-decoration: underline; }
+  .alt { color: var(--accent); margin-right: 8px; }   /* underlined: colour alone (1.2:1 vs the muted row) is not a link cue */
   .empty { text-align: center; color: var(--muted); padding: 40px; }
   /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed, with a text cue. */
   .card.closed { background: var(--card-muted); border-left: 4px solid var(--closed-border); }
@@ -233,6 +233,7 @@ const html = `<!doctype html>
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .note-wrap summary { color: var(--muted); }
   .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--muted); border-radius: 7px; resize: vertical; background: var(--card); color: var(--text); }
+  .note::placeholder { color: var(--muted); }   /* UA default #757575 is 3.8:1 on the dark card */
   .note-has { color: var(--attention-text); }
   .offline, .flash { background: var(--attention-fill); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
   .card.fresh { box-shadow: inset 3px 0 0 var(--accent-fill); }

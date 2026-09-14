@@ -111,10 +111,10 @@ node login.mjs                   # ВИ логінитесь вручну (з 2F
 ## Асистент скриньки — `check.mjs`
 
 ```bash
-node check.mjs              # headless; лише НЕПРОЧИТАНІ треди
+node check.mjs              # headless; лише НЕПРОЧИТАНІ треди (список LinkedIn ?filter=unread)
 HEADFUL=1 node check.mjs    # дивитись наживо (корисно, коли зламались селектори)
 MAX=5 node check.mjs        # обмежити кількість відкритих тредів за запуск
-SCAN_ALL=1 node check.mjs   # сканувати останні треди незалежно від статусу прочитання
+SCAN_ALL=1 node check.mjs   # сканувати останні треди незалежно від статусу прочитання; бейдж у Dock не чіпає
 ```
 
 Нові чернетки з'являються у `drafts/`. Кожна чернетка — markdown-файл: їхнє

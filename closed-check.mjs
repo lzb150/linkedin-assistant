@@ -79,13 +79,16 @@ for (const { url, source } of todo) {
   if (++probed % 25 === 0) flush();
 }
 let { stateMap, n: savedNow } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved"));
-const toArchive = new Set(planArchive({ packages, stateMap }));   // closed 14+ / viewed 30+ days
+// Archive BEFORE pruning, and prune by what actually moved: a package whose
+// rename failed is still in applications/ and needs its state entry, or it
+// reappears as New on the dashboard.
+const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap }), { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ days
 // State entries for urls with no live package (archived now or earlier, pruned,
 // or never had one) are dropped — if untouched for a day: a package jobs.mjs
 // wrote during the probe, already clicked on the dashboard, is not in our
 // package list yet and must survive. Only when packages/ read as non-empty: an
 // unreadable applications/ must not wipe the store (cf. the 448-entry wipe).
-const live = new Set(packages.filter((p) => !toArchive.has(p.file)).map((p) => p.url));
+const live = new Set(packages.filter((p) => !archived.has(p.file)).map((p) => p.url));
 const staleBefore = Date.now() - 86400000;
 const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return Number.isFinite(t) && t < staleBefore; };
 let pruned = 0;
@@ -95,5 +98,4 @@ if (savedNow || pruned) writeStore(STATE, stateMap);
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
-const archived = archivePackages(APPS, [...toArchive]);
-log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
+log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);

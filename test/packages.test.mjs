@@ -22,13 +22,25 @@ test("readPackages: frontmatter + file per .md, non-.md and unreadable skipped (
   assert.deepEqual(readPackages(join(dir, "nope")), []);
 });
 
-test("archivePackages moves the given files into <dir>/archive and returns the count", (t) => {
+test("archivePackages moves the given files into <dir>/archive and returns the files moved", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "pk-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const f of ["a.md", "b.md", "c.md"]) writeFileSync(join(dir, f), pkg("https://x/" + f));
-  assert.equal(archivePackages(dir, ["a.md", "c.md"]), 2);
+  assert.deepEqual(archivePackages(dir, ["a.md", "c.md"]), ["a.md", "c.md"]);
   assert.deepEqual(readdirSync(dir).sort(), ["archive", "b.md"]);
   assert.deepEqual(readdirSync(join(dir, "archive")).sort(), ["a.md", "c.md"]);
-  assert.equal(archivePackages(dir, []), 0);
+  assert.deepEqual(archivePackages(dir, []), []);
   assert.ok(existsSync(join(dir, "archive")));
+});
+
+test("archivePackages: a rename that fails is reported (warn) and leaves that package in place; the others still move", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const f of ["a.md", "b.md", "c.md"]) writeFileSync(join(dir, f), pkg("https://x/" + f));
+  mkdirSync(join(dir, "archive", "c.md"), { recursive: true });   // a file cannot be renamed onto a directory
+  const failed = [];
+  assert.deepEqual(archivePackages(dir, ["a.md", "c.md"], { warn: (f, e) => failed.push([f, typeof e.message]) }), ["a.md"]);
+  assert.deepEqual(failed, [["c.md", "string"]]);
+  assert.deepEqual(readdirSync(dir).sort(), ["archive", "b.md", "c.md"]);
+  assert.deepEqual(readdirSync(join(dir, "archive")).sort(), ["a.md", "c.md"]);
 });
