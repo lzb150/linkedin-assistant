@@ -34,7 +34,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 
 # Icon: jobs.icns.
-if [ -f "$DIR/jobs.icns" ]; then
+if [[ -f "$DIR/jobs.icns" ]]; then
   cp "$DIR/jobs.icns" "$APP/Contents/Resources/AppIcon.icns"
   echo "  icon: copied jobs.icns"
 else
@@ -50,11 +50,15 @@ codesign --force --sign - "$APP"
 
 # Register with LaunchServices so `open -a` recognizes it.
 LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-[ -x "$LSREG" ] && "$LSREG" -f "$APP" && echo "  registered with LaunchServices"
+if [[ -x "$LSREG" ]]; then
+  if "$LSREG" -f "$APP"; then echo "  registered with LaunchServices"
+  else echo "  WARNING — lsregister failed; \`open -a\` may not find the app until it is re-registered" >&2; fi
+fi
 
 # A running instance keeps executing the OLD binary: `open -a` on a running app
 # only re-opens it. Kill it; the jobs-badge launchd agent (KeepAlive) relaunches
 # the fresh build by itself. Without an agent, start it by hand (see "Test:" below).
+# pkill/pgrep -f match the path as a regex; "." and "/" in $APP only widen the match harmlessly.
 if pkill -f "$APP/Contents/MacOS/jobs"; then
   sleep 2
   pgrep -f "$APP/Contents/MacOS/jobs" >/dev/null && echo "  relaunched by launchd" \

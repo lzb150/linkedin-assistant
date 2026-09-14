@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Dock-click helper: regenerate the dashboard and open it. The state server on
 # 127.0.0.1:7777 is a launchd agent (com.example.state-server.plist.example).
 set -euo pipefail
@@ -6,9 +6,9 @@ cd "$(dirname "$0")"
 
 # launchd/Finder give us a bare PATH: prefer node on PATH, else the newest nvm one.
 if ! NODE="$(command -v node)"; then
-  NODE="$(ls -d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+  NODE="$(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin/node | sort -V | tail -1)"
 fi
-[ -x "${NODE:-}" ] || { echo "open-dashboard.sh: node not found (PATH or ~/.nvm)" >&2; exit 1; }
+[[ -x "${NODE:-}" ]] || { echo "open-dashboard.sh: node not found (PATH or ~/.nvm)" >&2; exit 1; }
 
 # One corrupt package must not block opening the previous build.
 "$NODE" dashboard.mjs || echo "dashboard rebuild failed; opening previous build" >&2

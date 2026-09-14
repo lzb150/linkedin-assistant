@@ -48,7 +48,12 @@ test("mentionsStem handles a mixed Latin+Cyrillic phrase", () => {
   assert.equal(mentionsStem("шукаємо автоматизація api у команді", "автоматизація api"), true);
 });
 
-import { scoreMessage } from "../lib/relevance.mjs";
+import { scoreMessage, looksLikeJobMessage } from "../lib/relevance.mjs";
+
+test("looksLikeJobMessage: a recruiter pitch passes, a work-anniversary greeting does not", () => {
+  assert.equal(looksLikeJobMessage("Hi! We are hiring a Senior SDET, remote, salary up to $6k. Interested?"), true);
+  assert.equal(looksLikeJobMessage("Congrats on your work anniversary! Hope all is well."), false);
+});
 
 test("scoreMessage tolerates a profile without roles/skills", () => {
   assert.equal(scoreMessage("anything", {}).verdict, "ignore");

@@ -37,6 +37,9 @@ const esc = (s) =>
 
 // Frontmatter urls come from scraped job postings — only ever link http(s),
 // so a hostile posting can't smuggle a javascript: url into an href.
+// Cyrillic text (titles / locations come from Ukrainian boards) gets lang="uk" so screen readers switch voice.
+const langAttr = (s) => (/[Ѐ-ӿ]/.test(s || "") ? ' lang="uk"' : "");
+
 const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
 
 const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
@@ -111,8 +114,8 @@ const cards = items
   <div class="head">
     <span class="score ${scoreBand(it.score)}"><span class="sr-only">keyword score </span>${it.score}</span>
     <div class="titles">
-      <h2>${esc(f.title || "—")}</h2>
-      <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · ${esc(f.location || "")} · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
+      <h2${langAttr(f.title)}>${esc(f.title || "—")}</h2>
+      <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · <span${langAttr(f.location)}>${esc(f.location || "")}</span> · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
       ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
@@ -129,10 +132,10 @@ const cards = items
     <summary>Cover letter</summary>
     <pre id="cover${idx}" lang="${esc(f.cover_language || "en")}">${esc(it.cover)}</pre>
     <button class="copy" onclick="copyCover(${idx}, this)">Copy letter</button><span class="sr-only" role="status"></span>
-    <span class="resume">📎 resume: ${esc(f.resume || "")}</span>
+    <span class="resume"><span aria-hidden="true">📎</span> resume: ${esc(f.resume || "")}</span>
   </details>
   ${live ? `<details class="note-wrap">
-    <summary>📝 Note <span class="note-has" hidden>●</span></summary>
+    <summary><span aria-hidden="true">📝</span> Note <span class="note-has" hidden>●<span class="sr-only"> has note</span></span></summary>
     <textarea class="note" rows="3" maxlength="10000" aria-label="Private note" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
   </details>` : ""}
 </article>`;
@@ -156,7 +159,7 @@ const html = `<!doctype html>
     --bg: light-dark(#f6f8fa, #0d1117); --card: light-dark(#fff, #161b22); --card-muted: light-dark(#f6f8fa, #0d1117); --border: light-dark(#d0d7de, #30363d);
     --text: light-dark(#1f2328, #e6edf3); --muted: light-dark(#57606a, #8b949e);
     --header-bg: light-dark(#24292f, #010409); --header-text: light-dark(#fff, #e6edf3); --header-muted: light-dark(#cdd9e5, #c9d1d9); --header-border: light-dark(#57606a, #30363d); --header-hover: light-dark(#32383f, #21262d);
-    --input-bg: light-dark(#32383f, #0d1117); --placeholder: light-dark(#9aa5b1, #6e7681);
+    --input-bg: light-dark(#32383f, #0d1117); --placeholder: light-dark(#9aa5b1, #8b949e);
     --btn-bg: light-dark(#fff, #21262d); --btn-text: light-dark(#57606a, #c9d1d9); --btn-hover: light-dark(#f3f4f6, #30363d);
     --accent: light-dark(#0969da, #58a6ff); --accent-fill: light-dark(#0969da, #1f6feb); --focus: light-dark(#0969da, #58a6ff);
     --success-fill: light-dark(#1f883d, #238636); --success-fill-hover: light-dark(#1a7f37, #1a7f37); --success-text: light-dark(#1a7f37, #3fb950);
@@ -202,7 +205,7 @@ const html = `<!doctype html>
   .card.viewed .titles h2 { color: var(--muted); }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
   .filter-seg, .src-seg { display: inline-flex; border: 1px solid var(--header-border); border-radius: 7px; overflow: hidden; }
-  .filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 6px 10px; font-size: 12px; cursor: pointer; }
   .filter-seg button:first-child, .src-seg button:first-child { border-left: 0; }
   .filter-seg button:hover, .src-seg button:hover, .theme:hover { background: var(--header-hover); }
   .filter-seg button.active, .src-seg button.active { background: var(--accent-fill); color: #fff; }
@@ -211,7 +214,7 @@ const html = `<!doctype html>
   .skills { margin: 10px 0 4px; }
   .chip { display: inline-block; background: var(--chip-bg); color: var(--chip-text); font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
   details { margin-top: 6px; }
-  summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+  summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; }
   pre { white-space: pre-wrap; background: var(--card-muted); border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
   .copy { background: var(--accent-fill); color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
   .resume { font-size: 12px; color: var(--muted); margin-left: 10px; }
@@ -229,12 +232,12 @@ const html = `<!doctype html>
   .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .theme:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .note-wrap summary { color: var(--muted); }
-  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; resize: vertical; background: var(--card); color: var(--text); }
+  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--muted); border-radius: 7px; resize: vertical; background: var(--card); color: var(--text); }
   .note-has { color: var(--attention-text); }
   .offline, .flash { background: var(--attention-fill); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
   .card.fresh { box-shadow: inset 3px 0 0 var(--accent-fill); }
   .ribbon { background: var(--accent-fill); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
-  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--header-border); background: var(--input-bg); color: var(--header-text); font-size: 13px; }
+  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--header-muted); background: var(--input-bg); color: var(--header-text); font-size: 13px; }
   #q::placeholder { color: var(--placeholder); }
   @media (max-width: 640px) { .head { flex-wrap: wrap; } .actions { width: 100%; } }
 </style></head>
@@ -252,6 +255,7 @@ const html = `<!doctype html>
       <button data-src="all" class="active" aria-pressed="true" onclick="setSource(this.dataset.src)">All</button>
       ${sourceChips}
     </div>
+    <span id="shown" class="sr-only" role="status"></span>
     <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">🌙 Dark</button>
   </div>
 </header>

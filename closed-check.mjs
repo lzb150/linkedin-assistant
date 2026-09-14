@@ -27,36 +27,58 @@ const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
 const todo = selectCandidates({ packages, stateMap: stateAtStart, checked });   // 150 per run, each url at most every 3 days
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
-const closedUrls = [];
-for (const { url, source } of todo) {
-  let status = 0, html = "";
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000), redirect: "follow" });
-    status = res.status; html = status === 200 ? await bodyText(res) : "";
-  } catch (e) { log(`  · ${url} — ${e.message}`); continue; }   // network trouble: not checked, retried next run
-  checked[url] = new Date().toISOString();
-  if (isClosed({ source, status, html })) {
-    closedUrls.push(url);   // applied to a FRESH read of the store below, not to stateAtStart
-    const p = packages.find((x) => x.url === url);
-    log(`  ✗ closed [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url}`);
-  }
-  await new Promise((r) => setTimeout(r, 1000));
-}
+const byUrl = new Map(packages.map((p) => [p.url, p]));
+
 // The probe loop runs for minutes; dashboard clicks land on job-state.json
-// meanwhile. Re-read the store now and apply only our patches, so the
-// read-modify-write window is the microseconds between these two lines.
+// meanwhile. Closures are applied to a FRESH read of the store (never to
+// stateAtStart), so the read-modify-write window is the microseconds between
+// the read and the write. A status set while we were probing (a concurrent
+// closed-check, a newer build's status) wins over the board's verdict —
+// candidates were New/Viewed at the start, re-check now.
 // ponytail: still a race with a click in that same instant; POST to the state
 // server instead if it ever bites.
-let stateMap = readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved");
-// A status set while we were probing (a concurrent closed-check, a newer
-// build's status) wins over the board's verdict — candidates were New/Viewed at the start, re-check now.
+let pending = [];   // closed urls not yet applied to the store
 let saved = 0;
-for (const url of closedUrls) {
-  const st = stateMap[url]?.status;
-  if (st && st !== "viewed") { log(`  · kept ${st}: ${url} (changed during the run)`); continue; }
-  stateMap = mergeEntry(stateMap, url, { status: "closed" });
-  saved++;
+function applyClosures(stateMap) {
+  let n = 0;
+  for (const url of pending) {
+    const st = stateMap[url]?.status;
+    if (st && st !== "viewed") { log(`  · kept ${st}: ${url} (changed during the run)`); continue; }
+    stateMap = mergeEntry(stateMap, url, { status: "closed" });
+    n++;
+  }
+  pending = [];
+  saved += n;
+  return { stateMap, n };
 }
+// Store first, check stamps after: a crash between the two must lose a
+// re-probe, not a closure. Every 25 probes, not only at the end — a 150-url
+// run takes minutes, and a crash or a Mac falling asleep mid-run used to lose
+// every closure found so far.
+function flush() {
+  const { stateMap, n } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable mid-run — closures not saved"));
+  if (n) writeStore(STATE, stateMap);
+  writeJsonAtomic(CHECKED, checked);
+}
+
+let probed = 0;
+for (const { url, source } of todo) {
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000), redirect: "follow" });
+    const status = res.status, html = status === 200 ? await bodyText(res) : "";
+    checked[url] = new Date().toISOString();
+    if (isClosed({ source, status, html })) {
+      pending.push(url);
+      const p = byUrl.get(url);
+      log(`  ✗ closed [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url}`);
+    }
+  } catch (e) { log(`  · ${url} — ${e.message}`); }   // network trouble: not checked, retried next run
+  // Politeness pause after EVERY probe, failed ones too (a `continue` in the
+  // catch used to skip it and hammer a board during a network blip).
+  await new Promise((r) => setTimeout(r, 1000));
+  if (++probed % 25 === 0) flush();
+}
+let { stateMap, n: savedNow } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved"));
 const toArchive = new Set(planArchive({ packages, stateMap }));   // closed 14+ / viewed 30+ days
 // State entries for urls with no live package (archived now or earlier, pruned,
 // or never had one) are dropped — if untouched for a day: a package jobs.mjs
@@ -68,7 +90,7 @@ const staleBefore = Date.now() - 86400000;
 const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return Number.isFinite(t) && t < staleBefore; };
 let pruned = 0;
 if (packages.length) for (const u of Object.keys(stateMap)) if (u !== "_meta" && !live.has(u) && stale(stateMap[u])) { delete stateMap[u]; pruned++; }
-if (saved || pruned) writeStore(STATE, stateMap);
+if (savedNow || pruned) writeStore(STATE, stateMap);
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];

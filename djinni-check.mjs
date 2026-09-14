@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
-import { readBumpState, dueForCheck, nextBumpState, bumpProfile } from "./lib/djinni-bump.mjs";
+import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, freshThreads } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
@@ -32,7 +32,6 @@ const BUMP_STATE_FILE = join(__dir, "djinni-bump-state.json");
 const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 
 let ctx;
-let unreadCount = 0;
 let scanned = false; // true once we have a real count from a loaded page
 let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 
@@ -42,11 +41,7 @@ try {
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.waitForTimeout(1500); // let the conversation list render
 
-  // Logged-out detection: Djinni redirects protected pages to /login, and the
-  // /logout link is absent when not authenticated. (A `sessionid` cookie is set
-  // even for anonymous visitors, so cookie presence is NOT a reliable signal.)
-  const loggedIn = !/\/login/.test(page.url()) && (await page.$("a[href='/logout']").then(Boolean));
-  if (!loggedIn) {
+  if (!(await djinniLoggedIn(page))) {
     // Intentionally do NOT writeState here (process.exit skips finally): leave
     // the last known count on the badge rather than zeroing it on a transient
     // session expiry.
@@ -73,24 +68,13 @@ try {
     }
     return [...byId.entries()].map(([id, label]) => ({ id, label }));
   });
-  unreadCount = threads.length;
   unreadThreads = threads;
   scanned = true;
-  log(`Djinni unread threads: ${unreadCount}`);
+  log(`Djinni unread threads: ${threads.length}`);
 
-  // Banner only for threads we have not already notified about. The seen set is
-  // the unread ids from the previous successful scan; a thread that is read (and
-  // leaves the unread bucket) drops out, so if it ever goes unread again it will
-  // notify afresh. First run with no seen file notifies for current unread.
-  const rawSeen = readJson(SEEN_FILE, []);
-  const seenSet = new Set(Array.isArray(rawSeen) ? rawSeen.map(String) : []);
-  const fresh = threads.filter((t) => !seenSet.has(t.id));
+  // Banner only for threads we have not already notified about (see freshThreads).
+  const { fresh, message } = freshThreads(threads, readJson(SEEN_FILE, []));
   if (fresh.length) {
-    const first = fresh.find((t) => t.label)?.label;
-    const message =
-      fresh.length === 1
-        ? `New message${first ? `: ${first}` : ""}`
-        : `${fresh.length} new messages${first ? ` (incl. ${first})` : ""}`;
     notify("Djinni", message);
     log(`notify: banner for ${fresh.length} new thread(s)`);
   }
@@ -125,7 +109,7 @@ try {
       // conversation on a Dock click: a single unread opens that thread, several
       // open the unread bucket.
       writeState(STATE_FILE, {
-        count: unreadCount,
+        count: unreadThreads.length,
         pending: unreadThreads,
       });
     } catch (e) {
@@ -139,7 +123,7 @@ try {
 
 log(
   scanned
-    ? `Done. Djinni unread: ${unreadCount} -> ${STATE_FILE}`
+    ? `Done. Djinni unread: ${unreadThreads.length} -> ${STATE_FILE}`
     : `Done. Scan failed; badge left unchanged.`,
 );
 process.exit(0);

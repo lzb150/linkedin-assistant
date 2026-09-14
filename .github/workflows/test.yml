@@ -54,6 +54,11 @@ jobs:
       - name: Lint shell scripts
         shell: bash
         run: bash -n *.sh *.sh.example
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: .
+          ignore_paths: node_modules
+          additional_files: run.sh.example   # .example is not a shell extension; name it explicitly
       - name: Lint Swift app and launchd templates (macOS only)
         if: runner.os == 'macOS'
         shell: bash

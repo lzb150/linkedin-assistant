@@ -101,8 +101,9 @@ npx playwright install chromium  # downloads the browser
 node login.mjs                   # YOU log in manually (handles 2FA). Never stores your password.
 ```
 
-`login.mjs` opens a real browser. Log in fully, then press ENTER in the terminal
-to save the session into `.browser-profile/`.
+`login.mjs` opens a real browser. Log in fully (2FA included); it detects the
+login by itself, saves the session into `.browser-profile/` and closes. It gives
+up after 6 minutes without saving anything — just re-run it.
 
 ## Inbox assistant — `check.mjs`
 
@@ -201,8 +202,7 @@ back with a visible browser.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
   regardless of which source it came from. Entries carry a last-seen date and
-  expire after 90 days, so the file stops growing forever. Legacy URL-keyed
-  files migrate automatically on the next run (the old history is reset once).
+  expire after 90 days, so the file stops growing forever.
 - Only one `jobs.mjs` runs at a time (`jobs-run.lock/`); an overlapping run logs "another jobs.mjs run is active" and exits 0. Browser-profile locks record the holder's pid, so a crashed run is taken over immediately.
 
 ## Dashboard — `dashboard.mjs`

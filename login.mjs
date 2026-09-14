@@ -11,7 +11,8 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { launchBrowser } from "./lib/browser.mjs";
+import { launchBrowser, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { djinniLoggedIn } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const TIMEOUT_MS = 6 * 60 * 1000;
@@ -25,7 +26,7 @@ const SITES = {
     // Indicators that we are logged in (any one is enough).
     async isLoggedIn(page, ctx) {
       // Still on /login or a 2FA /checkpoint → not done, whatever the cookies say.
-      if (/\/login|\/checkpoint/.test(page.url())) return false;
+      if (LINKEDIN_LOGGED_OUT.test(page.url())) return false;
       // 1) A LinkedIn auth cookie is present.
       try {
         const cookies = await ctx.cookies("https://www.linkedin.com");
@@ -44,23 +45,14 @@ const SITES = {
     profile: ".djinni-profile",
     loginUrl: "https://djinni.co/login",
     nextStep: "node djinni-check.mjs",
-    // Djinni sets a `sessionid` cookie even for ANONYMOUS visitors, so cookie
-    // presence is NOT a reliable signal (it would auto-detect a "login" before
-    // you type anything). The reliable signal is the logged-in nav: a /logout
-    // link appears only after a real login, and the /login page itself never
-    // shows one.
-    async isLoggedIn(page) {
-      try {
-        if (/\/login/.test(page.url())) return false; // still on the login page
-        return await page.$("a[href='/logout']").then(Boolean);
-      } catch {}
-      return false;
-    },
+    // Shared with djinni-check.mjs: /logout link present, not on /login (a
+    // cookie is NOT a reliable signal — see djinniLoggedIn).
+    isLoggedIn: djinniLoggedIn,
   },
 };
 
 const siteKey = process.argv[2] || "linkedin";
-const site = SITES[siteKey];
+const site = Object.hasOwn(SITES, siteKey) ? SITES[siteKey] : null;   // "constructor" etc. must not resolve to a prototype member
 if (!site) {
   console.error(`Unknown site "${siteKey}". Usage: node login.mjs [linkedin|djinni]`);
   process.exit(1);
