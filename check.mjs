@@ -15,7 +15,7 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
-import { threadIdFrom, threadOutcome, threadOpened } from "./lib/inbox.mjs";
+import { threadIdFrom, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
@@ -41,9 +41,11 @@ const SEL = {
   // Rendered inside the list container when ?filter=unread has nothing to show.
   emptyUnread: "No unread messages",
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
+  // The open thread's own header title (no card to read when LinkedIn auto-opened it);
+  // the first message group's sender name is the fallback.
+  threadParticipantName: ".msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-s-message-group__name",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
 };
-const SEL_WAIT = { card: SEL.conversationCard, list: SEL.conversationList, txt: SEL.emptyUnread };
 
 // Thread ids already processed; entries expire after 90 days so the file
 // stops growing forever.
@@ -83,8 +85,14 @@ try {
   if (!listFound) log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
   // The list container renders before its cards: a manual run at 15:18 (2026-09-14)
   // found 0 cards and no empty-state text while one unread thread was there.
-  // Wait for either a card or the empty-state text before counting.
-  if (listFound) await page.waitForFunction(({ card, list, txt }) => document.querySelector(card) || [...document.querySelectorAll(list)].some((e) => e.innerText.includes(txt)), SEL_WAIT, { timeout: 15000 }).catch(() => {});
+  // Wait for a card, the empty-state text, or an auto-opened thread url (the
+  // filtered list may have dropped that thread already, so no card ever comes).
+  // The predicate names what it saw, so the empty-state check runs in one place.
+  const settled = listFound && await page.waitForFunction((S) =>
+    (location.pathname.includes("/messaging/thread/") && "thread")
+    || (document.querySelector(S.conversationCard) && "cards")
+    || ([...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)) && "empty"),
+  SEL, { timeout: 15000 }).then((h) => h.jsonValue(), () => null);
 
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
@@ -95,39 +103,47 @@ try {
   ensureJobsApp();
   // On the unread filter every card is unread. If LinkedIn auto-opened the first
   // one (url is a thread), the list may already have dropped it as read — count
-  // at least that one. SCAN_ALL walks the unfiltered list and leaves the badge alone.
+  // at least that one, and do not read an empty list as drift. A rendered list
+  // with zero cards and no thread is either LinkedIn's empty state (honest 0) or
+  // the card selector drifting (must not zero the badge) — the text decides.
   const autoOpened = /\/messaging\/thread\//.test(page.url());
-  unreadCount = SCAN_ALL ? 0 : Math.max(cards.length, autoOpened ? 1 : 0);
+  const verdict = unreadVerdict({ cards: cards.length, autoOpened, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
+  ({ unreadCount, counted } = verdict);
   if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);
-  // A rendered list with zero cards is either LinkedIn's empty state (honest 0)
-  // or the card selector drifting (must not zero the badge) — the text decides.
-  const emptyState = cards.length === 0 && await page.$$eval(SEL.conversationList, (els, t) => els.some((e) => e.innerText.includes(t)), SEL.emptyUnread).catch(() => false);
-  if (listFound && cards.length === 0 && !emptyState) log("⚠️  Empty list without the empty-state text — card selector may have drifted. Run with HEADFUL=1 to inspect.");
-  counted = !SCAN_ALL && listFound && (cards.length > 0 || emptyState);
+  if (verdict.drift) log("⚠️  Empty list without the empty-state text — card selector may have drifted. Run with HEADFUL=1 to inspect.");
 
-  for (const [i, card] of cards.entries()) {
+  // Threads to scan: the listed cards — or, when the only unread thread was
+  // auto-opened and already dropped from the filtered list, the open thread
+  // itself (`null` card): opening it marked it read, so this run is the last
+  // chance to draft for it.
+  const targets = !SCAN_ALL && autoOpened && cards.length === 0 ? [null] : cards;
+  if (targets[0] === null) log("· auto-opened thread not in list — scanning it directly");
+  for (const [i, card] of targets.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
 
     let name = "Recruiter";
     try {
-      const nameEl = await card.$(SEL.participantName);
+      const nameEl = await (card ? card.$(SEL.participantName) : page.$(SEL.threadParticipantName));
       if (nameEl) name = (await nameEl.innerText()).trim().split("\n")[0] || name;
     } catch {}
 
     // Open the thread and verify we landed on THIS card's thread (threadOpened),
     // else skip rather than misattribute the still-open previous thread to it.
-    let href = null;
-    try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
-    const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
-    const before = page.url();
-    await card.click().catch(() => {});
-    // Wait for THIS thread's url (up to 5 s) instead of a fixed 1.5 s: on a slow
-    // LinkedIn the late navigation used to land inside the next card's window.
-    if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
-    else await page.waitForTimeout(1500);
+    // The auto-opened thread is already open: nothing to click or verify.
+    if (card) {
+      let href = null;
+      try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
+      const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
+      const before = page.url();
+      await card.click().catch(() => {});
+      // Wait for THIS thread's url (up to 5 s) instead of a fixed 1.5 s: on a slow
+      // LinkedIn the late navigation used to land inside the next card's window.
+      if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
+      else await page.waitForTimeout(1500);
+      if (!threadOpened({ wantId, url: page.url(), before, index: i })) { log(`· could not open thread, skipping: ${name}`); continue; }
+    }
     const url = page.url();
-    if (!threadOpened({ wantId, url, before, index: i })) { log(`· could not open thread, skipping: ${name}`); continue; }
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
