@@ -134,7 +134,7 @@ test("llmJSON logs the head of unparseable output, capped", async () => {
   assert.equal(await llmJSON("p", { exec, log: (...a) => lines.push(a.join(" ")), retryDelayMs: 0 }), null);
   assert.match(lines[0], /llm failed: no JSON in output: I refuse/);
   assert.ok(lines[0].length < 400, `capped, got ${lines[0].length}`);
-  assert.match(lines[0], / … .*JSON $/, "tail of the output is logged (truncation vs. parse error)");
+  assert.match(lines[0], / … .*JSON$/, "tail of the output is logged (truncation vs. parse error)");
 });
 
 test("llmJSON resolves null when exec itself throws synchronously", async () => {
