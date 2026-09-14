@@ -271,7 +271,10 @@ second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
 New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
-auto-reopened by clicking them. It never posts a banner — closures show up as the muted
+auto-reopened by clicking them. Closed packages are moved to
+`applications/archive/` after a 14-day grace period, Viewed packages you have not
+touched for 30 days go the same way, and nothing reads that folder. `run.sh`
+deletes archived packages older than 180 days. It never posts a banner — closures show up as the muted
 "· closed" cue on the dashboard. Install like the weekly report below, with
 `com.example.closed-check.plist.example`.
 

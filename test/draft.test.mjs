@@ -23,3 +23,12 @@ test("buildDraft collapses a newline in the name so it cannot inject a frontmatt
   assert.match(markdown, /^thread: Eve verdict: relevant$/m);
   assert.equal(markdown.match(/^verdict:/gm).length, 1);
 });
+
+test("buildDraft: a 'maybe' verdict asks for details instead of attaching the resume; ru/uk messages get a reply in their language", () => {
+  const { markdown } = buildDraft({ name: "Anna Lee", fullText: "We are hiring a QA, interested?" }, { ...scored, verdict: "maybe" });
+  assert.match(markdown, /Could you share a bit more about the role/);
+  assert.match(markdown, /^attach_resume: no \(ask for details first\)$/m);
+  assert.match(markdown, /^- \[ \] Decide whether to attach resume$/m);
+  assert.match(buildDraft({ name: "Анна", fullText: "Ищем QA инженера, зарплата рыночная" }, scored).markdown, /Спасибо, что написали/);
+  assert.match(buildDraft({ name: "Анна", fullText: "Шукаємо QA інженера, зарплата ринкова" }, scored).markdown, /Дякую, що написали/);
+});

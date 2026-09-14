@@ -160,3 +160,18 @@ test("autoStatus never overrides closed; restoreFilters drops unknown statuses",
   c.ctx.card = fakeCard(U2); await c.run("setStatus(card, 'new')");
   assert.equal(c.run(`statusOf(${JSON.stringify(U2)})`), "new", "an explicit status change still clears closed");
 });
+
+// A saved source filter for a board whose last package was archived (its chip is
+// gone from the header) is dropped like an unknown status, so the board is not
+// empty with no pressed chip.
+test("restoreFilters keeps only sources that still have a header chip", async () => {
+  const chip = (src) => ({ dataset: { src }, classList: { toggle() {} }, setAttribute() {} });
+  const chips = [chip("all"), chip("dou")];
+  const store = new Map([["jobFilters2", JSON.stringify({ status: ["new"], src: ["linkedin", "dou"], query: "" })]]);
+  const c = await bootClient({
+    fetch: () => Promise.reject(new Error("offline")), store,
+    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => (sel === ".src-seg button" ? chips : []) },
+  });
+  await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
+  assert.equal(c.run("JSON.stringify([...srcSel])"), JSON.stringify(["dou"]));
+});

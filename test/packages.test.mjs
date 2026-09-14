@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, existsSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readPackages, archivePackages } from "../lib/packages.mjs";
@@ -20,6 +20,13 @@ test("readPackages: frontmatter + file per .md, non-.md and unreadable skipped (
   assert.deepEqual(out.map((p) => [p.file, p.url, p.source, p.company]).sort(), [["a.md", "https://x/1", "dou", "Acme"], ["b.md", "https://x/2", "dou", "Acme"]]);
   assert.deepEqual(warned, [["broken.md", "string"]]);
   assert.deepEqual(readPackages(join(dir, "nope")), []);
+});
+
+test("readPackages: a frontmatter `file:` key never replaces the real filename (consumers join it under applications/)", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  copyFileSync(new URL("./fixtures/hostile-package.md", import.meta.url), join(dir, "hostile.md"));
+  assert.equal(readPackages(dir)[0].file, "hostile.md");
 });
 
 test("archivePackages moves the given files into <dir>/archive and returns the files moved", (t) => {

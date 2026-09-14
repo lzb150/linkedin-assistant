@@ -1,11 +1,13 @@
 // Builds a single self-contained HTML dashboard of all application packages
 // in applications/, sorted by score. Run:  node dashboard.mjs [--open]
-import { readdirSync, readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { identityKey } from "./lib/dedup.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { parseFrontmatter } from "./lib/frontmatter.mjs";
+import { readPackages } from "./lib/packages.mjs";
+import { detectLang } from "./lib/lang.mjs";
 import { execFile } from "node:child_process";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -37,14 +39,18 @@ const esc = (s) =>
 
 // Frontmatter urls come from scraped job postings — only ever link http(s),
 // so a hostile posting can't smuggle a javascript: url into an href.
-// Cyrillic text (titles / locations come from Ukrainian boards) gets lang="uk" so screen readers switch voice.
-const langAttr = (s) => (/[Ѐ-ӿ]/.test(s || "") ? ' lang="uk"' : "");
+// Cyrillic text (titles / locations come from Ukrainian boards) gets its lang so screen readers switch voice;
+// the shared detector tells uk from ru, a blanket lang="uk" would misvoice a Russian title.
+const langAttr = (s) => { const l = detectLang(s); return l === "en" ? "" : ` lang="${l}"`; };
 
 const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
 
-const files = readdirSync(APPS).filter((f) => f.endsWith(".md"));
-const parsed = files
-  .map((f) => parse(readFileSync(join(APPS, f), "utf8")))
+// The shared reader skips what cannot be read (a directory named x.md, a
+// permission error) with a warning instead of aborting the build; the body is
+// re-read here because the cover note is not frontmatter.
+const warn = (f, e) => console.warn(`unreadable package skipped: ${f} (${e.message})`);
+const parsed = readPackages(APPS, { warn })
+  .map(({ file }) => parse(readFileSync(join(APPS, file), "utf8")))
   .filter(Boolean)
   .map((x) => ({
     ...x,
@@ -119,7 +125,7 @@ const cards = items
       ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
-      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
+      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open job: ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
       ${live ? `<div class="status-seg" role="group" aria-label="Status">
         <button data-status="new" aria-pressed="false" onclick="setStatus(this.closest('.card'),'new')">New</button>
         <button data-status="viewed" aria-pressed="false" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
@@ -171,7 +177,7 @@ const html = `<!doctype html>
   }
   :root[data-theme="light"] { color-scheme: light; }
   :root[data-theme="dark"] { color-scheme: dark; }
-  html { scroll-padding-top: 130px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it */
+  html { scroll-padding-top: 140px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it; the header is 132 px at 641–730 px */
   @media (max-width: 640px) { html { scroll-padding-top: 230px; } }   /* the header wraps to 170 px at 400 px and 223 px at 320 px */
   body { margin: 0; background: var(--bg); color: var(--text); }
   header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
