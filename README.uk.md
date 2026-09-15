@@ -292,7 +292,7 @@ New / Viewed з живими лічильниками, типово обрані
 (на цей браузер). Палітра — GitHub Primer в обох режимах, кожна пара
 текст/тло ≥ 4.5:1.
 
-![Темна тема](docs/dashboard-dark.png)
+![Світла тема](docs/dashboard-light.png)
 
 **Перевірка закритих вакансій (`closed-check.mjs`)** — щоденне launchd-завдання
 (`com.eugene.closed-check.plist`, постачається як `.example`, 08:30) опитує
