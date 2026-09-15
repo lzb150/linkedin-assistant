@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Jobs.app — the "Вакансии" launcher that also shows the unread LinkedIn
+# Build Jobs.app — the "Jobs" launcher that also shows the unread LinkedIn
 # message count as a red Dock badge. The built .app is git-ignored;
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
@@ -20,8 +20,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Вакансии</string>
-  <key>CFBundleDisplayName</key><string>Вакансии</string>
+  <key>CFBundleName</key><string>Jobs</string>
+  <key>CFBundleDisplayName</key><string>Jobs</string>
   <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs.v2</string>
   <key>CFBundleExecutable</key><string>jobs</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -42,7 +42,11 @@ else
 fi
 
 # Compile the Swift app into the bundle.
+# -target pins the deployment floor to the LSMinimumSystemVersion written into
+# Info.plist above. Without it the binary inherits the build machine's macOS
+# version, so a bundle claiming 13.0 could refuse to launch on 13.0.
 xcrun swiftc -O -framework Cocoa \
+  -target "$(uname -m)-apple-macos13.0" \
   -o "$APP/Contents/MacOS/jobs" "$DIR/jobs-app.swift"
 
 # Ad-hoc sign for a stable identity.
@@ -58,10 +62,16 @@ fi
 # A running instance keeps executing the OLD binary: `open -a` on a running app
 # only re-opens it. Kill it; the jobs-badge launchd agent (KeepAlive) relaunches
 # the fresh build by itself. Without an agent, start it by hand (see "Test:" below).
-# pkill/pgrep -f match the path as a regex; "." and "/" in $APP only widen the match harmlessly.
-if pkill -f "$APP/Contents/MacOS/jobs"; then
+# pkill/pgrep -f match the WHOLE command line against an ERE. "." and "/" only
+# widen the match harmlessly, but a project path containing + ( [ * ? either
+# widens it further or fails to compile — and since the call sits in `if`, a
+# compile failure is just a false branch: nothing is killed, the stale daemon
+# keeps running the old binary, and the script still says "Done". Escape every
+# ERE metacharacter in the path first.
+BIN_RE=$(printf '%s' "$APP/Contents/MacOS/jobs" | sed 's/[][\.^$*+?(){}|\\\/]/\\&/g')
+if pkill -f "$BIN_RE"; then
   sleep 2
-  pgrep -f "$APP/Contents/MacOS/jobs" >/dev/null && echo "  relaunched by launchd" \
+  pgrep -f "$BIN_RE" >/dev/null && echo "  relaunched by launchd" \
     || echo "  stopped the old badge daemon — no launchd agent relaunched it; start it: open -g -a \"$APP\" --args --background"
 fi
 

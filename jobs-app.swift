@@ -1,7 +1,7 @@
 // Jobs launcher + unread-LinkedIn-message Dock badge for linkedin-assistant.
 //
 // Behaviour:
-//   - Stays running in the Dock with the "Вакансии" icon.
+//   - Stays running in the Dock with the "Jobs" icon.
 //   - Polls notify-state.json AND djinni-notify-state.json every ~3s and shows
 //     the COMBINED unread count (LinkedIn messages + Djinni inbox) as a red Dock
 //     badge (cleared when the total is 0).
@@ -118,6 +118,7 @@ func unreadCountAt(_ path: String) -> Int {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    var ticks = 0   // the 3 s tick is for the badge; the expensive work runs on multiples of it
     let launchedAt = Date()
     var lastBadge: String? = "unset"
     var notifGranted = false
@@ -139,6 +140,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         poll()                                          // immediate first pass
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in self?.poll() }
+        // ~28,800 wake-ups a day for state that changes hourly. A tolerance lets
+        // the system coalesce this with other timers instead of waking the CPU
+        // on its own schedule — it matters on battery, and costs nothing here
+        // because nothing depends on the poll landing at an exact instant.
+        timer?.tolerance = 1.0
         // A foreground (user) launch opens Djinni if there are unread messages,
         // otherwise the dashboard.
         if !isBackground { handleActivation() }
@@ -158,11 +164,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
 
     func poll() {
-        // Permission can be granted/revoked in System Settings at any time: re-read
-        // it every tick instead of latching the launch-time answer.
-        center.getNotificationSettings { [weak self] st in
-            DispatchQueue.main.async {
-                self?.notifGranted = st.authorizationStatus == .authorized
+        ticks &+= 1
+        // Permission can be granted/revoked in System Settings at any time, so this
+        // is re-read rather than latched at launch — but it is an XPC round-trip,
+        // and at 3 s that was ~28,800 of them a day for a setting a person changes
+        // by hand. Once a minute is still far faster than anyone can notice.
+        if ticks % 20 == 1 {
+            center.getNotificationSettings { [weak self] st in
+                DispatchQueue.main.async {
+                    self?.notifGranted = st.authorizationStatus == .authorized
+                }
             }
         }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
@@ -173,20 +184,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         NSApp.dockTile.badgeLabel = label
         NSApp.dockTile.display()
         if label != lastBadge { dbg("badge -> \(label ?? "nil")"); lastBadge = label }
-        pruneOldBanners()
+        // A full banners/ listing with a stat per file, to delete things older than
+        // an hour and a week. Every 3 s bought nothing; every 10 min is the same
+        // outcome. postQueuedBanners stays on the fast tick — that one is latency.
+        if ticks % 200 == 1 { pruneOldBanners() }
         postQueuedBanners()
     }
 
     // Drop banners/*.json older than 7 days (nothing drains them without
-    // notification permission) and *.json.tmp older than 1 hour (a notify.mjs
-    // write that died before its atomic rename).
+    // notification permission) and the temp files of a notify.mjs write that
+    // died before its atomic rename, after 1 hour. Those are named
+    // "<name>.json.<pid>.tmp" (json-file.mjs puts the pid in so two writers
+    // cannot clobber each other), never "<name>.json.tmp" — the old suffix test
+    // matched nothing, so crash leftovers accumulated here forever.
     func pruneOldBanners() {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
         let now = Date()
         for name in names {
             let maxAge: TimeInterval
-            if name.hasSuffix(".json.tmp") { maxAge = 3600 } else if name.hasSuffix(".json") { maxAge = 7 * 86400 } else { continue }
+            if name.hasSuffix(".tmp") && name.contains(".json.") { maxAge = 3600 } else if name.hasSuffix(".json") { maxAge = 7 * 86400 } else { continue }
             let path = (bannersDir as NSString).appendingPathComponent(name)
             if let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, now.timeIntervalSince(mtime) > maxAge {
                 try? fm.removeItem(atPath: path)
@@ -221,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 continue
             }
             let content = UNMutableNotificationContent()
-            content.title = (obj["title"] as? String) ?? "Вакансии"
+            content.title = (obj["title"] as? String) ?? "Jobs"
             content.body = message
             inFlight.insert(name)
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in
@@ -233,6 +250,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                         if n >= 3 { try? fm.removeItem(atPath: path); self.failures[name] = nil }
                     } else {
                         try? fm.removeItem(atPath: path)
+                        // Clear the counter on success too. It was only ever
+                        // cleared at 3, so a banner that failed once left an
+                        // entry behind forever in a daemon that runs for months.
+                        self.failures[name] = nil
                     }
                     self.inFlight.remove(name)
                 }

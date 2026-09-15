@@ -20,5 +20,12 @@ if /usr/bin/nc -z 127.0.0.1 7777 >/dev/null 2>&1; then
   open "http://127.0.0.1:7777/"
 else
   echo "open-dashboard.sh: state server not running — opening a read-only copy; install com.example.state-server.plist.example (README → Schedule it)" >&2
-  open "applications/index.html"
+  # `set -e` would abort here on a fresh clone where dashboard.mjs has never
+  # succeeded — the one case this fallback exists for. Say what is missing.
+  if [[ -f applications/index.html ]]; then
+    open "applications/index.html"
+  else
+    echo "open-dashboard.sh: applications/index.html does not exist yet — run 'node jobs.mjs' first" >&2
+    exit 1
+  fi
 fi

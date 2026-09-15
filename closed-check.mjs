@@ -12,8 +12,8 @@ import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log } from "./lib/notify.mjs";
-import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
-import { bodyText } from "./lib/sources/html.mjs";
+import { isClosed, selectCandidates, planArchive, onBoardHost } from "./lib/closed.mjs";
+import { bodyText, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,12 @@ const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
 const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }
 
-const packages = readPackages(APPS);
+// A package readPackages could not read is absent from `packages`, so it looks
+// dead to both prunes below and its card would come back as New with its
+// status lost. Any such skip makes this run's view partial — prune nothing.
+let partialRead = false;
+const packages = readPackages(APPS, { warn: (f, e) => { partialRead = true; log(`  · could not read ${f}: ${e.message}`); } });
+const mayPrune = () => packages.length && !partialRead;
 const checked = readJson(CHECKED, null) || {};
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
@@ -64,7 +69,10 @@ function flush() {
 let probed = 0;
 for (const { url, source } of todo) {
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000), redirect: "follow" });
+    // Every redirect hop is re-checked against the board host, not just the
+    // frontmatter url: an open redirect on a board would otherwise aim this
+    // daily job at anything the Mac can reach, the loopback state server included.
+    const res = await fetchFollow(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000) }, { allow: (u) => onBoardHost(source, u) });
     const status = res.status, html = status === 200 ? await bodyText(res) : "";
     checked[url] = new Date().toISOString();
     if (isClosed({ source, status, html })) {
@@ -78,6 +86,7 @@ for (const { url, source } of todo) {
   await new Promise((r) => setTimeout(r, 1000));
   if (++probed % 25 === 0) flush();
 }
+const closedNow = pending.slice();   // applyClosures empties `pending`; kept to replay onto a fresher store below
 let { stateMap, n: savedNow } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved"));
 // Archive BEFORE pruning, and prune by what actually moved: a package whose
 // rename failed is still in applications/ and needs its state entry, or it
@@ -90,12 +99,29 @@ const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap 
 // unreadable applications/ must not wipe the store (cf. the 448-entry wipe).
 const live = new Set(packages.filter((p) => !archived.has(p.file)).map((p) => p.url));
 const staleBefore = Date.now() - 86400000;
-const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return Number.isFinite(t) && t < staleBefore; };
+// A missing updatedAt counts as old enough — the same reading planArchive uses.
+// While the two disagreed, a legacy entry could be archived and then never
+// pruned, so it sat in the store forever with no package behind it.
+const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return !Number.isFinite(t) || t < staleBefore; };
+const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]);
 let pruned = 0;
-if (packages.length) for (const u of Object.keys(stateMap)) if (u !== "_meta" && !live.has(u) && stale(stateMap[u])) { delete stateMap[u]; pruned++; }
-if (savedNow || pruned) writeStore(STATE, stateMap);
+if (mayPrune()) for (const u of Object.keys(stateMap)) if (prunable(stateMap, u)) { delete stateMap[u]; pruned++; }
+if (savedNow || pruned) {
+  // archivePackages just spent one renameSync per archived package, and a
+  // dashboard click lands on job-state.json meanwhile. Writing the map read
+  // before those renames would clobber it, so re-read now and replay our own
+  // two edits — the closures and the prune — onto whatever is there. Both are
+  // re-decided against the fresh entry, so a status set in the window wins.
+  let out = readStoreOrExit(STATE, "closed-check: store unreadable before the final write — closures not saved");
+  for (const u of closedNow) {
+    const st = out[u]?.status;
+    if (!st || st === "viewed") out = mergeEntry(out, u, { status: "closed" });
+  }
+  if (mayPrune()) for (const u of Object.keys(out)) if (prunable(out, u)) delete out[u];
+  writeStore(STATE, out);
+}
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
+if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);

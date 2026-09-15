@@ -65,13 +65,17 @@ test("coverPhrase resolves the profile with per-language legacy defaults", () =>
 });
 
 test("the cover note routes through skills.json's profile block", () => {
-  // buildApplication reads the live skills.json at import; assert the template
-  // path with whatever phrase that file carries (falling back to the default),
-  // so a user's own profile never breaks this test.
-  let en = "test automation";
-  try { en = JSON.parse(readFileSync(new URL("../skills.json", import.meta.url), "utf8")).profile?.en || en; } catch {}
+  // This used to read the LIVE skills.json and fall back to "test automation" —
+  // which is also coverPhrase's hard-coded legacy default, so the assertion held
+  // even if buildApplication ignored skills.json entirely. coverPhrase is the
+  // seam buildApplication goes through; pin it against an explicit block, and
+  // check the template only embeds whatever it returns.
+  const profile = { en: "a phrase no default would produce", uk: "фраза" };
+  assert.equal(coverPhrase(profile, "en"), "a phrase no default would produce");
+  assert.equal(coverPhrase(profile, "uk"), "фраза");
+  assert.notEqual(coverPhrase(profile, "en"), coverPhrase(undefined, "en"), "the block must win over the legacy default");
   const { markdown } = buildApplication(job, scored);
-  assert.ok(markdown.includes(`solid experience in ${en},`), "en cover must embed the profile phrase");
+  assert.ok(markdown.includes(`solid experience in ${coverPhrase(undefined, "en")},`), "en cover embeds the phrase coverPhrase returns");
 });
 
 // --- appendAltLink (cross-run dedup) ---

@@ -83,3 +83,11 @@ test("planArchive: closed past the grace period and viewed untouched for viewedD
   assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 0, viewedDays: 30 }), ["old-closed.md", "fresh-closed.md", "stale-viewed.md", "no-stamp.md"], "grace 0 archives every closed package");
   assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14, viewedDays: 365 }), ["old-closed.md", "no-stamp.md"], "a long viewedDays keeps viewed cards");
 });
+
+// job-state.json is hand-editable and keeps unknown statuses verbatim; a status
+// that happens to name an Object.prototype member must not read as a cutoff.
+test("planArchive: a status inherited from Object.prototype is not a cutoff", () => {
+  const packages = [{ file: "a.md", url: "https://dou.ua/1", source: "dou" }];
+  const stateMap = { "https://dou.ua/1": { status: "toString" } };   // no updatedAt: the "old enough" path, where a function cutoff slips through
+  assert.deepEqual(planArchive({ packages, stateMap }), []);
+});

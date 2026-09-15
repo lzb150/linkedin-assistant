@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, bodyText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
+import { assertLinear } from "../helpers/linear.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -35,6 +36,33 @@ test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   assert.equal(await fetchText("https://x/1", () => {}, "dou", okFetch), "body");
 });
 
+// Redirect hops are what `redirect: "follow"` used to hide: the allowlist only
+// ever saw the first url, so an open redirect on a board reached loopback.
+const redirectTo = (loc) => ({ status: 302, headers: { get: (h) => (h === "location" ? loc : null) } });
+
+test("fetchFollow follows a same-host redirect and reads the final page", async () => {
+  const seen = [];
+  const doFetch = async (u) => { seen.push(u); return u.endsWith("/final") ? { ok: true, status: 200, text: async () => "body" } : redirectTo("/final"); };
+  const res = await fetchFollow("https://djinni.co/jobs/1", {}, { doFetch });
+  assert.equal(await bodyText(res), "body");
+  assert.deepEqual(seen, ["https://djinni.co/jobs/1", "https://djinni.co/final"]);
+});
+
+test("fetchFollow refuses a redirect off the allowed host, and never requests it", async () => {
+  const seen = [];
+  const doFetch = async (u) => { seen.push(u); return redirectTo("http://127.0.0.1:7777/state"); };
+  await assert.rejects(
+    fetchFollow("https://djinni.co/jobs/1", {}, { doFetch }),
+    /redirect off the allowed host: http:\/\/127\.0\.0\.1:7777\/state/,
+  );
+  assert.deepEqual(seen, ["https://djinni.co/jobs/1"], "the loopback url is vetted before it is fetched");
+});
+
+test("fetchFollow gives up on a redirect loop instead of spinning", async () => {
+  const doFetch = async () => redirectTo("https://djinni.co/loop");
+  await assert.rejects(fetchFollow("https://djinni.co/loop", {}, { doFetch }), /too many redirects/);
+});
+
 test("extractDivByClass ignores a '</div>' string inside <script> and a commented-out <div>", () => {
   const script = `<div class="d"><SCRIPT>var s = "</div>";</SCRIPT><p>body</p></div><p>after</p>`;
   assert.equal(stripHtml(extractDivByClass(script, "d")), "body");
@@ -43,20 +71,16 @@ test("extractDivByClass ignores a '</div>' string inside <script> and a commente
 });
 
 test("stripHtml / extractDivByClass stay linear on junk full of unclosed '<' (ReDoS guard)", () => {
-  const junk = "<".repeat(200_000);
-  let t = Date.now(); stripHtml(junk); assert.ok(Date.now() - t < 500, "stripHtml too slow");
-  t = Date.now(); extractDivByClass("<a ".repeat(50_000), "x"); assert.ok(Date.now() - t < 500, "extractDivByClass too slow");
+  assertLinear("stripHtml", (n) => stripHtml("<".repeat(n)), 50_000);
+  assertLinear("extractDivByClass <a", (n) => extractDivByClass("<a ".repeat(n), "x"), 25_000);
+  // "<a " repeats never entered the opener's bounded attribute scan, so this
+  // guard passed while a page of unterminated "<div" cost 1.2 s per megabyte.
+  assertLinear("extractDivByClass <div", (n) => extractDivByClass("<div".repeat(n), "x"), 25_000);
 });
 
-// Linearity guard that does not depend on the machine: run at n and 4n and
-// compare. Linear scales ~4×, quadratic ~16×; the +20 ms absorbs timer
-// granularity and JIT warm-up. (Absolute "< 500 ms" caps flaked on shared CI.)
-function assertLinear(label, run, n) {
-  run(n);                                          // warm up
-  const ms = (k) => { const t = performance.now(); run(k); return performance.now() - t; };
-  const t1 = ms(n), t4 = ms(4 * n);
-  assert.ok(t4 < 8 * t1 + 20, `${label}: ${n}→${4 * n} took ${t1.toFixed(1)}ms→${t4.toFixed(1)}ms (not linear)`);
-}
+test("extractDivByClass stays linear when the opening div NEVER matches (opener scan)", () => {
+  assertLinear("opener scan", (n) => extractDivByClass("<div".repeat(n), "job"), 25_000);
+});
 
 test("extractDivByClass stays linear when the opening div DOES match (depth scan + comment strip)", () => {
   const open = '<div class="job x">';
@@ -130,4 +154,15 @@ test("bodyText caps a board response at 5 MB: content-length, streamed body, and
   await assert.rejects(bodyText({ text: async () => "x".repeat(5_000_001) }), /body over/, "stub without a stream body");
   assert.equal(await bodyText({ headers: headers("11"), body: stream("hello ", "world") }), "hello world");
   assert.equal(await bodyText({ text: async () => "plain" }), "plain");
+});
+
+test("decodeBody honours the response charset instead of assuming UTF-8", () => {
+  // A windows-1251 board page decoded as UTF-8 is mojibake — and mojibake is
+  // what then gets scored, written into the package and sent to the LLM.
+  const cp1251 = Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xb3, 0xf2]);   // "Привіт"
+  assert.equal(decodeBody(cp1251, "text/html; charset=windows-1251"), "Привіт");
+  assert.equal(decodeBody(Buffer.concat([Buffer.from("<meta charset=windows-1251>"), cp1251]), "text/html").slice(-6), "Привіт");
+  assert.equal(decodeBody(Buffer.from("Привіт", "utf8"), "text/html; charset=utf-8"), "Привіт");
+  assert.equal(decodeBody(Buffer.from("Привіт", "utf8"), ""), "Привіт", "no declaration: UTF-8, as before");
+  assert.equal(decodeBody(Buffer.from("hi"), "text/html; charset=not-a-charset"), "hi", "an unknown label falls back, never throws");
 });

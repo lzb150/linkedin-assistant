@@ -55,6 +55,16 @@ test("looksLikeJobMessage: a recruiter pitch passes, a work-anniversary greeting
   assert.equal(looksLikeJobMessage("Congrats on your work anniversary! Hope all is well."), false);
 });
 
+test("looksLikeJobMessage passes Ukrainian and Russian pitches, not their greetings", () => {
+  // The gate ran on English stems only, so a uk/ru recruiter DM read as
+  // "not a job", was stamped seen and stayed buried for the whole TTL.
+  assert.equal(looksLikeJobMessage("Вітаю! Шукаємо Python розробника, зарплата до $5000"), true);
+  assert.equal(looksLikeJobMessage("Здравствуйте! Есть вакансия QA инженера, удаленно"), true);
+  assert.equal(looksLikeJobMessage("Привіт! Є цікава позиція для тебе"), true);
+  assert.equal(looksLikeJobMessage("Рассматриваете предложения? Оклад обсуждаем"), true);
+  assert.equal(looksLikeJobMessage("Вітаю з річницею роботи! Все гаразд?"), false);
+});
+
 test("scoreMessage tolerates a profile without roles/skills", () => {
   assert.equal(scoreMessage("anything", {}).verdict, "ignore");
 });

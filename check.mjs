@@ -59,6 +59,9 @@ let unreadCount = 0;
 // a navigation failure would otherwise reset the badge to 0 and hide unread
 // messages until the next successful run.
 let counted = false;
+// A run that threw after launch used to log the error and still print "Done."
+// and exit 0, so launchd and the user both saw a healthy run.
+let failed = false, busy = false;
 
 try {
   ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
@@ -146,7 +149,9 @@ try {
       try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
       const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
       const before = page.url();
-      await card.click().catch(() => {});
+      // 5 s, not Playwright's 30 s default: a detached handle used to stall the
+      // run inside this silent catch, up to ~6 min across the cards of one pass.
+      await card.click({ timeout: 5000 }).catch(() => {});
       // Wait for THIS thread's url (up to 5 s) instead of a fixed 1.5 s: on a slow
       // LinkedIn the late navigation used to land inside the next card's window.
       if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
@@ -193,10 +198,15 @@ try {
 } catch (err) {
   log("ERROR:", err?.message || err);
   // "profile busy" = benign overlap with another run (jobs.mjs/login.mjs); log only.
-  if (!ctx && !/profile busy/.test(err?.message || "")) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
+  busy = /profile busy/.test(err?.message || "");
+  failed = !busy;
+  if (!ctx && !busy) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
   // Must not throw: writeState and ctx.close below still have to run.
-  try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); }
+  // Only a run that actually held the profile may write seen.json back: on the
+  // "profile busy" path this process loaded its snapshot before the lock holder
+  // started adding entries, so saving here rolls that holder's work back.
+  if (ctx) { try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); } }
   if (counted) {
     try {
       writeState(STATE_FILE, { count: unreadCount });
@@ -209,5 +219,9 @@ try {
   await ctx?.close();
 }
 
-log(`Done. Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
+if (failed) {
+  log(`FAILED after scanning ${scanned} unread, ${drafted} draft(s) written to ${DRAFTS}`);
+  process.exit(1);
+}
+log(`${busy ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
 process.exit(0);

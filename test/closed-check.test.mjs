@@ -79,6 +79,41 @@ test("closed-check: archived and orphaned state entries are dropped; an empty ap
   assert.ok(empty.json("job-state.json")[orphan], "an empty applications/ must not wipe the store");
 });
 
+// planArchive reads a missing updatedAt as "old enough to archive" while the
+// prune read it as "not stale", so a legacy entry could be archived and then
+// kept forever with no package behind it.
+test("closed-check: a legacy entry with no updatedAt is pruned, not kept forever", async (t) => {
+  const legacy = "https://example.com/v/3/";
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "ok.md": pkg({ url: "https://example.com/v/4/" }) },
+    state: { _meta: {}, [legacy]: { status: "closed" } },   // no updatedAt at all
+    bins: quiet,
+  });
+  await runScript(p, "closed-check.mjs");
+  assert.equal(p.json("job-state.json")[legacy], undefined, "orphaned legacy entry dropped");
+});
+
+// The empty-applications/ guard above is all-or-nothing; the realistic failure is
+// ONE package readPackages cannot read (a permission error, a rewrite in flight).
+// It is missing from the package list, so it looks orphaned and its entry —
+// "viewed"/"closed" and all — used to be pruned, bringing the card back as New.
+test("closed-check: a package that cannot be read prunes nothing", async (t) => {
+  const old = new Date(Date.now() - 40 * 86400000).toISOString();
+  const unreadable = "https://example.com/v/5/";
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "ok.md": pkg({ url: "https://example.com/v/4/" }) },
+    state: { _meta: {}, [unreadable]: { status: "viewed", updatedAt: old } },
+    bins: quiet,
+  });
+  mkdirSync(p.path("applications/broken.md"));   // a directory reads as EISDIR
+  const out = await runScript(p, "closed-check.mjs");
+  assert.match(out, /could not read broken\.md/, "the skip is reported, not silent");
+  assert.match(out, /0 stale state entries dropped/);
+  assert.ok(p.json("job-state.json")[unreadable], "a partial read of applications/ must not prune");
+});
+
 // The state entry used to be pruned before the rename: a failed rename left the
 // package in applications/ with no entry, and it came back as New.
 test("closed-check: a package whose archive rename fails keeps its state entry", async (t) => {

@@ -12,10 +12,20 @@ import { join, delimiter } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "../../state-server.mjs";
 
+// Remove a throwaway dir. The fire-and-forget notify children keep writing for
+// a few ms after the script exits, so macOS CI hits ENOTEMPTY here — and a
+// failure to tidy up must never fail the test that already passed: it reported
+// as a hookFailed on a green assertion, which reads like a real regression.
+// The retries stay (they usually win); what changes is that losing is not
+// fatal. These dirs live in the OS temp directory, which the OS reaps.
+function cleanup(dir) {
+  try { rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch {}
+}
+
 // A throwaway dir, removed after the test.
 export function tmpDir(t, prefix = "t-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));   // fire-and-forget children (fake notify) may still be writing: ENOTEMPTY on macOS CI
+  t.after(() => cleanup(dir));
   return dir;
 }
 
@@ -53,7 +63,7 @@ const LOG_ARGS = (dir, file) => `#!/bin/sh\necho "$*" >> "${dir}/${file}"\n`;
  */
 export function makeProject(t, { scripts = [], packages = {}, state, files = {}, bins = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "e2e-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+  t.after(() => cleanup(dir));
   for (const f of scripts) copyFileSync(join(ROOT, f), join(dir, f));
   cpSync(join(ROOT, "lib"), join(dir, "lib"), { recursive: true });
   symlinkSync(join(ROOT, "node_modules"), join(dir, "node_modules"));

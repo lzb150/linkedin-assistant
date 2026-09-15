@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readJson, writeJsonAtomic } from "../lib/json-file.mjs";
+import { readJson, writeJsonAtomic, writeTextAtomic } from "../lib/json-file.mjs";
 
 test("readJson: parsed value, or the fallback for a missing / malformed file", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "rj-"));
@@ -21,4 +21,14 @@ test("writeJsonAtomic round-trips through readJson and leaves no .tmp behind", (
   writeJsonAtomic(join(dir, "s.json"), { x: [1, 2] });
   assert.deepEqual(readJson(join(dir, "s.json"), null), { x: [1, 2] });
   assert.deepEqual(readdirSync(dir), ["s.json"]);
+});
+
+// writeSync can return short; writeFileSync loops. A truncated file here would
+// be exactly the half-written state the module exists to prevent.
+test("writeTextAtomic writes a payload larger than one pipe buffer in full", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "rj-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const big = "x".repeat(8 * 1024 * 1024);
+  writeTextAtomic(join(dir, "big.txt"), big);
+  assert.equal(readFileSync(join(dir, "big.txt"), "utf8").length, big.length);
 });

@@ -28,7 +28,11 @@ jobs:
         shell: bash
         run: |
           set -e
-          FILES="*.mjs lib/*.mjs lib/*.js lib/*.cjs lib/sources/*.mjs"   # one list: the guards below must never drift apart
+          # Every tracked JS module outside test/, found by git rather than by a
+          # hand-kept glob list: `lib/*.mjs lib/sources/*.mjs` silently skipped
+          # any new subdirectory, so a module added one level deeper would have
+          # escaped node --check AND both Playwright guards while staying green.
+          FILES=$(git ls-files '*.mjs' '*.js' '*.cjs' | grep -v '^test/')   # one list: the guards below must never drift apart
           for f in $FILES; do node --check "$f"; done
           # Playwright: page.$()/el.$() return ONE handle — iterating/slicing it is a
           # silent TypeError behind catch {} (bit us twice). Convention: a single
@@ -50,11 +54,16 @@ jobs:
           grep -q "advanceLastVisit" applications/index.html
           grep -q '&lt;img src=x onerror=' applications/index.html   # fixture rendered AND escaped (guards below are negative-only)
           if grep -q '<img src=x onerror=' applications/index.html; then echo "::error::unescaped markup in dashboard"; exit 1; fi   # escaped form is &lt;img …
-          if grep -q 'href="javascript:' applications/index.html; then echo "::error::javascript: href in dashboard"; exit 1; fi
+          # Quote-agnostic and case-insensitive: the old pattern matched only
+          # href="javascript: , so a regression emitting single quotes or
+          # "JavaScript:" would have passed green.
+          if grep -qiE 'href=["'"'"']?[[:space:]]*javascript:' applications/index.html; then echo "::error::javascript: href in dashboard"; exit 1; fi
       - name: Lint shell scripts
         shell: bash
         run: bash -n *.sh *.sh.example
-      - uses: ludeeus/action-shellcheck@2.0.0
+      # Pinned to the commit behind 2.0.0: a tag is mutable, and this action
+      # runs with the repository checked out.
+      - uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: .
           ignore_paths: node_modules
@@ -65,4 +74,8 @@ jobs:
         run: |
           set -e
           xcrun swiftc -typecheck jobs-app.swift
+          # …and actually link it, with the same -target build-jobs.sh uses. A
+          # typecheck alone never proved the app still builds, so a link break
+          # (a missing framework, a bad -target) would have shipped green.
+          xcrun swiftc -O -framework Cocoa -target "$(uname -m)-apple-macos13.0" -o "$RUNNER_TEMP/jobs" jobs-app.swift
           plutil -lint *.plist.example

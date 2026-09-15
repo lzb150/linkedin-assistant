@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertLinear } from "./helpers/linear.mjs";
 import { extractJSON, numericScore, llmJSON, buildJobPrompt, llmRejects } from "../lib/llm.mjs";
 
 test("llmRejects: below minScore → true; at/above, unset minScore, or CLI failure (null) → false", () => {
@@ -184,9 +185,7 @@ test("buildJobPrompt strips nested / spaced vacancy delimiters until stable", ()
 });
 
 test("buildJobPrompt strip is linear on hostile description text", () => {
-  const t = Date.now();
-  buildJobPrompt("r", { title: "t", company: "c", location: "l", text: "<vacancy ".repeat(20_000) }, "en");
-  assert.ok(Date.now() - t < 500);
+  assertLinear("vacancy strip", (n) => buildJobPrompt("r", { title: "t", company: "c", location: "l", text: "<vacancy ".repeat(n) }, "en"), 5_000);
 });
 
 test("extractJSON: linear string/escape-aware brace matching", () => {
@@ -195,5 +194,5 @@ test("extractJSON: linear string/escape-aware brace matching", () => {
   assert.deepEqual(extractJSON('{"s":"esc \\" }"}'), { s: 'esc " }' });          // escaped quote then a brace inside the string
   assert.deepEqual(extractJSON('{"s":"back\\\\"}'), { s: "back\\" });            // escaped backslash right before the closing quote
   assert.equal(extractJSON("{broken"), null);
-  const t = Date.now(); extractJSON('{"a":"' + "}".repeat(1_000_000)); assert.ok(Date.now() - t < 200, "must be linear");
+  assertLinear("extractJSON braces", (n) => extractJSON('{"a":"' + "}".repeat(n)), 250_000);
 });

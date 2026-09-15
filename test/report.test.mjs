@@ -28,6 +28,16 @@ test("countRunStats sums runs and considered-new, counts only LLM-rejected skips
   assert.deepEqual(countRunStats(logText), { runs: 2, considered: 7, dropped: 1, failed: 1 });
 });
 
+test("countRunStats drops lines older than the reporting window", () => {
+  // Log FILES are picked by mtime, so the oldest one in range carries lines
+  // from before the window too — they used to be counted while the package
+  // counts beside them were filtered exactly.
+  const old = `2026-08-01T09:00:00.000Z Done. Considered 99 new, wrote 9 package(s)\n`;
+  const since = Date.parse("2026-08-31T12:00:00Z");
+  assert.deepEqual(countRunStats(old + logText, { since }), { runs: 2, considered: 7, dropped: 1, failed: 1 });
+  assert.equal(countRunStats(old + logText).runs, 3);   // no window: everything counts, as before
+});
+
 test("buildReport aggregates the last N days into text + a one-line notification", () => {
   const r = buildReport({ now, days: 7, packages, logText, health });
   assert.match(r.text, /2026-08-31 → 2026-09-07 \(7 days\)/);

@@ -141,7 +141,7 @@ clicks Send.
 ### Unread badge on the Jobs app
 
 Each scan writes the number of unread LinkedIn message threads to
-`notify-state.json`. The **Jobs app** (`Jobs.app`, "Вакансии") runs persistently
+`notify-state.json`. The **Jobs app** (`Jobs.app`) runs persistently
 in the Dock and reads that file every few seconds, showing the count as a red
 Dock badge. While that count is above zero (and Djinni has nothing unread),
 clicking the Dock icon or a banner opens the LinkedIn inbox filtered to unread
@@ -160,7 +160,7 @@ defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)
 
-The Dock badge on `Jobs.app` ("Вакансии") shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
+The Dock badge on `Jobs.app` shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
 
 One-time login (whenever the Djinni session expires):
 
@@ -257,7 +257,10 @@ the dashboard falls back to `localStorage` and shows an **"offline — not saved
 to disk"** badge. Before the first write of each day the store is snapshotted to
 `job-state.YYYY-MM-DD.bak` (last 7 kept) — to roll back a bad day, copy a
 snapshot over `job-state.json`. After pulling a new version restart the server
-with `launchctl kickstart -k gui/$UID/com.<you>.state-server`.
+with `launchctl kickstart -k gui/$UID/com.<you>.state-server`. `com.<you>.…`
+there is the plist's **`Label`**, not its filename — launchctl addresses
+services by label, so renaming only the file leaves every agent registered as
+`com.example.…` and this command fails.
 
 **Statuses** — the tool is a radar: it finds and prepares, you apply
 selectively on the job site, so the dashboard tracks only what it needs to stay
@@ -358,7 +361,7 @@ your own values, and the real copies stay local (gitignored):
 
 ```bash
 cp run.sh.example run.sh   # then edit node version + RESUME_PATH
-cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # replace YOUR_USERNAME inside
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # replace YOUR_USERNAME **and** the Label inside
 cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 ```

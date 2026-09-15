@@ -158,7 +158,10 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
       if (!summary.sources.linkedin) recordFound(summary, "linkedin", 0);
     }
   } finally {
-    await ctx?.close();
+    // A throw here escapes the sibling catch and takes the whole run with it —
+    // dedup, scoring and every package write included, after the scraping was
+    // already paid for. Closing a browser is never worth that.
+    try { await ctx?.close(); } catch (e) { log("browser close failed:", e.message); }
   }
 }
 
@@ -264,7 +267,16 @@ let scoring = Promise.resolve();
 if (llmOn) {
   const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
   scoring = pool(toScore, Math.max(1, Number(LLM.concurrency) || 3), async (m) => {
-    resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: config.candidateCountry?.[0] }), { model: LLM.model || "sonnet", log }));
+    // Every promise must settle. A throw in here used to leave `await
+    // verdict.get(m)` pending forever — the run deadlocked mid-scoring with an
+    // unhandled rejection on `scoring` — so a failure resolves null, which the
+    // consumer already treats as "llm failed, keyword-only package".
+    try {
+      resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: config.candidateCountry?.[0] }), { model: LLM.model || "sonnet", log }));
+    } catch (e) {
+      log(`  · llm threw for: ${m.job.title} — ${e?.message}`);
+      resolvers.get(m)(null);
+    }
   });
 }
 for (const m of toScore) {
