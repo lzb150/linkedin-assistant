@@ -6,6 +6,12 @@ node_modules/
 
 # Generated output
 logs/
+# …but keep the directory itself: launchd does not create parents for
+# StandardOutPath, and state-server/jobs-badge never go through run.sh (the
+# only mkdir -p logs), so on a fresh clone their logs went nowhere.
+!logs/
+logs/*
+!logs/.gitkeep
 drafts/
 applications/
 

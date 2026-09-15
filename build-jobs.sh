@@ -42,7 +42,11 @@ else
 fi
 
 # Compile the Swift app into the bundle.
+# -target pins the deployment floor to the LSMinimumSystemVersion written into
+# Info.plist above. Without it the binary inherits the build machine's macOS
+# version, so a bundle claiming 13.0 could refuse to launch on 13.0.
 xcrun swiftc -O -framework Cocoa \
+  -target "$(uname -m)-apple-macos13.0" \
   -o "$APP/Contents/MacOS/jobs" "$DIR/jobs-app.swift"
 
 # Ad-hoc sign for a stable identity.

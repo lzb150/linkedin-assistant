@@ -34,8 +34,11 @@ function parse(md) {
   return { fm, cover: cover.trim() };
 }
 
+// Also escapes the apostrophe. Every interpolation site happens to use double
+// quotes today, so leaving ' alone was safe — but that is an invariant nothing
+// checks and one single-quoted attribute would break silently.
 const esc = (s) =>
-  (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // Frontmatter urls come from scraped job postings — only ever link http(s),
 // so a hostile posting can't smuggle a javascript: url into an href.

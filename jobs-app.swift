@@ -139,6 +139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         poll()                                          // immediate first pass
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in self?.poll() }
+        // ~28,800 wake-ups a day for state that changes hourly. A tolerance lets
+        // the system coalesce this with other timers instead of waking the CPU
+        // on its own schedule — it matters on battery, and costs nothing here
+        // because nothing depends on the poll landing at an exact instant.
+        timer?.tolerance = 1.0
         // A foreground (user) launch opens Djinni if there are unread messages,
         // otherwise the dashboard.
         if !isBackground { handleActivation() }
@@ -178,15 +183,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     // Drop banners/*.json older than 7 days (nothing drains them without
-    // notification permission) and *.json.tmp older than 1 hour (a notify.mjs
-    // write that died before its atomic rename).
+    // notification permission) and the temp files of a notify.mjs write that
+    // died before its atomic rename, after 1 hour. Those are named
+    // "<name>.json.<pid>.tmp" (json-file.mjs puts the pid in so two writers
+    // cannot clobber each other), never "<name>.json.tmp" — the old suffix test
+    // matched nothing, so crash leftovers accumulated here forever.
     func pruneOldBanners() {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: bannersDir) else { return }
         let now = Date()
         for name in names {
             let maxAge: TimeInterval
-            if name.hasSuffix(".json.tmp") { maxAge = 3600 } else if name.hasSuffix(".json") { maxAge = 7 * 86400 } else { continue }
+            if name.hasSuffix(".tmp") && name.contains(".json.") { maxAge = 3600 } else if name.hasSuffix(".json") { maxAge = 7 * 86400 } else { continue }
             let path = (bannersDir as NSString).appendingPathComponent(name)
             if let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date, now.timeIntervalSince(mtime) > maxAge {
                 try? fm.removeItem(atPath: path)

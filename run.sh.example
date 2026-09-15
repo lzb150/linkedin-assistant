@@ -16,6 +16,15 @@ export CANDIDATE_NAME="Your Name"                       # signature in drafts an
 cd "$(dirname "$0")"
 mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
 find "$PWD/logs" -name '*.log' ! -name 'state-server.log' ! -name 'jobs-badge.*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (launchd holds the server's and the badge daemon's logs open)
+# The two logs the rotation above must skip are the two launchd holds open, and
+# nothing else bounded them: state-server exits on EADDRINUSE and KeepAlive
+# restarts it, so its log grew forever. Truncate in place — deleting an open
+# file would leave the daemon writing to an unlinked inode.
+for f in "$PWD/logs/state-server.log" "$PWD"/logs/jobs-badge.*.log; do
+  if [[ -f "$f" ]] && [[ "$(stat -f%z "$f" 2>/dev/null || echo 0)" -gt 10485760 ]]; then
+    : > "$f"
+  fi
+done
 find "$PWD/applications/archive" -name '*.md' -mtime +180 -delete 2>/dev/null || true   # archived packages: nothing reads them
 
 SCRIPT="${1:?usage: run.sh <script.mjs> [args]}"; SCRIPT="${SCRIPT##*/}"
