@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -105,8 +106,7 @@ test("parseRss skips an item with no <link> so it cannot produce a blank '::titl
 });
 
 test("parseRss stays linear on a hostile item full of unclosed <title> openers", () => {
-  const xml = `<rss><channel><item>${"<title>".repeat(60_000)}</item></channel></rss>`;
-  const t = Date.now(); parseRss(xml); assert.ok(Date.now() - t < 500, "tag() must be bounded");
+  assertLinear("tag() opener scan", (n) => parseRss(`<rss><channel><item>${"<title>".repeat(n)}</item></channel></rss>`), 15_000);
 });
 
 test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () => {
@@ -125,6 +125,6 @@ test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () =>
 });
 
 test("parseRss stays linear on a hostile feed full of unclosed <item> openers", () => {
-  const xml = `<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`;
-  const t = Date.now(); assert.deepEqual(parseRss(xml), []); assert.ok(Date.now() - t < 500, "item scan must be bounded");
+  assert.deepEqual(parseRss(`<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`), []);
+  assertLinear("item scan", (n) => parseRss(`<rss><channel>${"<item>".repeat(n)}</channel></rss>`), 15_000);
 });

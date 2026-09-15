@@ -41,8 +41,11 @@ test("formatTable shows a row per source and the header", () => {
   const out = formatTable(s);
   assert.match(out, /Run summary/);
   assert.match(out, /found.*excl.*seen.*low.*NEW/);
-  assert.match(out, /dou/);
-  assert.match(out, /jooble/);
+  // The counts, not just the labels: asserting only that "dou" and "jooble"
+  // appear passed a formatter printing every number as 0, or swapping columns.
+  const row = (name) => out.split("\n").find((l) => l.trim().startsWith(name))?.trim().split(/\s+/).slice(1).map(Number);
+  assert.deepEqual(row("dou"), [12, 0, 0, 0, 1], "dou: found 12, one written");
+  assert.deepEqual(row("jooble"), [5, 0, 0, 0, 0], "jooble: found 5, nothing written");
 });
 
 test("formatTable shows the merged line only when merged > 0", () => {

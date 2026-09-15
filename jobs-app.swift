@@ -118,6 +118,7 @@ func unreadCountAt(_ path: String) -> Int {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var timer: Timer?
+    var ticks = 0   // the 3 s tick is for the badge; the expensive work runs on multiples of it
     let launchedAt = Date()
     var lastBadge: String? = "unset"
     var notifGranted = false
@@ -163,11 +164,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
 
     func poll() {
-        // Permission can be granted/revoked in System Settings at any time: re-read
-        // it every tick instead of latching the launch-time answer.
-        center.getNotificationSettings { [weak self] st in
-            DispatchQueue.main.async {
-                self?.notifGranted = st.authorizationStatus == .authorized
+        ticks &+= 1
+        // Permission can be granted/revoked in System Settings at any time, so this
+        // is re-read rather than latched at launch — but it is an XPC round-trip,
+        // and at 3 s that was ~28,800 of them a day for a setting a person changes
+        // by hand. Once a minute is still far faster than anyone can notice.
+        if ticks % 20 == 1 {
+            center.getNotificationSettings { [weak self] st in
+                DispatchQueue.main.async {
+                    self?.notifGranted = st.authorizationStatus == .authorized
+                }
             }
         }
         // Combined badge: unread LinkedIn message threads + unread Djinni inbox threads.
@@ -178,7 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         NSApp.dockTile.badgeLabel = label
         NSApp.dockTile.display()
         if label != lastBadge { dbg("badge -> \(label ?? "nil")"); lastBadge = label }
-        pruneOldBanners()
+        // A full banners/ listing with a stat per file, to delete things older than
+        // an hour and a week. Every 3 s bought nothing; every 10 min is the same
+        // outcome. postQueuedBanners stays on the fast tick — that one is latency.
+        if ticks % 200 == 1 { pruneOldBanners() }
         postQueuedBanners()
     }
 

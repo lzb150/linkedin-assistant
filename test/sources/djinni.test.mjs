@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -46,10 +47,7 @@ test("extractDivByClass returns empty string when the class is absent", () => {
 
 test("parseCard stays fast on a 1.5 MB card of unclosed openers (bounded captures)", () => {
   const opener = '<a href="/jobs/1/">x</a><h2 class="job-item__position"><span class="small text-gray-800"><span class="js-truncated-text">';
-  const card = opener.repeat(Math.ceil(1.5e6 / opener.length));
-  const t0 = performance.now();
-  parseCard(card);
-  assert.ok(performance.now() - t0 < 500, "parseCard took too long on an unclosed-opener card");
+  assertLinear("parseCard openers", (n) => parseCard(opener.repeat(n)), 2_500);
 });
 
 // Djinni is not newest-first: a fresh vacancy can live on page 2 (847039 @

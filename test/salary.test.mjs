@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertLinear } from "./helpers/linear.mjs";
 import { extractSalary } from "../lib/salary.mjs";
 
 test("range with currency prefix and dash", () => {
@@ -47,11 +48,9 @@ test("range followed by a sentence comma keeps the number clean", () => {
 });
 
 test("long digit/comma runs finish in linear time (no catastrophic backtracking)", () => {
-  for (const big of ["1".repeat(50_000), "111,".repeat(12_500), "1 1,".repeat(12_500)]) {
-    const t = performance.now();
-    extractSalary(big);
-    assert.ok(performance.now() - t < 100, "50 KB scan took too long");
-  }
+  assertLinear("digits", (n) => extractSalary("1".repeat(n)), 12_500);
+  assertLinear("digit+comma runs", (n) => extractSalary("111,".repeat(n)), 3_125);
+  assertLinear("digit+space+comma runs", (n) => extractSalary("1 1,".repeat(n)), 3_125);
 });
 
 test("a range needs a real upper bound, not any digit that follows the dash", () => {

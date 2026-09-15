@@ -74,4 +74,8 @@ jobs:
         run: |
           set -e
           xcrun swiftc -typecheck jobs-app.swift
+          # …and actually link it, with the same -target build-jobs.sh uses. A
+          # typecheck alone never proved the app still builds, so a link break
+          # (a missing framework, a bad -target) would have shipped green.
+          xcrun swiftc -O -framework Cocoa -target "$(uname -m)-apple-macos13.0" -o "$RUNNER_TEMP/jobs" jobs-app.swift
           plutil -lint *.plist.example
