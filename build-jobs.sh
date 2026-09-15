@@ -62,10 +62,16 @@ fi
 # A running instance keeps executing the OLD binary: `open -a` on a running app
 # only re-opens it. Kill it; the jobs-badge launchd agent (KeepAlive) relaunches
 # the fresh build by itself. Without an agent, start it by hand (see "Test:" below).
-# pkill/pgrep -f match the path as a regex; "." and "/" in $APP only widen the match harmlessly.
-if pkill -f "$APP/Contents/MacOS/jobs"; then
+# pkill/pgrep -f match the WHOLE command line against an ERE. "." and "/" only
+# widen the match harmlessly, but a project path containing + ( [ * ? either
+# widens it further or fails to compile — and since the call sits in `if`, a
+# compile failure is just a false branch: nothing is killed, the stale daemon
+# keeps running the old binary, and the script still says "Done". Escape every
+# ERE metacharacter in the path first.
+BIN_RE=$(printf '%s' "$APP/Contents/MacOS/jobs" | sed 's/[][\.^$*+?(){}|\\\/]/\\&/g')
+if pkill -f "$BIN_RE"; then
   sleep 2
-  pgrep -f "$APP/Contents/MacOS/jobs" >/dev/null && echo "  relaunched by launchd" \
+  pgrep -f "$BIN_RE" >/dev/null && echo "  relaunched by launchd" \
     || echo "  stopped the old badge daemon — no launchd agent relaunched it; start it: open -g -a \"$APP\" --args --background"
 fi
 

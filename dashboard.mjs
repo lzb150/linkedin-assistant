@@ -49,11 +49,13 @@ const langAttr = (s) => { const l = detectLang(s); return l === "en" ? "" : ` la
 const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
 
 // The shared reader skips what cannot be read (a directory named x.md, a
-// permission error) with a warning instead of aborting the build; the body is
-// re-read here because the cover note is not frontmatter.
+// permission error) with a warning instead of aborting the build. `raw` asks it
+// for the body too — the cover note is not frontmatter — so each package is
+// read once instead of twice, and a package archived between the two reads can
+// no longer disappear underneath us.
 const warn = (f, e) => console.warn(`unreadable package skipped: ${f} (${e.message})`);
-const parsed = readPackages(APPS, { warn })
-  .map(({ file }) => { try { return parse(readFileSync(join(APPS, file), "utf8")); } catch (e) { warn(file, e); return null; } })
+const parsed = readPackages(APPS, { warn, raw: true })
+  .map(({ _raw }) => parse(_raw))
   .filter(Boolean)
   .map((x) => ({
     ...x,
@@ -118,34 +120,40 @@ const cards = items
     // a bad url renders read-only (no status buttons / note / auto-viewed).
     const live = safeUrl(f.url) !== "#";
     const auto = live ? ` onclick="autoStatus(this.closest('.card'),'viewed')"` : "";
+    // Every per-card control used to carry the same accessible name on every
+    // card — "New", "Viewed", "Copy letter", "Note", "Status", "Private note" —
+    // so a screen-reader user tabbing through could not tell which vacancy they
+    // were acting on (WCAG 2.4.6 / 4.1.2). `which` disambiguates them, and the
+    // article takes its own name from its heading.
+    const which = esc(`${f.title || "—"} at ${f.company || "—"}`);
     return `
-<article class="card"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
+<article class="card" aria-labelledby="t${idx}"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
   <div class="head">
     <span class="score ${scoreBand(it.score)}"><span class="sr-only">keyword score </span>${it.score}</span>
     <div class="titles">
-      <h2${langAttr(f.title)}>${esc(f.title || "—")}<span class="sr-only card-status"></span></h2>
+      <h2 id="t${idx}"${langAttr(f.title)}>${esc(f.title || "—")}<span class="sr-only card-status"></span></h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · <span${langAttr(f.location)}>${esc(f.location || "")}</span> · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
       ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
       <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open job: ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
-      ${live ? `<div class="status-seg" role="group" aria-label="Status">
-        <button data-status="new" aria-pressed="false" onclick="setStatus(this.closest('.card'),'new')">New</button>
-        <button data-status="viewed" aria-pressed="false" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
+      ${live ? `<div class="status-seg" role="group" aria-label="Status — ${which}">
+        <button data-status="new" aria-pressed="false" aria-label="Mark New — ${which}" onclick="setStatus(this.closest('.card'),'new')">New</button>
+        <button data-status="viewed" aria-pressed="false" aria-label="Mark Viewed — ${which}" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
       </div>` : ""}
     </div>
   </div>
   <div class="skills">${skills}</div>
   ${altRow}
   <details${live ? ` ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')"` : ""}>
-    <summary>Cover letter</summary>
+    <summary>Cover letter<span class="sr-only"> — ${which}</span></summary>
     <pre id="cover${idx}" lang="${esc(f.cover_language || "en")}">${esc(it.cover)}</pre>
-    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter</button><span class="sr-only" role="status"></span>
+    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter<span class="sr-only"> — ${which}</span></button><span class="sr-only" role="status"></span>
     <span class="resume"><span aria-hidden="true">📎</span> resume: ${esc(f.resume || "")}</span>
   </details>
   ${live ? `<details class="note-wrap">
-    <summary><span aria-hidden="true">📝</span> Note <span class="note-has" hidden>●<span class="sr-only"> has note</span></span></summary>
-    <textarea class="note" rows="3" maxlength="10000" aria-label="Private note" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
+    <summary><span aria-hidden="true">📝</span> Note<span class="sr-only"> — ${which}</span> <span class="note-has" hidden>●<span class="sr-only"> has note</span></span></summary>
+    <textarea class="note" rows="3" maxlength="10000" aria-label="Private note — ${which}" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
   </details>` : ""}
 </article>`;
   })
@@ -275,6 +283,7 @@ const html = `<!doctype html>
 </header>
 <main>
 ${items.length ? cards : '<div class="empty">No matching jobs yet. Run <code>node jobs.mjs</code>.</div>'}
+<div class="empty" id="no-match" hidden>No jobs match these filters.</div>
 </main>
 <script>
 ${clientJs}

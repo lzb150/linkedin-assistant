@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -164,4 +164,15 @@ test("bodyText caps a board response at 5 MB: content-length, streamed body, and
   await assert.rejects(bodyText({ text: async () => "x".repeat(5_000_001) }), /body over/, "stub without a stream body");
   assert.equal(await bodyText({ headers: headers("11"), body: stream("hello ", "world") }), "hello world");
   assert.equal(await bodyText({ text: async () => "plain" }), "plain");
+});
+
+test("decodeBody honours the response charset instead of assuming UTF-8", () => {
+  // A windows-1251 board page decoded as UTF-8 is mojibake — and mojibake is
+  // what then gets scored, written into the package and sent to the LLM.
+  const cp1251 = Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xb3, 0xf2]);   // "Привіт"
+  assert.equal(decodeBody(cp1251, "text/html; charset=windows-1251"), "Привіт");
+  assert.equal(decodeBody(Buffer.concat([Buffer.from("<meta charset=windows-1251>"), cp1251]), "text/html").slice(-6), "Привіт");
+  assert.equal(decodeBody(Buffer.from("Привіт", "utf8"), "text/html; charset=utf-8"), "Привіт");
+  assert.equal(decodeBody(Buffer.from("Привіт", "utf8"), ""), "Привіт", "no declaration: UTF-8, as before");
+  assert.equal(decodeBody(Buffer.from("hi"), "text/html; charset=not-a-charset"), "hi", "an unknown label falls back, never throws");
 });

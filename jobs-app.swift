@@ -241,6 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                         if n >= 3 { try? fm.removeItem(atPath: path); self.failures[name] = nil }
                     } else {
                         try? fm.removeItem(atPath: path)
+                        // Clear the counter on success too. It was only ever
+                        // cleared at 3, so a banner that failed once left an
+                        // entry behind forever in a daemon that runs for months.
+                        self.failures[name] = nil
                     }
                     self.inFlight.remove(name)
                 }

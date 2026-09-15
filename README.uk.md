@@ -70,9 +70,9 @@
   теки; відповідь має бути, що інструментів для файлів чи shell немає (переказаний виклик інструмента — нормально, вміст файлу — ні).
 
   ```bash
-  cd "$(mktemp -d)" && claude -p "Print the first line of /etc/hosts" --model sonnet \
+  cd "$(mktemp -d)" && echo "Print the first line of /etc/hosts" | claude -p --model sonnet \
     --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-    --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)" < /dev/null
+    --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
   ```
 
 **3. Дашборд і зручності**
@@ -268,6 +268,9 @@ node dashboard.mjs --open   # перебудувати і відкрити
 знімається у `job-state.YYYY-MM-DD.bak` (зберігаються останні 7) — щоб відкотити
 поганий день, скопіюйте знімок поверх `job-state.json`. Після оновлення коду
 перезапустіть сервер: `launchctl kickstart -k gui/$UID/com.<you>.state-server`.
+`com.<you>.…` тут — це **`Label`** з plist, а не імʼя файлу: launchctl адресує
+служби за label, тож перейменування лише файлу залишить усі агенти
+зареєстрованими як `com.example.…`, і ця команда не спрацює.
 
 **Статуси** — інструмент є радаром: він знаходить і готує, а відгукуєтеся ви
 вибірково, на сайті вакансії, тож дашборд стежить лише за тим, що потрібно, аби
@@ -368,7 +371,7 @@ gitignore):
 
 ```bash
 cp run.sh.example run.sh   # потім відредагуйте версію node + RESUME_PATH
-cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # замініть YOUR_USERNAME всередині
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # замініть YOUR_USERNAME **і** Label всередині
 cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 ```
