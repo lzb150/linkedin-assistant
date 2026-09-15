@@ -31,6 +31,13 @@ test("djinniEligible: the countries segment must name Ukraine or the whole world
   assert.equal(djinniEligible("Тільки віддалено · Країни ЄС · 3 роки досвіду", ["Poland", "Польща", "Країни ЄС"]), true, "an EU candidate can list the board's region wording as a spelling");
 });
 
+test("djinniEligible: a country whose name contains the experience stem is still a country", () => {
+  // "рок" unanchored matches Ма[рок]ко, which made the segment look like
+  // "3 роки досвіду" — nothing to judge — and passed an ineligible vacancy.
+  assert.equal(djinniEligible("Тільки віддалено · Марокко"), false);
+  assert.equal(djinniEligible("Part-time · 3 роки досвіду"), true);
+});
+
 test("filterByLocation coerces non-string patterns and is a no-op without a list", () => {
   const jobs = [{ title: "A", location: "Office 42" }];
   assert.deepEqual(filterByLocation(jobs, [42]), []);

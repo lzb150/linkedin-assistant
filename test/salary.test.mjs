@@ -53,3 +53,10 @@ test("long digit/comma runs finish in linear time (no catastrophic backtracking)
     assert.ok(performance.now() - t < 100, "50 KB scan took too long");
   }
 });
+
+test("a range needs a real upper bound, not any digit that follows the dash", () => {
+  // "$3000 – 5" was written to frontmatter and the dashboard as the salary.
+  assert.equal(extractSalary("Вилка $3000 – 5 років досвіду"), null);
+  assert.equal(extractSalary("$3000–5000"), "$3000–5000");
+  assert.equal(extractSalary("$3k–5k"), "$3k–5k");
+});
