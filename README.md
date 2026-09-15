@@ -284,7 +284,7 @@ daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 one or the other (per browser). The palette is GitHub Primer in both modes,
 every text/background pair ≥ 4.5:1.
 
-![Dark theme](docs/dashboard-dark.png)
+![Light theme](docs/dashboard-light.png)
 
 **Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
 (`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU,
