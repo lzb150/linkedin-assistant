@@ -1,4 +1,22 @@
-# LinkedIn Job Assistant
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
+  <img alt="linkedin-assistant — a local job radar that finds, scores and drafts, but never sends" src="docs/banner-light.svg" width="960">
+</picture>
+
+<br>
+
+[![Sources](https://img.shields.io/badge/sources-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-1f6feb?style=flat-square&labelColor=161b22)](#job-discovery--jobsmjs)
+[![Data](https://img.shields.io/badge/data-100%25_local-238636?style=flat-square&labelColor=161b22)](#key-principles)
+[![Auto-send](https://img.shields.io/badge/auto--send-never-9e6a03?style=flat-square&labelColor=161b22)](#key-principles)
+[![macOS](https://img.shields.io/badge/macOS-launchd-8957e5?style=flat-square&labelColor=161b22)](#schedule-it-launchd)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-30363d?style=flat-square&labelColor=161b22)](#one-time-setup)
+[![License](https://img.shields.io/badge/license-MIT-0969da?style=flat-square&labelColor=161b22)](LICENSE)
+
+[What it does](#what-it-does) · [Setup](#one-time-setup) · [Discovery](#job-discovery--jobsmjs) · [Dashboard](#dashboard--dashboardmjs) · [Schedule](#schedule-it-launchd) · [Adapt it](#adapting-to-another-profession)
+
+</div>
 
 > 🇺🇦 [Українською](README.uk.md)
 
@@ -56,8 +74,8 @@ click is always yours.
 
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance; cards are
-  marked Viewed as you open them; private notes,
-  multi-select filters, search, freshness highlights, and a copy-letter button
+  marked Viewed as you open them; private notes, New/Viewed tabs, a source
+  filter, search, freshness highlights, and a copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
 **4. Automation (launchd)**
@@ -189,6 +207,10 @@ back with a visible browser.
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
 - **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
+- **Title filter** — titles containing a whole word from `excludeTitle` in
+  `jobs.config.json` (`junior`, `intern`, `internship`, `trainee`, `manual` by
+  default) are skipped before scoring, across all sources. Matched in the title
+  only, so a senior posting that merely mentions manual testing is kept.
 - **Foreign-location filter** — boards also list vacancies physically located
   abroad (DOU marks them "за кордоном"; Djinni "Тільки офіс · Польща").
   Jobs whose location contains any substring from the top-level
@@ -251,12 +273,12 @@ counts, both selected by default.
 ![Card expanded — cover letter, private note](docs/card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
-keywords; source chips (one per board that has packages on disk) narrow the
-list further. Cards that arrived since your last visit are highlighted with a
+keywords; the source chips (All, plus one per board that has packages on disk)
+narrow the list to a single board. Cards that arrived since your last visit are highlighted with a
 **NEW** ribbon. Viewed cards you have not touched for 30 days are archived by the
 daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 
-![Multi-select filters, source chips and search](docs/filters.png)
+![The Djinni chip and a search query narrowing the list](docs/filters.png)
 
 **Theme** — follows the system light/dark preference; the header button pins
 one or the other (per browser). The palette is GitHub Primer in both modes,
