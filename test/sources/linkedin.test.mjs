@@ -32,8 +32,13 @@ test("buildUrl omits empty keywords and location but still sorts by date", () =>
 function fakePage(...rounds) {
   const calls = [];
   let round = 0;
+  // The scraper waits for the clicked job's id to appear in the url before it
+  // reads the description panel, so the stub has to model both.
+  let current = "https://www.linkedin.com/jobs/search/";
   const page = {
     calls,
+    url: () => current,
+    waitForURL: async (pred) => { calls.push("waitForURL"); current = "https://www.linkedin.com/jobs/search/?currentJobId=clicked"; if (typeof pred === "function") pred(new URL(current)); },
     goto: async () => { calls.push("goto"); },
     mouse: { wheel: async () => {} },
     $$: async () => (rounds[Math.min(round++, rounds.length - 1)]).map((c, i, all) => ({

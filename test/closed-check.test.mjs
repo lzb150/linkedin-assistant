@@ -79,6 +79,21 @@ test("closed-check: archived and orphaned state entries are dropped; an empty ap
   assert.ok(empty.json("job-state.json")[orphan], "an empty applications/ must not wipe the store");
 });
 
+// planArchive reads a missing updatedAt as "old enough to archive" while the
+// prune read it as "not stale", so a legacy entry could be archived and then
+// kept forever with no package behind it.
+test("closed-check: a legacy entry with no updatedAt is pruned, not kept forever", async (t) => {
+  const legacy = "https://example.com/v/3/";
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "ok.md": pkg({ url: "https://example.com/v/4/" }) },
+    state: { _meta: {}, [legacy]: { status: "closed" } },   // no updatedAt at all
+    bins: quiet,
+  });
+  await runScript(p, "closed-check.mjs");
+  assert.equal(p.json("job-state.json")[legacy], undefined, "orphaned legacy entry dropped");
+});
+
 // The empty-applications/ guard above is all-or-nothing; the realistic failure is
 // ONE package readPackages cannot read (a permission error, a rewrite in flight).
 // It is missing from the package list, so it looks orphaned and its entry —

@@ -123,7 +123,7 @@ const cards = items
   <div class="head">
     <span class="score ${scoreBand(it.score)}"><span class="sr-only">keyword score </span>${it.score}</span>
     <div class="titles">
-      <h2${langAttr(f.title)}>${esc(f.title || "—")}</h2>
+      <h2${langAttr(f.title)}>${esc(f.title || "—")}<span class="sr-only card-status"></span></h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · <span${langAttr(f.location)}>${esc(f.location || "")}</span> · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
       ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
@@ -231,7 +231,11 @@ const html = `<!doctype html>
   .alt-row { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
   .alt { color: var(--accent); margin-right: 8px; }   /* underlined: colour alone (1.2:1 vs the muted row) is not a link cue */
   .empty { text-align: center; color: var(--muted); padding: 40px; }
-  /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed, with a text cue. */
+  /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed,
+     with a text cue. The cue below is CSS ::after, which never reaches the
+     accessibility tree — .card-status carries the same word in real DOM text so
+     a screen-reader user is not left with colour and a border as the only
+     signal. Both are kept: the ::after keeps the visual layout unchanged. */
   .card.closed { background: var(--card-muted); border-left: 4px solid var(--closed-border); }
   .card.closed .titles h2 { color: var(--muted); }
   .card.closed .titles h2::after { content: " · closed"; color: var(--muted); font-weight: 400; font-size: 13px; }

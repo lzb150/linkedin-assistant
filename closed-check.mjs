@@ -86,6 +86,7 @@ for (const { url, source } of todo) {
   await new Promise((r) => setTimeout(r, 1000));
   if (++probed % 25 === 0) flush();
 }
+const closedNow = pending.slice();   // applyClosures empties `pending`; kept to replay onto a fresher store below
 let { stateMap, n: savedNow } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved"));
 // Archive BEFORE pruning, and prune by what actually moved: a package whose
 // rename failed is still in applications/ and needs its state entry, or it
@@ -98,10 +99,27 @@ const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap 
 // unreadable applications/ must not wipe the store (cf. the 448-entry wipe).
 const live = new Set(packages.filter((p) => !archived.has(p.file)).map((p) => p.url));
 const staleBefore = Date.now() - 86400000;
-const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return Number.isFinite(t) && t < staleBefore; };
+// A missing updatedAt counts as old enough — the same reading planArchive uses.
+// While the two disagreed, a legacy entry could be archived and then never
+// pruned, so it sat in the store forever with no package behind it.
+const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return !Number.isFinite(t) || t < staleBefore; };
+const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]);
 let pruned = 0;
-if (mayPrune()) for (const u of Object.keys(stateMap)) if (u !== "_meta" && !live.has(u) && stale(stateMap[u])) { delete stateMap[u]; pruned++; }
-if (savedNow || pruned) writeStore(STATE, stateMap);
+if (mayPrune()) for (const u of Object.keys(stateMap)) if (prunable(stateMap, u)) { delete stateMap[u]; pruned++; }
+if (savedNow || pruned) {
+  // archivePackages just spent one renameSync per archived package, and a
+  // dashboard click lands on job-state.json meanwhile. Writing the map read
+  // before those renames would clobber it, so re-read now and replay our own
+  // two edits — the closures and the prune — onto whatever is there. Both are
+  // re-decided against the fresh entry, so a status set in the window wins.
+  let out = readStoreOrExit(STATE, "closed-check: store unreadable before the final write — closures not saved");
+  for (const u of closedNow) {
+    const st = out[u]?.status;
+    if (!st || st === "viewed") out = mergeEntry(out, u, { status: "closed" });
+  }
+  if (mayPrune()) for (const u of Object.keys(out)) if (prunable(out, u)) delete out[u];
+  writeStore(STATE, out);
+}
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
