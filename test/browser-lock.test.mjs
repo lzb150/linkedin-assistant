@@ -68,6 +68,25 @@ test("a second run cannot take over a lock that was stale but has since been cla
   release();
 });
 
+test("acquireProfileLock survives the lock directory vanishing between mkdir and the claim", (t) => {
+  // Another run's release() removes the whole directory. The lock is free at
+  // that point, so failing with a raw ENOENT would turn "free" into an opaque
+  // filesystem error; one retry recreates the container and claims it.
+  const p = join(tmpDir(t), "profile");
+  const release = acquireProfileLock(p);
+  release();                                   // the directory is gone now
+  assert.ok(!existsSync(`${p}.lock`));
+  const again = acquireProfileLock(p);         // must simply succeed
+  assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid));
+  again();
+});
+
+test("acquireProfileLock names a regular file sitting where the lock directory belongs", (t) => {
+  const p = join(tmpDir(t), "profile");
+  writeFileSync(`${p}.lock`, "not a directory");
+  assert.throws(() => acquireProfileLock(p), /profile lock path is not a directory/);
+});
+
 test("release() leaves a lock alone once another pid has taken it over", (t) => {
   const p = join(tmpDir(t), "profile");
   const release = acquireProfileLock(p);

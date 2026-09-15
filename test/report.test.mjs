@@ -73,6 +73,8 @@ test("buildReport prefers the run-stats file and asks the log only for the days 
   assert.match(r.text, /LLM dropped 2, failed 2/, "log and file counters add up, neither is double-counted");
 
   // …and once the file covers the whole window, the log contributes nothing.
-  const early = [{ at: "2026-09-01T09:00:00Z", atMs: Date.parse("2026-09-01T09:00:00Z"), considered: 5, written: 1, dropped: 0, failed: 0 }];
+  // No atMs: an entry read straight from the file has only `at`, and it must
+  // still count rather than be dropped by a NaN comparison.
+  const early = [{ at: "2026-09-01T09:00:00Z", considered: 5, written: 1, dropped: 0, failed: 0 }];
   assert.match(buildReport({ now, days: 7, packages, logText, health, runStats: early }).text, /1 runs? · 5 new vacancies considered/);
 });
