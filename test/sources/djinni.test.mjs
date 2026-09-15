@@ -76,7 +76,8 @@ test("fetchDjinni reads several pages per search, stops at an empty page, and fe
     "https://djinni.co/jobs/?primary_keyword=QA+Automation&page=3",   // empty → stop (pages=3 anyway)
   ]);
   assert.equal(jobs.length, 3, "cards from both pages");
-  assert.match(lines.join("\n"), /Djinni search ok \(3 over 3 pages\)/);
+  // 2, not 3: page 3 was probed and came back empty, so only two pages yielded jobs.
+  assert.match(lines.join("\n"), /Djinni search ok \(3 over 2 pages\)/);
   const detailUrls = urls.filter((u) => !u.includes("/jobs/?"));
   assert.equal(detailUrls.length, 2, "only the two unknown jobs get a detail fetch");
   assert.ok(!detailUrls.includes(known));

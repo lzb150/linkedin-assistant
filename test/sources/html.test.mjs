@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeEntities, stripHtml, composeText, fetchText, bodyText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -33,6 +33,33 @@ test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   assert.match(logs[0], /dou 404: https:\/\/x\/1/);
   const okFetch = async () => ({ ok: true, status: 200, text: async () => "body" });
   assert.equal(await fetchText("https://x/1", () => {}, "dou", okFetch), "body");
+});
+
+// Redirect hops are what `redirect: "follow"` used to hide: the allowlist only
+// ever saw the first url, so an open redirect on a board reached loopback.
+const redirectTo = (loc) => ({ status: 302, headers: { get: (h) => (h === "location" ? loc : null) } });
+
+test("fetchFollow follows a same-host redirect and reads the final page", async () => {
+  const seen = [];
+  const doFetch = async (u) => { seen.push(u); return u.endsWith("/final") ? { ok: true, status: 200, text: async () => "body" } : redirectTo("/final"); };
+  const res = await fetchFollow("https://djinni.co/jobs/1", {}, { doFetch });
+  assert.equal(await bodyText(res), "body");
+  assert.deepEqual(seen, ["https://djinni.co/jobs/1", "https://djinni.co/final"]);
+});
+
+test("fetchFollow refuses a redirect off the allowed host, and never requests it", async () => {
+  const seen = [];
+  const doFetch = async (u) => { seen.push(u); return redirectTo("http://127.0.0.1:7777/state"); };
+  await assert.rejects(
+    fetchFollow("https://djinni.co/jobs/1", {}, { doFetch }),
+    /redirect off the allowed host: http:\/\/127\.0\.0\.1:7777\/state/,
+  );
+  assert.deepEqual(seen, ["https://djinni.co/jobs/1"], "the loopback url is vetted before it is fetched");
+});
+
+test("fetchFollow gives up on a redirect loop instead of spinning", async () => {
+  const doFetch = async () => redirectTo("https://djinni.co/loop");
+  await assert.rejects(fetchFollow("https://djinni.co/loop", {}, { doFetch }), /too many redirects/);
 });
 
 test("extractDivByClass ignores a '</div>' string inside <script> and a commented-out <div>", () => {

@@ -12,8 +12,8 @@ import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log } from "./lib/notify.mjs";
-import { isClosed, selectCandidates, planArchive } from "./lib/closed.mjs";
-import { bodyText } from "./lib/sources/html.mjs";
+import { isClosed, selectCandidates, planArchive, onBoardHost } from "./lib/closed.mjs";
+import { bodyText, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,12 @@ const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
 const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }
 
-const packages = readPackages(APPS);
+// A package readPackages could not read is absent from `packages`, so it looks
+// dead to both prunes below and its card would come back as New with its
+// status lost. Any such skip makes this run's view partial — prune nothing.
+let partialRead = false;
+const packages = readPackages(APPS, { warn: (f, e) => { partialRead = true; log(`  · could not read ${f}: ${e.message}`); } });
+const mayPrune = () => packages.length && !partialRead;
 const checked = readJson(CHECKED, null) || {};
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
@@ -64,7 +69,10 @@ function flush() {
 let probed = 0;
 for (const { url, source } of todo) {
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000), redirect: "follow" });
+    // Every redirect hop is re-checked against the board host, not just the
+    // frontmatter url: an open redirect on a board would otherwise aim this
+    // daily job at anything the Mac can reach, the loopback state server included.
+    const res = await fetchFollow(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000) }, { allow: (u) => onBoardHost(source, u) });
     const status = res.status, html = status === 200 ? await bodyText(res) : "";
     checked[url] = new Date().toISOString();
     if (isClosed({ source, status, html })) {
@@ -92,10 +100,10 @@ const live = new Set(packages.filter((p) => !archived.has(p.file)).map((p) => p.
 const staleBefore = Date.now() - 86400000;
 const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return Number.isFinite(t) && t < staleBefore; };
 let pruned = 0;
-if (packages.length) for (const u of Object.keys(stateMap)) if (u !== "_meta" && !live.has(u) && stale(stateMap[u])) { delete stateMap[u]; pruned++; }
+if (mayPrune()) for (const u of Object.keys(stateMap)) if (u !== "_meta" && !live.has(u) && stale(stateMap[u])) { delete stateMap[u]; pruned++; }
 if (savedNow || pruned) writeStore(STATE, stateMap);
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-if (packages.length) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
+if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);

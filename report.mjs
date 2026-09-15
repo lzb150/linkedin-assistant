@@ -23,9 +23,11 @@ const packages = readPackages(join(dir, "applications"));
 // jobs.mjs logs (run.sh: jobs_<date>.log, jobs_dou_<date>.log; jobs_full_ before 2026-09-11) touched inside the window.
 const logsDir = join(dir, "logs");
 const logText = (existsSync(logsDir) ? readdirSync(logsDir) : [])
-  // run.sh rotates logs with `find -delete`; a file unlinked between readdir and stat must not kill the report.
-  .filter((f) => { try { return /^jobs_(dou_|full_)?\d{8}\.log$/.test(f) && statSync(join(logsDir, f)).mtimeMs >= since; } catch { return false; } })
-  .map((f) => readFileSync(join(logsDir, f), "utf8")).join("\n");
+  // run.sh rotates logs with `find -mtime +30 -delete`; a file unlinked between
+  // readdir and the READ must not kill the report either — with REPORT_DAYS over
+  // 30 a log old enough to be swept still passes the mtime filter.
+  .flatMap((f) => { try { return /^jobs_(dou_|full_)?\d{8}\.log$/.test(f) && statSync(join(logsDir, f)).mtimeMs >= since ? [readFileSync(join(logsDir, f), "utf8")] : []; } catch { return []; } })
+  .join("\n");
 
 const { text, notification } = buildReport({
   now, days,
