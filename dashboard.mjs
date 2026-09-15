@@ -133,7 +133,7 @@ const cards = items
     <div class="titles">
       <h2 id="t${idx}"${langAttr(f.title)}>${esc(f.title || "—")}<span class="sr-only card-status"></span></h2>
       <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · <span${langAttr(f.location)}>${esc(f.location || "")}</span> · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
-      ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span> <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
+      ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span>${f.llm_suspect ? ` <span class="suspect" title="The posting contains text addressed to the screener, so this score may have been asked for">⚠ ${esc(f.llm_suspect)}</span>` : ""} <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
     </div>
     <div class="actions">
       <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open job: ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
@@ -199,6 +199,9 @@ const html = `<!doctype html>
   .head { display: flex; align-items: flex-start; gap: 12px; }
   .score { color: #fff; font-weight: 700; font-size: 15px; min-width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
   .score.hi { background: var(--score-hi); } .score.mid { background: var(--score-mid); } .score.lo { background: var(--score-lo); }
+  /* The LLM score of a posting that talked to the screener. Not an error state:
+     the package is still shown, the badge just says not to trust the number. */
+  .suspect { color: var(--warn-text, #9a6700); font-weight: 600; font-size: 12px; }
   .titles { flex: 1; }
   .titles h2 { margin: 0; font-size: 16px; }
   .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }

@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
-import { llmJSON, buildJobPrompt, numericScore, llmRejects } from "./lib/llm.mjs";
+import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
@@ -288,7 +288,14 @@ for (const m of toScore) {
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
-    if (n !== null) llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "sonnet" };
+    if (n !== null) {
+      llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "sonnet" };
+      // A posting that talks to the screener may well have talked it into this
+      // score. Record that alongside the number instead of letting an inflated
+      // score look like an ordinary good match.
+      const marks = injectionMarkers(job.text);
+      if (marks.length) { llm.suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`; log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`); }
+    }
     else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
   }
   if (llmRejects(llm, LLM.minScore)) {
