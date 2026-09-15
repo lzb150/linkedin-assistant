@@ -60,13 +60,28 @@ const LOG_ARGS = (dir, file) => `#!/bin/sh\necho "$*" >> "${dir}/${file}"\n`;
  * @param state    object written as job-state.json (omit for none)
  * @param files    { "resume.txt": "..." } extra root files
  * @param bins     { claude: "<sh script>" } extra/override fake binaries; osascript + notify-send default to logging into notify.log
+ * @param playwright ESM source for a fake `playwright` module. When given, the project gets its own
+ *                   node_modules holding only that stub instead of a symlink to the real one — the
+ *                   seam for testing check.mjs / djinni-check.mjs / login.mjs, which import it at
+ *                   module scope and therefore cannot be covered any other way.
  */
-export function makeProject(t, { scripts = [], packages = {}, state, files = {}, bins = {} } = {}) {
+export function makeProject(t, { scripts = [], packages = {}, state, files = {}, bins = {}, playwright = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "e2e-"));
   t.after(() => cleanup(dir));
   for (const f of scripts) copyFileSync(join(ROOT, f), join(dir, f));
   cpSync(join(ROOT, "lib"), join(dir, "lib"), { recursive: true });
-  symlinkSync(join(ROOT, "node_modules"), join(dir, "node_modules"));
+  if (playwright) {
+    // A project-local node_modules holding nothing but a fake `playwright`, so
+    // the browser entrypoints can be driven as black boxes. They import it at
+    // module scope through lib/browser.mjs, which is exactly why they had no
+    // tests: this replaces the module instead of the code.
+    mkdirSync(join(dir, "node_modules", "playwright"), { recursive: true });
+    writeFileSync(join(dir, "node_modules", "playwright", "package.json"),
+      JSON.stringify({ name: "playwright", version: "0.0.0-stub", type: "module", main: "index.mjs" }));
+    writeFileSync(join(dir, "node_modules", "playwright", "index.mjs"), playwright);
+  } else {
+    symlinkSync(join(ROOT, "node_modules"), join(dir, "node_modules"));
+  }
   mkdirSync(join(dir, "applications"));
   for (const [name, md] of Object.entries(packages)) writeFileSync(join(dir, "applications", name), md);
   if (state) writeFileSync(join(dir, "job-state.json"), JSON.stringify(state));
