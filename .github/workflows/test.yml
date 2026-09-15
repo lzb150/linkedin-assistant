@@ -24,6 +24,11 @@ jobs:
       # Tests never launch a browser — plain npm ci, no playwright install.
       - run: npm ci
       - run: node --test test/
+      # oxlint, not ESLint: one package and its prebuilt binary, in a repo with
+      # one runtime dependency. Only the `correctness` category is on — the rules
+      # that catch bugs. The style categories wanted 65 changes to working code on
+      # day one, which is how a linter gets ignored.
+      - run: npm run lint
       - name: Syntax-check every module
         shell: bash
         run: |
