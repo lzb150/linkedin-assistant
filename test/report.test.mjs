@@ -57,3 +57,22 @@ test("buildReport survives empty inputs", () => {
   assert.match(r.text, /top: —/);
   assert.equal(r.notification, "0 packages (LLM ≥70: 0) · 0 new considered");
 });
+
+
+test("buildReport prefers the run-stats file and asks the log only for the days before it", () => {
+  // Switching to the counter file must not lose the history written while it
+  // did not exist, and must not count the overlap twice.
+  const runStats = [
+    { at: "2026-09-07T09:00:00Z", atMs: Date.parse("2026-09-07T09:00:00Z"), considered: 4, written: 1, dropped: 1, failed: 0 },
+    { at: "2026-09-07T10:00:00Z", atMs: Date.parse("2026-09-07T10:00:00Z"), considered: 6, written: 2, dropped: 0, failed: 1 },
+  ];
+  const r = buildReport({ now, days: 7, packages, logText, health, runStats });
+  // logText holds 2 runs / 7 considered, both stamped 2026-09-06 — before the
+  // first stats line, so they are still counted. 2 + 2 runs, 7 + 10 considered.
+  assert.match(r.text, /4 runs · 17 new vacancies considered/);
+  assert.match(r.text, /LLM dropped 2, failed 2/, "log and file counters add up, neither is double-counted");
+
+  // …and once the file covers the whole window, the log contributes nothing.
+  const early = [{ at: "2026-09-01T09:00:00Z", atMs: Date.parse("2026-09-01T09:00:00Z"), considered: 5, written: 1, dropped: 0, failed: 0 }];
+  assert.match(buildReport({ now, days: 7, packages, logText, health, runStats: early }).text, /1 runs? · 5 new vacancies considered/);
+});

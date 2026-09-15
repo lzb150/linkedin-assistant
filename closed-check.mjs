@@ -104,9 +104,12 @@ const staleBefore = Date.now() - 86400000;
 // pruned, so it sat in the store forever with no package behind it.
 const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return !Number.isFinite(t) || t < staleBefore; };
 const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]);
+// Counted on the map we actually write, not on the one read before the renames:
+// the first pass used to prune `stateMap`, which is then thrown away, so the
+// logged number could disagree with what was really removed.
+const wouldPrune = mayPrune() ? Object.keys(stateMap).filter((u) => prunable(stateMap, u)).length : 0;
 let pruned = 0;
-if (mayPrune()) for (const u of Object.keys(stateMap)) if (prunable(stateMap, u)) { delete stateMap[u]; pruned++; }
-if (savedNow || pruned) {
+if (savedNow || wouldPrune) {
   // archivePackages just spent one renameSync per archived package, and a
   // dashboard click lands on job-state.json meanwhile. Writing the map read
   // before those renames would clobber it, so re-read now and replay our own
@@ -117,7 +120,7 @@ if (savedNow || pruned) {
     const st = out[u]?.status;
     if (!st || st === "viewed") out = mergeEntry(out, u, { status: "closed" });
   }
-  if (mayPrune()) for (const u of Object.keys(out)) if (prunable(out, u)) delete out[u];
+  if (mayPrune()) for (const u of Object.keys(out)) if (prunable(out, u)) { delete out[u]; pruned++; }
   writeStore(STATE, out);
 }
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.

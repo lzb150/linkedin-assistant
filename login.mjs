@@ -79,9 +79,20 @@ console.log("========================================================\n");
 
 const start = Date.now();
 let ok = false;
+// Closing the window IS the way to abort a manual login, and it makes both calls
+// below reject ("Target page, context or browser has been closed"). Unguarded,
+// that surfaced as an unhandled-rejection stack and the documented "Nothing
+// saved" line never printed. A closed browser simply ends the wait.
+let aborted = false;
 while (Date.now() - start < TIMEOUT_MS) {
-  if (await site.isLoggedIn(page, ctx)) { ok = true; break; }
-  await page.waitForTimeout(3000);
+  try {
+    if (await site.isLoggedIn(page, ctx)) { ok = true; break; }
+    await page.waitForTimeout(3000);
+  } catch (e) {
+    aborted = true;
+    console.log(`\n✋ Browser closed before login completed (${e?.message?.split("\n")[0] || e}).`);
+    break;
+  }
 }
 
 if (ok) {
@@ -92,7 +103,7 @@ if (ok) {
   console.log(`✅ Done. You can now run:  ${site.nextStep}`);
   process.exit(0);
 } else {
-  console.log(`⌛ Timed out waiting for login. Nothing saved. Re-run: ${rerunCmd}`);
-  await ctx.close();
+  console.log(`${aborted ? "Nothing saved." : "⌛ Timed out waiting for login. Nothing saved."} Re-run: ${rerunCmd}`);
+  await ctx.close().catch(() => {});   // already closed on the abort path
   process.exit(1);
 }

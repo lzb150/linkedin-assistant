@@ -214,3 +214,10 @@ test("the LLM cover is capped at 4000 chars — the only other bound on that fie
   const { markdown } = buildApplication(job, scored, llm);
   assert.ok(markdown.length < 6000, `package is ${markdown.length} chars`);
 });
+
+test("a flagged posting carries llm_suspect into the package frontmatter", () => {
+  const { markdown } = buildApplication(job, scored, { score: 95, model: "sonnet", suspect: "injection (2 markers)" });
+  assert.match(markdown, /^llm_suspect: injection \(2 markers\)$/m);
+  const clean = buildApplication(job, scored, { score: 95, model: "sonnet" });
+  assert.doesNotMatch(clean.markdown, /llm_suspect/, "no key at all when the posting reads normally");
+});

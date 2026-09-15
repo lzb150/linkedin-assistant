@@ -72,6 +72,18 @@ click is always yours.
     --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
   ```
 
+  The canary proves nothing was *missed* only if the list is current. To find
+  names the CLI has added, use its own warnings — it reports every rule it does
+  not recognise, so a name it stays silent about is a real tool:
+
+  ```bash
+  cd "$(mktemp -d)" && echo "say ok" | claude -p --model haiku \
+    --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --disallowedTools "SomeNewTool,AnotherOne" 2>&1 | grep "matches no known tool"
+  ```
+
+  Anything **not** named in the output exists and belongs in `lib/llm.mjs`.
+
 **3. Dashboard & convenience**
 - **HTML dashboard** — all jobs on one page, sorted by relevance; cards are
   marked Viewed as you open them; private notes, New/Viewed tabs, a source

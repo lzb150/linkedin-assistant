@@ -75,6 +75,18 @@
     --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
   ```
 
+  Канарейка доводить, що нічого не пропущено, лише якщо список актуальний. Щоб
+  знайти нові імена, скористайтеся попередженнями самого CLI: він повідомляє про
+  кожне правило, якого не знає, тож ім’я, про яке він мовчить, — справжній інструмент:
+
+  ```bash
+  cd "$(mktemp -d)" && echo "say ok" | claude -p --model haiku \
+    --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --disallowedTools "SomeNewTool,AnotherOne" 2>&1 | grep "matches no known tool"
+  ```
+
+  Усе, чого **немає** у виводі, існує і має бути в `lib/llm.mjs`.
+
 **3. Дашборд і зручності**
 - **HTML-дашборд** — усі вакансії на одній сторінці, відсортовані за
   релевантністю; картки позначаються Viewed, коли ви їх відкриваєте; приватні

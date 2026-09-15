@@ -132,7 +132,7 @@ test("flash then markOffline still shows the offline badge", async () => {
     querySelector: (sel) => children.find((c) => c.className === sel.slice(1)) || null,
   };
   const c = await bootClient({
-    fetch: (p) => Promise.resolve({ ok: true, json: async () => ({ _meta: {} }) }),
+    fetch: (_p) => Promise.resolve({ ok: true, json: async () => ({ _meta: {} }) }),
     store: new Map(),
     document: {
       querySelector: (sel) => (sel === "header .meta" ? meta : null), querySelectorAll: () => [], getElementById: () => null,
