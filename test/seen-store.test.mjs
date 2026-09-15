@@ -30,17 +30,33 @@ test("seen-store add() on an existing key refreshes the stamp to last-seen", (t)
   assert.equal(JSON.parse(readFileSync(p, "utf8")).a, "2026-08-26T00:00:00.000Z");
 });
 
-test("loadSeenStore moves a corrupt file to .corrupt and starts fresh", (t) => {
-  const p = join(tmpDir(t), "seen.json");
+test("loadSeenStore quarantines a corrupt file under a unique name and starts fresh", (t) => {
+  const dir = tmpDir(t);
+  const p = join(dir, "seen.json");
   writeFileSync(p, "{not json");
   const warnings = [];
   const s = loadSeenStore(p, { warn: (m) => warnings.push(m) });
   assert.equal(s.size, 0);
-  assert.equal(readFileSync(`${p}.corrupt`, "utf8"), "{not json");
+  const kept = readdirSync(dir).filter((f) => f.startsWith("seen.json.corrupt-"));
+  assert.equal(kept.length, 1);
+  assert.equal(readFileSync(join(dir, kept[0]), "utf8"), "{not json");
+  assert.match(warnings[0], /moved to/);
   assert.equal(warnings.length, 1);
   // missing file is NOT corrupt: no warning, no sibling
   loadSeenStore(join(dirname(p), "none.json"), { warn: (m) => warnings.push(m) });
   assert.equal(warnings.length, 1);
+});
+
+test("a second corruption does not clobber the first quarantine", (t) => {
+  const dir = tmpDir(t);
+  const p = join(dir, "seen.json");
+  writeFileSync(p, "first corruption");
+  loadSeenStore(p, { now: Date.parse("2026-09-15T10:00:00Z"), warn: () => {} });
+  writeFileSync(p, "second corruption");
+  loadSeenStore(p, { now: Date.parse("2026-09-15T11:00:00Z"), warn: () => {} });
+  const kept = readdirSync(dir).filter((f) => f.startsWith("seen.json.corrupt-")).sort();
+  assert.equal(kept.length, 2);
+  assert.equal(readFileSync(join(dir, kept[0]), "utf8"), "first corruption");
 });
 
 test("loadSeenStore drops entries older than the TTL", (t) => {

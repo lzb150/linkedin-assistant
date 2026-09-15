@@ -73,6 +73,9 @@ test("stripHtml / extractDivByClass stay linear on junk full of unclosed '<' (Re
   const junk = "<".repeat(200_000);
   let t = Date.now(); stripHtml(junk); assert.ok(Date.now() - t < 500, "stripHtml too slow");
   t = Date.now(); extractDivByClass("<a ".repeat(50_000), "x"); assert.ok(Date.now() - t < 500, "extractDivByClass too slow");
+  // "<a " repeats never entered the opener's bounded attribute scan, so this
+  // guard passed while a page of unterminated "<div" cost 1.2 s per megabyte.
+  t = Date.now(); extractDivByClass("<div".repeat(50_000), "x"); assert.ok(Date.now() - t < 500, "extractDivByClass too slow on <div repeats");
 });
 
 // Linearity guard that does not depend on the machine: run at n and 4n and
@@ -84,6 +87,10 @@ function assertLinear(label, run, n) {
   const t1 = ms(n), t4 = ms(4 * n);
   assert.ok(t4 < 8 * t1 + 20, `${label}: ${n}→${4 * n} took ${t1.toFixed(1)}ms→${t4.toFixed(1)}ms (not linear)`);
 }
+
+test("extractDivByClass stays linear when the opening div NEVER matches (opener scan)", () => {
+  assertLinear("opener scan", (n) => extractDivByClass("<div".repeat(n), "job"), 25_000);
+});
 
 test("extractDivByClass stays linear when the opening div DOES match (depth scan + comment strip)", () => {
   const open = '<div class="job x">';
