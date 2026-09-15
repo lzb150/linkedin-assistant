@@ -49,6 +49,25 @@ test("acquireProfileLock takes over an ancient lock even if its pid is alive (pi
   release();
 });
 
+test("a second run cannot take over a lock that was stale but has since been claimed", (t) => {
+  // The old design made the mkdir the lock and wrote the pid afterwards, so two
+  // runs that both judged the same lock stale could both remove it and both
+  // "win" — the second rm deleted the first's directory. The pid file is the
+  // lock now, created with O_EXCL, and a takeover re-reads it before unlinking.
+  const p = join(tmpDir(t), "profile");
+  const dead = spawnSync("true").pid;
+  mkdirSync(`${p}.lock`);
+  writeFileSync(join(`${p}.lock`, "pid"), String(dead));
+
+  const release = acquireProfileLock(p);                       // run A takes the stale lock over
+  assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid));
+  // Run B reached the same conclusion about the dead pid a moment later. It must
+  // now see A's live lock, not take it.
+  assert.throws(() => acquireProfileLock(p), /profile busy/);
+  assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid), "A still holds it");
+  release();
+});
+
 test("release() leaves a lock alone once another pid has taken it over", (t) => {
   const p = join(tmpDir(t), "profile");
   const release = acquireProfileLock(p);

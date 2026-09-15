@@ -89,6 +89,21 @@ test("extractDivByClass stays linear when the opening div DOES match (depth scan
   assertLinear("script strip", (n) => extractDivByClass(open + "<script>".repeat(n), "job"), 10_000);
 });
 
+test("stripHtml ends a tag at the '>' outside its quoted attributes, not inside one", () => {
+  // `<a title="salary > 5000" …>` used to be cut at the ">" inside the title,
+  // leaking `5000" href="#">` into the scored text and the LLM prompt.
+  assert.equal(stripHtml(`<a title="salary > 5000" href="#">Hello world</a>`), "Hello world");
+  assert.equal(stripHtml("<img alt='a > b'>text"), "text");
+  // …while prose keeps every character between a stray < and >.
+  assert.equal(stripHtml("salary < 5000 and > 3 years"), "salary < 5000 and > 3 years");
+  assert.equal(stripHtml("<p unterminated"), "<p unterminated");
+});
+
+test("stripHtml stays linear on unterminated quotes (the scan has no bound to outgrow)", () => {
+  assertLinear("open quotes", (n) => stripHtml('<a title="'.repeat(n)), 25_000);
+  assertLinear("quoted > in tags", (n) => stripHtml('<a title="x > y">t'.repeat(n)), 25_000);
+});
+
 test("stripHtml drops tags longer than the bounded scan (inline SVG / data: URI)", () => {
   assert.equal(stripHtml('<img src="' + "a".repeat(5000) + '">hello'), "hello");
 });
