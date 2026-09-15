@@ -34,6 +34,7 @@ const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 let ctx;
 let scanned = false; // true once we have a real count from a loaded page
 let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
+let failed = false;     // a thrown run used to log ERROR and still exit 0
 
 try {
   ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs instead of an unhandled rejection
@@ -79,9 +80,16 @@ try {
     log(`notify: banner for ${fresh.length} new thread(s)`);
   }
 
-  try {
-    writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
-  } catch (e) { log("notify: writing seen file failed:", e?.message); }
+  // Never rewrite the seen store from an empty result. A selector drift reads
+  // as an honest zero here, and truncating the file to [] means every existing
+  // conversation banners again the moment the selector is repaired. An empty
+  // bucket simply leaves the previous ids in place: they cost nothing, because
+  // freshThreads only ever asks whether a CURRENT thread is already known.
+  if (threads.length) {
+    try {
+      writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
+    } catch (e) { log("notify: writing seen file failed:", e?.message); }
+  }
 
   // Profile bump: Djinni allows one per 7 days (button state is the truth). One
   // /my/profile/ visit a day, hourly around the expected cooldown end
@@ -98,6 +106,7 @@ try {
   } catch (e) { log("bump failed:", e?.message); }
 } catch (err) {
   log("ERROR:", err?.message || err);
+  failed = true;
   if (!ctx) notify("Djinni assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
   // Only overwrite the badge when we actually loaded the page. On a network
@@ -124,6 +133,6 @@ try {
 log(
   scanned
     ? `Done. Djinni unread: ${unreadThreads.length} -> ${STATE_FILE}`
-    : `Done. Scan failed; badge left unchanged.`,
+    : `Scan failed; badge left unchanged.`,
 );
-process.exit(0);
+process.exit(failed ? 1 : 0);   // launchd must see a failed run as failed
