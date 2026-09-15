@@ -23,7 +23,8 @@ const packages = readPackages(join(dir, "applications"));
 // jobs.mjs logs (run.sh: jobs_<date>.log, jobs_dou_<date>.log; jobs_full_ before 2026-09-11) touched inside the window.
 const logsDir = join(dir, "logs");
 const logText = (existsSync(logsDir) ? readdirSync(logsDir) : [])
-  .filter((f) => /^jobs_(dou_|full_)?\d{8}\.log$/.test(f) && statSync(join(logsDir, f)).mtimeMs >= since)
+  // run.sh rotates logs with `find -delete`; a file unlinked between readdir and stat must not kill the report.
+  .filter((f) => { try { return /^jobs_(dou_|full_)?\d{8}\.log$/.test(f) && statSync(join(logsDir, f)).mtimeMs >= since; } catch { return false; } })
   .map((f) => readFileSync(join(logsDir, f), "utf8")).join("\n");
 
 const { text, notification } = buildReport({

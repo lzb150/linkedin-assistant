@@ -50,7 +50,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
 // re-read here because the cover note is not frontmatter.
 const warn = (f, e) => console.warn(`unreadable package skipped: ${f} (${e.message})`);
 const parsed = readPackages(APPS, { warn })
-  .map(({ file }) => parse(readFileSync(join(APPS, file), "utf8")))
+  .map(({ file }) => { try { return parse(readFileSync(join(APPS, file), "utf8")); } catch (e) { warn(file, e); return null; } })
   .filter(Boolean)
   .map((x) => ({
     ...x,

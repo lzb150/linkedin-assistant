@@ -141,7 +141,7 @@ clicks Send.
 ### Unread badge on the Jobs app
 
 Each scan writes the number of unread LinkedIn message threads to
-`notify-state.json`. The **Jobs app** (`Jobs.app`, "Вакансии") runs persistently
+`notify-state.json`. The **Jobs app** (`Jobs.app`) runs persistently
 in the Dock and reads that file every few seconds, showing the count as a red
 Dock badge. While that count is above zero (and Djinni has nothing unread),
 clicking the Dock icon or a banner opens the LinkedIn inbox filtered to unread
@@ -160,7 +160,7 @@ defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)
 
-The Dock badge on `Jobs.app` ("Вакансии") shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
+The Dock badge on `Jobs.app` shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
 
 One-time login (whenever the Djinni session expires):
 

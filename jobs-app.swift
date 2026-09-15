@@ -1,7 +1,7 @@
 // Jobs launcher + unread-LinkedIn-message Dock badge for linkedin-assistant.
 //
 // Behaviour:
-//   - Stays running in the Dock with the "Вакансии" icon.
+//   - Stays running in the Dock with the "Jobs" icon.
 //   - Polls notify-state.json AND djinni-notify-state.json every ~3s and shows
 //     the COMBINED unread count (LinkedIn messages + Djinni inbox) as a red Dock
 //     badge (cleared when the total is 0).
@@ -221,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 continue
             }
             let content = UNMutableNotificationContent()
-            content.title = (obj["title"] as? String) ?? "Вакансии"
+            content.title = (obj["title"] as? String) ?? "Jobs"
             content.body = message
             inFlight.insert(name)
             center.add(UNNotificationRequest(identifier: name, content: content, trigger: nil)) { err in

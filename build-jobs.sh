@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Jobs.app — the "Вакансии" launcher that also shows the unread LinkedIn
+# Build Jobs.app — the "Jobs" launcher that also shows the unread LinkedIn
 # message count as a red Dock badge. The built .app is git-ignored;
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
@@ -20,8 +20,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Вакансии</string>
-  <key>CFBundleDisplayName</key><string>Вакансии</string>
+  <key>CFBundleName</key><string>Jobs</string>
+  <key>CFBundleDisplayName</key><string>Jobs</string>
   <key>CFBundleIdentifier</key><string>com.eugene.linkedin-assistant.jobs.v2</string>
   <key>CFBundleExecutable</key><string>jobs</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>

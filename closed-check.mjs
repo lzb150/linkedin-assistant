@@ -96,6 +96,6 @@ if (packages.length) for (const u of Object.keys(stateMap)) if (u !== "_meta" &&
 if (savedNow || pruned) writeStore(STATE, stateMap);
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
+if (packages.length) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 writeJsonAtomic(CHECKED, checked);
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
