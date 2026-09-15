@@ -29,6 +29,14 @@ jobs:
       # that catch bugs. The style categories wanted 65 changes to working code on
       # day one, which is how a linter gets ignored.
       - run: npm run lint
+      - name: Filenames must be plain
+        shell: bash
+        run: |
+          # A broken shell command once left a file named after its own source
+          # text, and `git add -A` committed it. Anything outside this set is
+          # debris, not a deliberate name.
+          if git ls-files | grep -vE '^[A-Za-z0-9._/-]+$'; then
+            echo "::error::tracked file with a non-plain name (see above)"; exit 1; fi
       - name: Syntax-check every module
         shell: bash
         run: |

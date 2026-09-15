@@ -175,6 +175,10 @@ const html = `<!doctype html>
     color-scheme: light dark;   /* light-dark() follows the OS; the data-theme pins below win in both directions */
     --bg: light-dark(#f6f8fa, #0d1117); --card: light-dark(#fff, #161b22); --card-muted: light-dark(#f6f8fa, #0d1117); --border: light-dark(#d0d7de, #30363d);
     --text: light-dark(#1f2328, #e6edf3); --muted: light-dark(#57606a, #8b949e);
+    /* Injection badge. One colour cannot serve both themes here: the usual
+       amber #9a6700 measures 3.55:1 on the dark card and 3.89:1 on the muted
+       one. These two are 6.66-7.09:1 light and 6.85-7.50:1 dark. */
+    --warn-text: light-dark(#7d4e00, #d29922);
     --header-bg: light-dark(#24292f, #010409); --header-text: light-dark(#fff, #e6edf3); --header-muted: light-dark(#cdd9e5, #c9d1d9); --header-border: light-dark(#57606a, #30363d); --header-hover: light-dark(#32383f, #21262d);
     --input-bg: light-dark(#32383f, #0d1117); --placeholder: light-dark(#9aa5b1, #8b949e);
     --btn-bg: light-dark(#fff, #21262d); --btn-text: light-dark(#57606a, #c9d1d9); --btn-hover: light-dark(#f3f4f6, #30363d);
@@ -201,7 +205,7 @@ const html = `<!doctype html>
   .score.hi { background: var(--score-hi); } .score.mid { background: var(--score-mid); } .score.lo { background: var(--score-lo); }
   /* The LLM score of a posting that talked to the screener. Not an error state:
      the package is still shown, the badge just says not to trust the number. */
-  .suspect { color: var(--warn-text, #9a6700); font-weight: 600; font-size: 12px; }
+  .suspect { color: var(--warn-text); font-weight: 600; font-size: 12px; }
   .titles { flex: 1; }
   .titles h2 { margin: 0; font-size: 16px; }
   .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
