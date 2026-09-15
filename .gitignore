@@ -71,3 +71,4 @@ jobs-run.lock/
 # Local tooling scratch dirs
 .superpowers/
 .playwright-cli/
+run-stats.jsonl

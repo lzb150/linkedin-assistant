@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
+import { appendRunStat } from "./lib/run-stats.mjs";
 import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
@@ -76,6 +77,7 @@ const seen = loadSeenStore(SEEN_FILE);
 const health = normalizeHistory(readJson(HEALTH_FILE, {}));
 
 let jobs = [];
+const RUN_STATS = join(__dir, "run-stats.jsonl");   // one line per run; the weekly digest reads this instead of parsing its own log
 const summary = newSummary();
 
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
@@ -201,7 +203,7 @@ for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
-let written = 0, considered = 0, llmFailed = 0;
+let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
 const matches = [];
 for (const job of jobs) {
   const id = identityKey(job);
@@ -299,6 +301,7 @@ for (const m of toScore) {
     else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
   }
   if (llmRejects(llm, LLM.minScore)) {
+    llmDropped++;
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
     recordOutcome(summary, job.source, "low");
     seen.add(id);
@@ -321,6 +324,13 @@ await scoring;   // every worker has finished (all verdicts were consumed above;
 
 seen.save();
 log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
+
+// The weekly digest used to reconstruct these four numbers by regex-matching the
+// log lines above — anchored to their exact wording and leading-space count, so
+// rewording any of them silently zeroed the report (it already happened once, at
+// the run.sh rename). The run records them itself now; report.mjs prefers this
+// file and keeps the log parser only for the history written before it existed.
+appendRunStat(RUN_STATS, { considered, written, dropped: llmDropped, failed: llmFailed });
 
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));

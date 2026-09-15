@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { notify } from "./lib/notify.mjs";
 import { buildReport } from "./lib/report.mjs";
+import { readRunStats } from "./lib/run-stats.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const envDays = Number(process.env.REPORT_DAYS);
@@ -33,6 +34,7 @@ const { text, notification } = buildReport({
   now, days,
   packages,
   logText,
+  runStats: readRunStats(join(dir, "run-stats.jsonl"), { since }),
   health: normalizeHistory(readJson(join(dir, "source-health.json"), {})),
 });
 console.log(text);
