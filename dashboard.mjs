@@ -85,19 +85,25 @@ function scoreBand(s) {
   return "lo";                  // gray
 }
 
-// Per-source badge colour. Unknown/future sources fall back to gray.
-// All ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
-const SOURCE_COLORS = { linkedin: "#0a66c2", dou: "#c93c33", djinni: "#3d3bd4" };
+// Everything per-source the page needs, keyed once: badge colour and chip
+// label used to be two object literals over the same three keys, so adding a
+// board meant editing both. Unknown/future sources fall back to gray with their
+// raw name. Colours are all ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
+const SOURCES = {
+  linkedin: { color: "#0a66c2", label: "LinkedIn" },
+  dou: { color: "#c93c33", label: "DOU" },
+  djinni: { color: "#3d3bd4", label: "Djinni" },
+};
+// hasOwn: source is frontmatter text, "constructor" must not resolve.
+const sourceMeta = (source) => (Object.hasOwn(SOURCES, source) ? SOURCES[source] : null);
 function badge(source) {
-  const c = Object.hasOwn(SOURCE_COLORS, source) ? SOURCE_COLORS[source] : "#6e7781";   // hasOwn: source is frontmatter text, "constructor" must not resolve
-  return `<span class="src" style="background:${c}">${esc(source)}</span>`;
+  return `<span class="src" style="background:${sourceMeta(source)?.color || "#6e7781"}">${esc(source)}</span>`;
 }
 
 // Source chips only for boards that actually have packages on disk: a disabled
 // board's chip disappears by itself once its last package is archived.
-const SOURCE_LABELS = { linkedin: "LinkedIn", dou: "DOU", djinni: "Djinni" };
 const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
-  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(Object.hasOwn(SOURCE_LABELS, src) ? SOURCE_LABELS[src] : src)}</button>`)
+  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(sourceMeta(src)?.label || src)}</button>`)
   .join("\n      ");
 
 const cards = items
