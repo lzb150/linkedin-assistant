@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assertLinear } from "../helpers/linear.mjs";
-import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody, oneLine } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -198,4 +198,20 @@ test("decodeBody honours the response charset instead of assuming UTF-8", () => 
   assert.equal(decodeBody(Buffer.from("Привіт", "utf8"), "text/html; charset=utf-8"), "Привіт");
   assert.equal(decodeBody(Buffer.from("Привіт", "utf8"), ""), "Привіт", "no declaration: UTF-8, as before");
   assert.equal(decodeBody(Buffer.from("hi"), "text/html; charset=not-a-charset"), "hi", "an unknown label falls back, never throws");
+});
+
+test("extractDivByClass accepts single-quoted attributes, so a markup tweak does not silently empty the parse", () => {
+  // The class regex only matched class="…". A board switching to class='…'
+  // returned "" from every extractor — jobs quietly stopped being parsed.
+  assert.equal(extractDivByClass("<div class='job-post__description'>Hi<div>x</div></div>", "job-post__description"), "Hi<div>x</div>");
+  assert.equal(extractDivByClass('<div class="job-post__description">Hi</div>', "job-post__description"), "Hi");
+});
+
+test("oneLine strips bidi overrides, not just C0 control characters", () => {
+  // U+202E reorders everything printed after it, which forges a log line just
+  // as effectively as a newline — the thing this function exists to stop.
+  assert.equal(oneLine("QA\u202eEngineer"), "QA Engineer");
+  assert.equal(oneLine("QA\u2066\u2069Dev"), "QA Dev");
+  assert.equal(oneLine("QA\u200fDev"), "QA Dev");
+  assert.equal(oneLine("Senior QA Engineer"), "Senior QA Engineer", "ordinary text is untouched");
 });

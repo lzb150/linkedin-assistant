@@ -83,3 +83,17 @@ test("fetchDjinni reads several pages per search, stops at an empty page, and fe
   const k = jobs.find((j) => j.url === known);
   assert.ok(k && k.text.length > 0, "known job is still returned (with its snippet) so the seen store re-stamps it");
 });
+
+test("splitCards and parseCard accept single-quoted attributes", () => {
+  const card = `<div id='job-item-848732' class='job-item'>`
+    + `<h2 class='job-item__position'>QA Automation Engineer</h2>`
+    + `<a href='/jobs/848732-qa-automation-engineer/?from=x'>link</a>`
+    + `<span class='small text-gray-800'>Flamingo</span>`
+    + `<span class='js-truncated-text'>Role Overview</span></div>`;
+  const cards = splitCards(card);
+  assert.equal(cards.length, 1, "the job-item id is found with either quote style");
+  const job = parseCard(cards[0]);
+  assert.equal(job.url, "https://djinni.co/jobs/848732-qa-automation-engineer/");
+  assert.equal(job.title, "QA Automation Engineer");
+  assert.equal(job.company, "Flamingo");
+});

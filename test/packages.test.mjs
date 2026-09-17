@@ -51,3 +51,17 @@ test("archivePackages: a rename that fails is reported (warn) and leaves that pa
   assert.deepEqual(readdirSync(dir).sort(), ["archive", "b.md", "c.md"]);
   assert.deepEqual(readdirSync(join(dir, "archive")).sort(), ["a.md", "c.md"]);
 });
+
+test("readPackages: a .md with no frontmatter warns, so the prune-safety gate sees an incomplete view", (t) => {
+  // It used to be pushed as a bare { file }: the dashboard dropped it silently
+  // and closed-check's partialRead gate stayed off, so state was pruned against
+  // a package list it did not know was short.
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "good.md"), pkg("https://x/1"));
+  writeFileSync(join(dir, "bare.md"), "# just a heading, no frontmatter\n");
+  const warned = [];
+  const out = readPackages(dir, { warn: (f, e) => warned.push([f, e.message]) });
+  assert.deepEqual(out.map((p) => p.file), ["good.md"]);
+  assert.deepEqual(warned, [["bare.md", "no frontmatter"]]);
+});
