@@ -151,3 +151,21 @@ test("fetchDou runs its feeds concurrently but keeps results and log in config o
     assert.ok(peak > 1, `feeds should overlap, peak in-flight was ${peak}`);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("parseRss strips a CDATA wrapper that is padded with whitespace", () => {
+  const xml = `<rss><channel><item>
+    <title>\n  <![CDATA[ QA Engineer \u0432 Acme ]]>\n  </title>
+    <link>https://jobs.dou.ua/x/9/</link>
+    <description><![CDATA[ hello ]]></description>
+  </item></channel></rss>`;
+  const [item] = parseRss(xml);
+  assert.doesNotMatch(item.text, /CDATA|\]\]>/, "no wrapper markers leak into the scored text");
+  assert.match(item.title, /QA Engineer/);
+});
+
+test("a location part whose digits are glued to letters survives the salary filter", () => {
+  // `\\d{3,}` alone dropped the whole part for "\u0411\u0426 101A"; a bare figure is still a salary.
+  const item = (rest) => parseRss(`<rss><channel><item><title>QA \u0432 ${rest}</title><link>https://jobs.dou.ua/x/1/</link><description>d</description></item></channel></rss>`)[0];
+  assert.match(item("Acme, \u041a\u0438\u0457\u0432, \u0411\u0426 101A").location, /101A/, "a building number is location, not pay");
+  assert.doesNotMatch(item("Acme, \u041a\u0438\u0457\u0432, 20000").location, /20000/, "a bare figure is still dropped");
+});

@@ -116,6 +116,10 @@ const cards = items
     // Split only before the next "source|" so commas inside URLs survive.
     const alt = (f.alt_links || "")
       .split(/,\s*(?=[a-z]+\|)/).map((s) => s.trim()).filter(Boolean)
+      // A pair with no "|" is malformed (hand-edited frontmatter): indexOf
+      // returns -1, which used to label the link with the pair minus its last
+      // character and point it at the whole string. Drop it instead.
+      .filter((pair) => pair.includes("|"))
       .map((pair) => {
         const sep = pair.indexOf("|");
         const src = pair.slice(0, sep), url = pair.slice(sep + 1);

@@ -55,3 +55,23 @@ test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascr
   assert.ok(!html.includes('href="javascript:'));
   assert.equal((html.match(/ data-url="/g) || []).length, 2, "only the http(s) cards are live");
 });
+
+test("dashboard.mjs: an alt_links pair with no '|' is dropped instead of rendered mangled", async (t) => {
+  // indexOf("|") returns -1 on a hand-edited pair, which labelled the link with
+  // the pair minus its last character and pointed it at the whole string.
+  const p = makeProject(t, {
+    scripts: ["dashboard.mjs"],
+    packages: {
+      "a.md": fm({
+        source: "dou", title: "SDET", company: "Acme", url: "https://a.example/1", generated: "2026-09-01T00:00:00Z", score: 40,
+        alt_links: "brokenpairnopipe, djinni|https://djinni.co/jobs/1",
+      }),
+    },
+  });
+  await runScript(p, "dashboard.mjs");
+  const html = p.read("applications", "index.html");
+  assert.match(html, /djinni ↗/, "the well-formed pair still renders");
+  // The split only breaks before "source|", so the malformed pair has to come
+  // first to be a pair of its own — which is exactly when indexOf returns -1.
+  assert.doesNotMatch(html, /brokenpairnopip/, "no truncated label, and no link built from the whole string");
+});

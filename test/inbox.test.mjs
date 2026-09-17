@@ -42,3 +42,13 @@ test("unreadVerdict: cards count; an auto-opened thread the list dropped (decide
   assert.deepEqual(unreadVerdict({ ...base, cards: 0, listFound: false }), { unreadCount: 0, counted: false, drift: false, scanOpenFirst: false }, "no list at all is reported separately");
   assert.deepEqual(unreadVerdict({ ...base, cards: 5, autoOpened: true, openListed: false, scanAll: true }), { unreadCount: 0, counted: false, drift: false, scanOpenFirst: false });
 });
+
+test("unreadVerdict: an omitted openListed is not silently treated as listed", () => {
+  // The default used to be `true`, so a caller that forgot the field got
+  // openDropped: false — the answer that skips the one thread opening it made
+  // unreadable. Without a default the omission reports the safe answer instead.
+  const base = { cards: 0, autoOpened: true, emptyState: false, listFound: true, scanAll: false };
+  assert.equal(unreadVerdict({ ...base, openListed: true }).scanOpenFirst, false);
+  assert.equal(unreadVerdict({ ...base, openListed: false }).scanOpenFirst, true);
+  assert.equal(unreadVerdict(base).scanOpenFirst, true, "omitted behaves like not-listed, not like listed");
+});
