@@ -19,7 +19,7 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers } f
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation } from "./lib/filters.mjs";
+import { filterByLocation, candidateCountryList, excludeList } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
@@ -60,6 +60,10 @@ const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"))
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
 const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
 const LLM = config.llm || {};
+// Normalized once so the two gates that read it — the Djinni country filter and
+// the LLM prompt — can never disagree (an empty/typo'd candidateCountry used to
+// leave the filter rejecting everything while the prompt still said Ukraine).
+const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
@@ -83,10 +87,12 @@ const summary = newSummary();
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
 // so a senior role whose description mentions "junior" (e.g. "mentor junior
 // engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
-// Regexes compiled once at load, not per job.
-const EXCLUDE_TITLE = (config.excludeTitle || []).map((t) => ({
-  term: t.toLowerCase(),
-  re: new RegExp(`(^|[^a-z0-9])${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
+// Regexes compiled once at load, not per job. Same normalization as the two
+// lists in lib/filters.mjs: a hand-edited excludeTitle that is not an array
+// used to throw here, before a single job was gathered.
+const EXCLUDE_TITLE = excludeList(config.excludeTitle).map((term) => ({
+  term,
+  re: new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
 }));
 function excludedByTitle(title) {
   const t = (title || "").toLowerCase();
@@ -173,7 +179,7 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Djinni "Тільки офіс · Польща", etc).
 {
   const before = jobs.length;
-  const keptLoc = filterByLocation(jobs, config.excludeLocation, config.candidateCountry || undefined);
+  const keptLoc = filterByLocation(jobs, config.excludeLocation, CANDIDATE_COUNTRY);
   if (keptLoc.length < before) {
     const kept = new Set(keptLoc);
     log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
@@ -274,7 +280,7 @@ if (llmOn) {
     // unhandled rejection on `scoring` — so a failure resolves null, which the
     // consumer already treats as "llm failed, keyword-only package".
     try {
-      resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: config.candidateCountry?.[0] }), { model: LLM.model || "sonnet", log }));
+      resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: CANDIDATE_COUNTRY[0] }), { model: LLM.model || "sonnet", log }));
     } catch (e) {
       log(`  · llm threw for: ${m.job.title} — ${e?.message}`);
       resolvers.get(m)(null);

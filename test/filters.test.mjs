@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -45,4 +45,27 @@ test("filterByLocation coerces non-string patterns and is a no-op without a list
   assert.deepEqual(filterByLocation(jobs, []), jobs);
   const abroad = [{ title: "B", source: "djinni", location: "Тільки віддалено · Польща" }];
   assert.deepEqual(filterByLocation(abroad, []), [], "Djinni country eligibility applies even without an exclude list");
+});
+
+test("config lists normalize instead of throwing: a non-array degrades to empty/default", () => {
+  // jobs.config.json is hand-edited. Before this, a bare string reached
+  // .map()/.some() and a TypeError took the whole run down.
+  assert.deepEqual(excludeList("Poland"), [], "a string is not a one-item list");
+  assert.deepEqual(excludeList(undefined), []);
+  assert.deepEqual(excludeList([" Польща ", "", 42]), ["польща", "42"], "trimmed, lowercased, blanks dropped");
+  assert.deepEqual(candidateCountryList("Ukraine"), DEFAULT_CANDIDATE_COUNTRY);
+  assert.deepEqual(candidateCountryList(["  ", ""]), DEFAULT_CANDIDATE_COUNTRY, "a list of blanks is no list at all");
+  assert.deepEqual(candidateCountryList(["Poland"]), ["Poland"]);
+
+  const jobs = [{ title: "A", source: "djinni", location: "Тільки віддалено · Україна" }];
+  assert.deepEqual(filterByLocation(jobs, "Poland", "Ukraine"), jobs, "neither bad list throws");
+});
+
+test("an empty candidateCountry falls back to the default instead of rejecting everything", () => {
+  // [] is truthy, so it used to slip past `config.candidateCountry || undefined`
+  // and leave the Djinni gate passing only "Весь світ" while the LLM prompt,
+  // reading `?.[0]` -> undefined, still said Ukraine.
+  assert.equal(djinniEligible("Тільки віддалено · Україна", []), true);
+  assert.equal(djinniEligible("Тільки віддалено · Польща", []), false, "the default still rejects a foreign-only vacancy");
+  assert.equal(candidateCountryList([])[0], DEFAULT_CANDIDATE_COUNTRY[0], "and the LLM prompt reads the same first spelling");
 });
