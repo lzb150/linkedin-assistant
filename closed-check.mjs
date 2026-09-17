@@ -44,11 +44,15 @@ const byUrl = new Map(packages.map((p) => [p.url, p]));
 // server instead if it ever bites.
 let pending = [];   // closed urls not yet applied to the store
 let saved = 0;
+// The one "may we still close this url?" rule, re-decided against whatever the
+// store holds now: only a candidate still New (no entry) or Viewed may be
+// closed, so any status set while we were probing wins. Both the mid-run flush
+// and the final replay below ask this, and they used to spell it two inverted ways.
+const closable = (map, url) => { const st = map[url]?.status; return !st || st === "viewed"; };
 function applyClosures(stateMap) {
   let n = 0;
   for (const url of pending) {
-    const st = stateMap[url]?.status;
-    if (st && st !== "viewed") { log(`  · kept ${st}: ${url} (changed during the run)`); continue; }
+    if (!closable(stateMap, url)) { log(`  · kept ${stateMap[url].status}: ${url} (changed during the run)`); continue; }
     stateMap = mergeEntry(stateMap, url, { status: "closed" });
     n++;
   }
@@ -116,10 +120,7 @@ if (savedNow || wouldPrune) {
   // two edits — the closures and the prune — onto whatever is there. Both are
   // re-decided against the fresh entry, so a status set in the window wins.
   let out = readStoreOrExit(STATE, "closed-check: store unreadable before the final write — closures not saved");
-  for (const u of closedNow) {
-    const st = out[u]?.status;
-    if (!st || st === "viewed") out = mergeEntry(out, u, { status: "closed" });
-  }
+  for (const u of closedNow) if (closable(out, u)) out = mergeEntry(out, u, { status: "closed" });
   if (mayPrune()) for (const u of Object.keys(out)) if (prunable(out, u)) { delete out[u]; pruned++; }
   writeStore(STATE, out);
 }
