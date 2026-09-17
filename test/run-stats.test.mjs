@@ -33,3 +33,15 @@ test("a missing file is not an error, and appending never throws", (t) => {
   assert.deepEqual(readRunStats(join(dir, "nope.jsonl")), []);
   assert.doesNotThrow(() => appendRunStat(join(dir, "no", "such", "dir", "x.jsonl"), { considered: 1 }));
 });
+
+test("appendRunStat caps the file instead of growing for the life of the install", (t) => {
+  // Everything else with a lifetime is bounded — jobs-seen.json by TTL, logs/ at
+  // 30 days, archived packages at 180 — but this file only ever appended, and
+  // the weekly digest reads all of it.
+  const file = join(tmpDir(t, "rs-"), "run-stats.jsonl");
+  for (let i = 0; i < 8; i++) appendRunStat(file, { considered: i }, new Date(2026, 0, 1, i), { maxLines: 5 });
+  const lines = readFileSync(file, "utf8").split("\n").filter(Boolean);
+  assert.equal(lines.length, 5, "trimmed to the cap");
+  assert.deepEqual(lines.map((l) => JSON.parse(l).considered), [3, 4, 5, 6, 7], "the newest entries survive");
+  assert.equal(readRunStats(file).length, 5, "and the file is still parseable after the rewrite");
+});

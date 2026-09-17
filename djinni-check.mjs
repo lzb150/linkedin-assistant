@@ -75,11 +75,10 @@ try {
 
   // Banner only for threads we have not already notified about (see freshThreads).
   const { fresh, message } = freshThreads(threads, readJson(SEEN_FILE, []));
-  if (fresh.length) {
-    notify("Djinni", message);
-    log(`notify: banner for ${fresh.length} new thread(s)`);
-  }
 
+  // Persist BEFORE the banner, not after: the two used to be the other way
+  // round, so a crash or a kill in between left the ids unrecorded and the next
+  // run bannered the same threads a second time.
   // Never rewrite the seen store from an empty result. A selector drift reads
   // as an honest zero here, and truncating the file to [] means every existing
   // conversation banners again the moment the selector is repaired. An empty
@@ -89,6 +88,11 @@ try {
     try {
       writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
     } catch (e) { log("notify: writing seen file failed:", e?.message); }
+  }
+
+  if (fresh.length) {
+    notify("Djinni", message);
+    log(`notify: banner for ${fresh.length} new thread(s)`);
   }
 
   // Profile bump: Djinni allows one per 7 days (button state is the truth). One

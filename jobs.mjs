@@ -297,10 +297,24 @@ for (const m of toScore) {
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
     if (n !== null) {
-      llm = { ...res, score: Math.min(100, Math.max(0, Math.round(n))), model: LLM.model || "sonnet" };
+      // `score` was the only model-controlled field bounded here; `why` and
+      // `red_flags` went into the package verbatim, so a posting could steer
+      // the model into writing an arbitrarily long line there (fmValue keeps it
+      // to one line, but not to a sane length). Bound everything that crosses.
+      llm = {
+        ...res,
+        score: Math.min(100, Math.max(0, Math.round(n))),
+        why: String(res.why ?? "").slice(0, 300),
+        red_flags: (Array.isArray(res.red_flags) ? res.red_flags : []).slice(0, 10).map((f) => String(f).slice(0, 200)),
+        model: LLM.model || "sonnet",
+      };
       // A posting that talks to the screener may well have talked it into this
       // score. Record that alongside the number instead of letting an inflated
-      // score look like an ordinary good match.
+      // score look like an ordinary good match. Scanning job.text is enough:
+      // composeText builds it as "<title> at <company>. <location>. <desc>",
+      // so every field buildJobPrompt puts in the prompt is already in here.
+      // (Reviewed 2026-09-17: passing the fields in separately as well only
+      // double-counts the markers and inflates the suspect line.)
       const marks = injectionMarkers(job.text);
       if (marks.length) { llm.suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`; log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`); }
     }
@@ -315,7 +329,16 @@ for (const m of toScore) {
     continue;
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
-  writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
+  // Skip the one package the way every other per-item failure in this loop
+  // does. Unwrapped, a single ENOSPC/EACCES threw mid-loop and took the rest of
+  // the run with it: the remaining matches, run stats, source health, the
+  // dashboard refresh and the end-of-run banner.
+  try {
+    writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
+  } catch (e) {
+    log(`  · package write failed (${filename}): ${e.message}`);
+    continue;
+  }
   log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${lbl}`);
   recordOutcome(summary, job.source, "written");
   recordTop(summary, scored.score, lbl);
@@ -329,14 +352,21 @@ for (const m of toScore) {
 await scoring;   // every worker has finished (all verdicts were consumed above; this just joins the pool)
 
 seen.save();
-log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
 
 // The weekly digest used to reconstruct these four numbers by regex-matching the
 // log lines above — anchored to their exact wording and leading-space count, so
 // rewording any of them silently zeroed the report (it already happened once, at
 // the run.sh rename). The run records them itself now; report.mjs prefers this
 // file and keeps the log parser only for the history written before it existed.
+//
+// Written BEFORE the "Done." line, not after: report.mjs asks the log parser
+// only for the time before its first stat entry, and the log line used to land a
+// few milliseconds ahead of the stat it belongs to — so the very first run after
+// the file is created (or rotated) fell inside that window and was counted
+// twice, once from each source. Writing the stat first makes the ordering
+// deterministic in the direction that cannot double-count.
 appendRunStat(RUN_STATS, { considered, written, dropped: llmDropped, failed: llmFailed });
+log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
 
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));

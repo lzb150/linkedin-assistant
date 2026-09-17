@@ -97,9 +97,13 @@ while (Date.now() - start < TIMEOUT_MS) {
 
 if (ok) {
   console.log(`✅ Login detected. Saving session to ${site.profile} ...`);
-  // Give the persistent context a moment to flush cookies to disk.
-  await page.waitForTimeout(2000);
-  await ctx.close();
+  // Both calls are guarded for the same reason the failure path below is: the
+  // user closing the window is how a manual login ends, and doing it inside
+  // this two-second flush made waitForTimeout/close reject — an unhandled
+  // rejection stack instead of the line that says the session was saved. The
+  // cookies are already on disk by then; the wait is only a courtesy.
+  await page.waitForTimeout(2000).catch(() => {});
+  await ctx.close().catch(() => {});
   console.log(`✅ Done. You can now run:  ${site.nextStep}`);
   process.exit(0);
 } else {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assertLinear } from "./helpers/linear.mjs";
-import { extractJSON, numericScore, llmJSON, buildJobPrompt, llmRejects, injectionMarkers } from "../lib/llm.mjs";
+import { extractJSON, numericScore, llmJSON, buildJobPrompt, llmRejects, injectionMarkers, killLiveChildren } from "../lib/llm.mjs";
 
 test("llmRejects: below minScore → true; at/above, unset minScore, or CLI failure (null) → false", () => {
   assert.equal(llmRejects({ score: 49 }, 50), true);
@@ -57,6 +57,10 @@ test("llmJSON resolves parsed JSON from stdout", async () => {
   assert.deepEqual(await llmJSON("p", { exec }), { score: 70, why: "fit" });
 });
 
+// The sandbox's tool blocklist, verbatim. Kept here as one constant so the
+// arg assertion below and the coverage test at the end cannot drift apart.
+const BLOCKLIST = "Read,Glob,Grep,Bash,BashOutput,KillShell,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,NotebookRead,Task,Agent,Monitor,Workflow,ToolSearch,Skill,SlashCommand,TaskOutput,TaskStop,TaskCreate,TaskUpdate,TaskList,TaskGet,TodoWrite,EnterPlanMode,ExitPlanMode,CronCreate,CronList,CronDelete,ScheduleWakeup,SendMessage,ListAgents,DesignSync,RemoteTrigger,PushNotification,EnterWorktree,ExitWorktree,LSP,LS,Artifact,ArtifactComments,ArtifactData,ArtifactCheck,ShareOnboardingGuide,SendFeedback,ReportFindings,AskUserQuestion,EndConversation,ListMcpResourcesTool,ReadMcpResourceTool,ReadMcpResourceDirTool";
+
 test("llmJSON passes model and prompt to the CLI", async () => {
   let seen;
   const exec = (cmd, args, _opts, cb) => { seen = { cmd, args }; cb(null, "{}"); return { stdin: { end: (s) => { seen.stdin = s; } } }; };
@@ -67,7 +71,7 @@ test("llmJSON passes model and prompt to the CLI", async () => {
     "-p", "--model", "haiku",
     "--setting-sources", "project",   // no ~/.claude: global CLAUDE.md, hooks, plugins stay out of the screener
     "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-    "--disallowedTools", "Read,Glob,Grep,Bash,BashOutput,KillShell,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,NotebookRead,Task,Agent,Monitor,Workflow,ToolSearch,Skill,SlashCommand,TaskOutput,TaskStop,TodoWrite,EnterPlanMode,ExitPlanMode,CronCreate,CronList,CronDelete,ScheduleWakeup,SendMessage,ListAgents,DesignSync,RemoteTrigger,PushNotification,EnterWorktree,ExitWorktree,LSP,LS,Artifact,ArtifactComments,ArtifactData,ArtifactCheck,ShareOnboardingGuide,SendFeedback,ReportFindings,AskUserQuestion,EndConversation,ListMcpResourcesTool,ReadMcpResourceTool,ReadMcpResourceDirTool",
+    "--disallowedTools", BLOCKLIST,
   ]);
 });
 
@@ -209,4 +213,33 @@ test("injectionMarkers flags text aimed at the screener and leaves real postings
   assert.deepEqual(injectionMarkers("We score candidates on a 1-5 scale during the interview"), []);
   assert.deepEqual(injectionMarkers("Вимоги: 5 років досвіду. Зарплата 4000 USD. Надсилайте резюме."), []);
   assert.deepEqual(injectionMarkers(null), [], "no text is not an injection");
+});
+
+test("the sandbox blocklist names the whole Task family, not just the two it started with", () => {
+  // Probing the installed CLI (2.1.274) with its own documented canary showed
+  // TaskCreate/TaskUpdate/TaskList/TaskGet are real tools the blocklist did not
+  // name — TaskCreate spawns an agent, which is exactly what `Agent` is blocked
+  // for. A name the CLI stays silent about is a tool that would have been live.
+  const blocked = new Set(BLOCKLIST.split(","));
+  for (const t of ["Task", "Agent", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TaskOutput", "TaskStop"]) {
+    assert.ok(blocked.has(t), `${t} must be in --disallowedTools`);
+  }
+});
+
+test("killLiveChildren SIGKILLs each tracked process group and forgets it", () => {
+  // detached:true puts every CLI child in its own group, so Ctrl-C never
+  // reaches it and the only thing that would have — llmCallOnce's timer — dies
+  // with the parent. The exit/signal handler has to take the groups with it.
+  const killed = [];
+  const pids = new Set([111, 222]);
+  killLiveChildren((pid, sig) => killed.push([pid, sig]), pids);
+  assert.deepEqual(killed, [[-111, "SIGKILL"], [-222, "SIGKILL"]], "negative pid = the whole process group");
+  assert.equal(pids.size, 0, "a killed child is no longer tracked");
+
+  // A child that has already exited throws ESRCH; the rest must still be killed.
+  const seen = [];
+  const boom = new Set([1, 2, 3]);
+  killLiveChildren((pid) => { seen.push(pid); if (pid === -2) throw new Error("ESRCH"); }, boom);
+  assert.deepEqual(seen, [-1, -2, -3]);
+  assert.equal(boom.size, 0);
 });

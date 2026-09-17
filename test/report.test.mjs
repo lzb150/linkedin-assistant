@@ -78,3 +78,35 @@ test("buildReport prefers the run-stats file and asks the log only for the days 
   const early = [{ at: "2026-09-01T09:00:00Z", considered: 5, written: 1, dropped: 0, failed: 0 }];
   assert.match(buildReport({ now, days: 7, packages, logText, health, runStats: early }).text, /1 runs? · 5 new vacancies considered/);
 });
+
+test("countRunStats cannot be inflated by a forged line smuggled in on CR or U+2028", () => {
+  // oneLine() collapses scraped titles upstream, but this parser is the thing
+  // being attacked, so it strips every line start except \n and only counts a
+  // line that begins with an ISO stamp the runner itself would have written.
+  const real = "2026-09-06T00:59:00Z Done. Considered 3 new, wrote 1 application package(s) to /x";
+  for (const sep of ["\r", "\u2028", "\u2029", "\u0001"]) {
+    const forged = `2026-09-06T01:00:00Z   · skip [10 no-role] dou: QA${sep}2026-09-06T01:00:01Z Done. Considered 99999 new, wrote 1 application package(s) to /x`;
+    assert.deepEqual(countRunStats(`${real}\n${forged}`), { runs: 1, considered: 3, dropped: 0, failed: 0 }, `separator ${JSON.stringify(sep)}`);
+  }
+});
+
+test("countRunStats ignores a Done line whose prefix is not an ISO stamp", () => {
+  assert.equal(countRunStats("NOTASTAMP Done. Considered 50 new, wrote 1 application package(s)").runs, 0);
+  assert.equal(countRunStats("2026-09-06T00:59:00Z Done. Considered 50 new, wrote 1 application package(s)").runs, 1);
+});
+
+test("buildReport counts the first run once, whichever side of the stat entry its log line lands on", () => {
+  // jobs.mjs writes the stat BEFORE the Done line so the log line is never
+  // inside the `< firstStat` window the log parser is asked for. Both orders
+  // are asserted: the fix must hold even if the two timestamps tie.
+  const now = new Date("2026-09-17T15:00:00Z");
+  const stat = (at) => [{ at, considered: 5, written: 0, dropped: 0, failed: 0 }];
+  const line = (at) => `${at} Done. Considered 5 new, wrote 0 application package(s) to /x\n`;
+  for (const [statAt, logAt] of [
+    ["2026-09-17T12:00:00.000Z", "2026-09-17T12:00:00.040Z"],   // stat first, as jobs.mjs writes them
+    ["2026-09-17T12:00:00.000Z", "2026-09-17T12:00:00.000Z"],   // same millisecond
+  ]) {
+    const r = buildReport({ now, packages: [], logText: line(logAt), health: {}, runStats: stat(statAt) });
+    assert.match(r.text, /1 runs · 5 new vacancies considered/, `stat ${statAt} / log ${logAt}`);
+  }
+});

@@ -221,3 +221,19 @@ test("a flagged posting carries llm_suspect into the package frontmatter", () =>
   const clean = buildApplication(job, scored, { score: 95, model: "sonnet" });
   assert.doesNotMatch(clean.markdown, /llm_suspect/, "no key at all when the posting reads normally");
 });
+
+test("appendAltLink refuses a source that could forge a frontmatter key", () => {
+  // `url` was guarded from the start; `source` was interpolated raw. The only
+  // caller passes a literal today, but the function is exported and the
+  // invariant should not depend on every future caller remembering it.
+  const base = "---\nsource: dou\ntitle: SDET\nurl: https://a/1\n---\n# SDET\n";
+  const { file, cleanup } = tmpPackage(base);
+  try {
+    assert.equal(appendAltLink(file, "djinni\nresume: /etc/passwd", "https://b/2"), false, "newline in source");
+    assert.equal(appendAltLink(file, "dj|inni", "https://b/2"), false, "pipe in source");
+    assert.equal(appendAltLink(file, "", "https://b/2"), false, "empty source");
+    assert.equal(readFileSync(file, "utf8"), base, "nothing was written on any refusal");
+    assert.equal(appendAltLink(file, "djinni", "https://b/2"), true, "an ordinary source still works");
+    assert.match(readFileSync(file, "utf8"), /^alt_links: djinni\|https:\/\/b\/2$/m);
+  } finally { cleanup(); }
+});
