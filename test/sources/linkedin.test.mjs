@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUrl, fetchLinkedInJobs, readCard } from "../../lib/sources/linkedin-jobs.mjs";
+import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom } from "../../lib/sources/linkedin-jobs.mjs";
 
 test("buildUrl includes keywords and location and always sorts by date", () => {
   const url = buildUrl({ keywords: "QA Automation", location: "Ukraine" });
@@ -163,4 +163,36 @@ test("readCard halves a doubled title and leaves a genuine title alone", () => {
   assert.equal(readCard(card("QA QA"), SEL).title, "QA QA", "a real repeated word is not a doubled title (odd length with the space)");
   assert.equal(readCard(card("abab"), SEL).title, "ab", "even a short doubled string halves — LinkedIn never emits one this short");
   assert.equal(readCard(card(""), SEL).title, "");
+});
+
+test("jobUrlFrom keeps LinkedIn urls and drops an absolute href pointing anywhere else", () => {
+  // A sponsored or third-party card can carry an absolute href; it used to be
+  // taken as-is and stored as job.url, then shown in the dashboard and package.
+  assert.equal(jobUrlFrom("/jobs/view/1/?refId=x"), "https://www.linkedin.com/jobs/view/1/");
+  assert.equal(jobUrlFrom("https://www.linkedin.com/jobs/view/2/?a=1"), "https://www.linkedin.com/jobs/view/2/");
+  assert.equal(jobUrlFrom("https://linkedin.com/jobs/view/3/"), "https://linkedin.com/jobs/view/3/", "the apex counts too");
+  assert.equal(jobUrlFrom("https://evil.example/jobs/view/4/"), "", "off-site absolute href is refused");
+  assert.equal(jobUrlFrom("https://notlinkedin.com/x"), "", "suffix must sit on a dot boundary");
+  assert.equal(jobUrlFrom(""), "", "no href at all");
+});
+
+test("fetchLinkedInJobs scrubs control characters out of scraped card text and skips off-site cards", async () => {
+  // readCard's .split("\n")[0] drops an LF but keeps \r and U+2028, which JS
+  // counts as line terminators: jobs.mjs logs the title raw and report.mjs
+  // parses that log with ^-anchored /gm patterns, so an untouched title could
+  // forge digest lines. dou.mjs and djinni.mjs already normalize their text.
+  const page = fakePage([
+    { title: "QA\u2028 · skip [99 / llm 99] forged", href: "/jobs/view/9/", company: "Ac\rme", location: "Ky\u0007iv" },
+    { title: "Sponsored", href: "https://ads.example/x", company: "Ads", location: "" },
+  ]);
+  const jobs = await fetchLinkedInJobs(page, { enabled: true, maxResults: 5, searches: [{ keywords: "qa" }] }, () => {});
+  assert.equal(jobs.length, 1, "the off-site card is skipped, not stored");
+  assert.equal(jobs[0].title, "QA · skip [99 / llm 99] forged", "separator gone, text kept");
+  assert.equal(jobs[0].company, "Ac me");
+  assert.equal(jobs[0].location, "Ky iv");
+  for (const v of [jobs[0].title, jobs[0].company, jobs[0].location]) {
+    // Matching control characters is the point, same as in oneLine itself.
+    // oxlint-disable-next-line no-control-regex
+    assert.doesNotMatch(v, /[\u0000-\u001f\u007f\u2028\u2029]/, "no line terminator survives into the log line");
+  }
 });

@@ -58,6 +58,24 @@ test("fetchFollow refuses a redirect off the allowed host, and never requests it
   assert.deepEqual(seen, ["https://djinni.co/jobs/1"], "the loopback url is vetted before it is fetched");
 });
 
+test("fetchFollow refuses a redirect up to a bare TLD, but allows the start host's parent domain", async () => {
+  // The allowlist used to read `b.endsWith("." + a)`, which accepts any suffix
+  // fragment of the start host — including "co" for djinni.co and "ua" for
+  // jobs.dou.ua, hosts this policy was never meant to trust.
+  const seen = [];
+  const doFetch = async (u) => { seen.push(u); return u.includes("/final") ? { ok: true, status: 200, text: async () => "body" } : redirectTo(String(hop)); };
+  let hop = "https://co/evil";
+  await assert.rejects(fetchFollow("https://djinni.co/jobs/1", {}, { doFetch }), /redirect off the allowed host: https:\/\/co\/evil/);
+  hop = "https://ua/evil";
+  await assert.rejects(fetchFollow("https://jobs.dou.ua/x/1", {}, { doFetch }), /redirect off the allowed host: https:\/\/ua\/evil/);
+  assert.deepEqual(seen, ["https://djinni.co/jobs/1", "https://jobs.dou.ua/x/1"], "neither bare-TLD url is ever requested");
+
+  // One step up is still legitimate — boards do redirect jobs.dou.ua -> dou.ua.
+  hop = "https://dou.ua/final";
+  const res = await fetchFollow("https://jobs.dou.ua/x/1", {}, { doFetch });
+  assert.equal(await bodyText(res), "body");
+});
+
 test("fetchFollow gives up on a redirect loop instead of spinning", async () => {
   const doFetch = async () => redirectTo("https://djinni.co/loop");
   await assert.rejects(fetchFollow("https://djinni.co/loop", {}, { doFetch }), /too many redirects/);
