@@ -61,7 +61,7 @@ let unreadCount = 0;
 let counted = false;
 // A run that threw after launch used to log the error and still print "Done."
 // and exit 0, so launchd and the user both saw a healthy run.
-let failed = false, busy = false;
+let outcome = "ok";   // ok | busy | failed — one 3-state result, not two booleans that have to stay in agreement
 
 try {
   ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
@@ -198,9 +198,8 @@ try {
 } catch (err) {
   log("ERROR:", err?.message || err);
   // "profile busy" = benign overlap with another run (jobs.mjs/login.mjs); log only.
-  busy = /profile busy/.test(err?.message || "");
-  failed = !busy;
-  if (!ctx && !busy) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
+  outcome = /profile busy/.test(err?.message || "") ? "busy" : "failed";
+  if (!ctx && outcome !== "busy") notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
   // Must not throw: writeState and ctx.close below still have to run.
   // Only a run that actually held the profile may write seen.json back: on the
@@ -219,9 +218,9 @@ try {
   await ctx?.close();
 }
 
-if (failed) {
+if (outcome === "failed") {
   log(`FAILED after scanning ${scanned} unread, ${drafted} draft(s) written to ${DRAFTS}`);
   process.exit(1);
 }
-log(`${busy ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
+log(`${outcome === "busy" ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
 process.exit(0);
