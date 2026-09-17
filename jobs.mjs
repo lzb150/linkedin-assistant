@@ -59,11 +59,11 @@ const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"))
 
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
 const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
-const LLM = config.llm || {};
 // Normalized once so the two gates that read it — the Djinni country filter and
 // the LLM prompt — can never disagree (an empty/typo'd candidateCountry used to
 // leave the filter rejecting everything while the prompt still said Ukraine).
 const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
+const LLM = config.llm || {};
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 

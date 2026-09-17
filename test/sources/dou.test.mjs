@@ -128,3 +128,26 @@ test("parseRss stays linear on a hostile feed full of unclosed <item> openers", 
   assert.deepEqual(parseRss(`<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`), []);
   assertLinear("item scan", (n) => parseRss(`<rss><channel>${"<item>".repeat(n)}</channel></rss>`), 15_000);
 });
+
+test("fetchDou runs its feeds concurrently but keeps results and log in config order", async () => {
+  const { fetchDou } = await import("../../lib/sources/dou.mjs");
+  const feed = (n) => `<rss><channel><item><title>QA${n} в Acme</title><link>https://jobs.dou.ua/x/${n}/</link><description>d</description></item></channel></rss>`;
+  // The first feed answers last: sequentially it would still be first in the
+  // output, and the pooled version must not reorder it either.
+  const delays = { "http://x/1": 30, "http://x/2": 0, "http://x/3": 0 };
+  let inFlight = 0, peak = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    peak = Math.max(peak, ++inFlight);
+    await new Promise((r) => setTimeout(r, delays[url]));
+    inFlight--;
+    return { ok: true, headers: { get: () => "" }, text: async () => feed(url.slice(-1)) };
+  };
+  const lines = [];
+  try {
+    const out = await fetchDou({ feeds: Object.keys(delays) }, (l) => lines.push(l));
+    assert.deepEqual(out.map((j) => j.url), ["https://jobs.dou.ua/x/1/", "https://jobs.dou.ua/x/2/", "https://jobs.dou.ua/x/3/"]);
+    assert.deepEqual(lines.map((l) => l.replace(/^.*: /, "")), ["http://x/1", "http://x/2", "http://x/3"]);
+    assert.ok(peak > 1, `feeds should overlap, peak in-flight was ${peak}`);
+  } finally { globalThis.fetch = realFetch; }
+});
