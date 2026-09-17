@@ -255,7 +255,7 @@ matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 const label = (job) => `${job.title} @ ${job.company}`;
 const toScore = llmOn ? matches.slice(0, Math.max(1, Number(LLM.maxPerRun) || 15)) : matches;   // "0"/"abc" must not mean "defer everything forever"
-for (const { job, scored } of (llmOn ? matches.slice(toScore.length) : [])) {
+for (const { job, scored } of matches.slice(toScore.length)) {
   log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
 }
 // Score a few CLI calls at a time (~20 s each on sonnet, ~55 s on haiku; 15 in
