@@ -126,3 +126,15 @@ test("writeStore keeps one snapshot per day, never overwrites it, prunes to 7", 
   assert.equal(snaps().length, 7);
   assert.deepEqual(snaps()[0], "job-state.2026-09-04.bak", "oldest snapshots pruned");
 });
+
+test("normalize ignores a __proto__ key instead of letting it replace the prototype", () => {
+  // JSON.parse makes "__proto__" a genuine own key, so `out[key] = e` used to
+  // run the prototype setter: the entry disappeared from JSON.stringify and the
+  // store was left answering out.status through its corrupted prototype chain.
+  const raw = JSON.parse('{"__proto__":{"status":"closed"},"https://x/1":{"status":"viewed"}}');
+  assert.ok(Object.hasOwn(raw, "__proto__"), "JSON.parse really does make it an own key");
+  const out = normalize(raw);
+  assert.equal(Object.getPrototypeOf(out), Object.prototype, "prototype untouched");
+  assert.equal(out.status, undefined, "nothing leaks in through the prototype");
+  assert.deepEqual(JSON.parse(JSON.stringify(out)), { _meta: {}, "https://x/1": { status: "viewed" } });
+});
