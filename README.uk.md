@@ -344,16 +344,24 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 Код нічого не знає про QA — професія повністю живе в конфігурації. Щоб
 шукати, наприклад, вакансії розробника:
 
-1. **Профіль навичок** — `cp skills.developer.json.example skills.json`
-   (готовий пресет TypeScript/Node) або відредагуйте власні `roles` /
-   `skills` / `antiKeywords` / `profile`. Блок `profile` — це фраза
-   спеціалізації для *резервних* супровідних листів (LLM-листи будуються з
-   резюме); кириличні значення стоять у родовому відмінку ("досвід в …").
+1. **Профіль навичок** — покладіть своє резюме в `resume.txt` і виконайте
+   `node make-skills.mjs`: він складе `skills.json` із нього тим самим
+   локальним `claude` CLI, що й скринер, разом з українськими написаннями,
+   якими послуговуються місцеві дошки. `--print` покаже результат, нічого не
+   записуючи, `--force` перезапише наявний файл. Хочете почати з пресета чи
+   написати вручну? `cp skills.developer.json.example skills.json` (готовий
+   профіль TypeScript/Node), далі налаштуйте `roles` / `skills` /
+   `antiKeywords` / `profile`. У будь-якому разі прочитайте результат — це
+   перший фільтр, крізь який проходить кожна вакансія. Блок `profile` — це
+   фраза спеціалізації для *резервних* супровідних листів (LLM-листи
+   будуються з резюме); кириличні значення стоять у родовому відмінку
+   ("досвід в …").
 2. **Пошуки** — перенаправте `jobs.config.json` на нову сферу, напр. DOU-фід
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
    `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
-3. **Резюме** — замініть `resume.txt` (керує LLM-оцінкою та листами).
+3. **Резюме** — замініть `resume.txt` (керує LLM-оцінкою, листами й
+   `make-skills.mjs` вище).
 4. **Вкладення** — оновіть `RESUME_PATH` у `run.sh`.
 
 Повний покроковий гайд — від назви посади (напр. «Senior Fullstack Developer»)
@@ -427,6 +435,7 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 ├── dashboard.mjs      генератор HTML-дашборда
 ├── state-server.mjs   локальний HTTP-сервер (127.0.0.1:7777) для збереження job-state
 ├── report.mjs         тижневий звіт (launchd-завдання в понеділок або вручну)
+├── make-skills.mjs    згенерувати skills.json з resume.txt (одноразове налаштування)
 ├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → відкрити браузер
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/LinkedIn)

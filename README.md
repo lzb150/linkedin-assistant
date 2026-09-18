@@ -335,16 +335,23 @@ launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 Nothing in the code knows you are a QA engineer — the profession lives
 entirely in config. To hunt, say, developer jobs instead:
 
-1. **Skill profile** — `cp skills.developer.json.example skills.json` (a
-   ready TypeScript/Node preset), or edit your own `roles` / `skills` /
-   `antiKeywords` / `profile`. The `profile` block is the specialization
-   phrase the *fallback* cover letters use (LLM letters derive from your
-   resume instead); Cyrillic values sit in genitive position ("досвід в …").
+1. **Skill profile** — put your resume in `resume.txt` and run
+   `node make-skills.mjs`: it drafts `skills.json` from it with the same local
+   `claude` CLI the screener uses, including the Ukrainian spellings a local
+   board would list. Add `--print` to preview without writing, `--force` to
+   replace a file you already have. Prefer to start from a preset or edit by
+   hand? `cp skills.developer.json.example skills.json` (a ready
+   TypeScript/Node profile), then tune `roles` / `skills` / `antiKeywords` /
+   `profile`. Either way, read the result once — it is the first gate every
+   vacancy passes. The `profile` block is the specialization phrase the
+   *fallback* cover letters use (LLM letters derive from your resume instead);
+   Cyrillic values sit in genitive position ("досвід в …").
 2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
    `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
-3. **Resume** — replace `resume.txt` (drives LLM scoring and letters).
+3. **Resume** — replace `resume.txt` (drives LLM scoring, the cover letters,
+   and `make-skills.mjs` above).
 4. **Attachment** — update `RESUME_PATH` in `run.sh`.
 
 The full walkthrough — from a job title like "Senior Fullstack Developer" to a
@@ -415,6 +422,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 ├── dashboard.mjs      HTML dashboard generator
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
+├── make-skills.mjs    generate skills.json from resume.txt (one-time setup)
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
