@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -68,4 +68,18 @@ test("an empty candidateCountry falls back to the default instead of rejecting e
   assert.equal(djinniEligible("Тільки віддалено · Україна", []), true);
   assert.equal(djinniEligible("Тільки віддалено · Польща", []), false, "the default still rejects a foreign-only vacancy");
   assert.equal(candidateCountryList([])[0], DEFAULT_CANDIDATE_COUNTRY[0], "and the LLM prompt reads the same first spelling");
+});
+
+test("numberIn: a typo'd numeric knob falls back instead of switching a gate off", () => {
+  // `score < "abc"` is false for every score — the config error read as "no gate".
+  assert.equal(numberIn("abc", 25), 25);
+  assert.equal(numberIn(undefined, 25), 25);
+  assert.equal(numberIn(null, 25), 25);
+  assert.equal(numberIn("", 25), 25);
+  assert.equal(numberIn(true, 25), 25);
+  assert.equal(numberIn(NaN, 25), 25);
+  assert.equal(numberIn(0, 25), 0, "0 is a real value (llm.minScore: 0 = advisory only)");
+  assert.equal(numberIn("40", 25), 40, "a quoted number is still a number");
+  assert.equal(numberIn(500, 0, [0, 100]), 100);
+  assert.equal(numberIn(0, 15, [1, Infinity]), 1);
 });

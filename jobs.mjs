@@ -19,7 +19,7 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers } f
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList } from "./lib/filters.mjs";
+import { filterByLocation, candidateCountryList, excludeList, numberIn } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
@@ -64,6 +64,15 @@ const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__d
 // leave the filter rejecting everything while the prompt still said Ukraine).
 const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
 const LLM = config.llm || {};
+// A numeric knob that is not a number used to switch its gate off silently
+// (`score < "abc"` is false for every score). Fall back to the default and
+// say so once, in the log the owner already reads.
+const knob = (name, v, fallback, range) => {
+  if (v != null && Number.isNaN(numberIn(v, NaN, range))) log(`⚠ jobs.config.json: ${name} is ${JSON.stringify(v)}, not a number — using ${fallback}`);
+  return numberIn(v, fallback, range);
+};
+const MIN_SCORE = knob("minScore", config.minScore, 25);
+const LLM_MIN_SCORE = knob("llm.minScore", LLM.minScore, 0, [0, 100]);   // 0 = advisory-only, as when unset
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
@@ -237,7 +246,7 @@ for (const job of jobs) {
   const scored = scoreMessage(job.text);
   // Cold applications: strict gate — high score AND an automation/SDET role match.
   // A source may set its own minScore — it overrides the global.
-  const minScore = config[job.source]?.minScore ?? config.minScore ?? 25;
+  const minScore = numberIn(config[job.source]?.minScore, MIN_SCORE);
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
     // A card whose description failed to load (LinkedIn panel timeout) scores
@@ -320,12 +329,11 @@ for (const m of toScore) {
     }
     else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
   }
-  if (llmRejects(llm, LLM.minScore)) {
+  if (llmRejects(llm, LLM_MIN_SCORE)) {
     llmDropped++;
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
     recordOutcome(summary, job.source, "low");
-    seen.add(id);
-    seen.save();
+    seen.add(id);   // persisted with the next written package, or at the end of the loop
     continue;
   }
   const { filename, markdown } = buildApplication(job, scored, llm);
@@ -344,8 +352,10 @@ for (const m of toScore) {
   recordTop(summary, scored.score, lbl);
   writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label: lbl });
   seen.add(id);
-  // Persist after every package: a crash mid-run must not forget written
-  // packages (the next run would re-score and re-pay the LLM for them).
+  // Persist after every WRITTEN package: a crash mid-run must not forget one
+  // (the next run would re-score and re-pay the LLM for it). Each save
+  // rewrites and fsyncs the whole store, so the drop path above does not
+  // pay for it — a dropped id lost to a crash costs one repeated verdict.
   seen.save();
   written++;
 }

@@ -76,7 +76,10 @@ func clearBadge(_ path: String) {
         try data.write(to: URL(fileURLWithPath: tmp))
         _ = try FileManager.default.replaceItemAt(URL(fileURLWithPath: path), withItemAt: URL(fileURLWithPath: tmp))
         dbg("badge cleared on activation: \(path)")
-    } catch { dbg("clearBadge failed: \(error)") }
+    } catch {
+        dbg("clearBadge failed: \(error)")
+        try? FileManager.default.removeItem(atPath: tmp)   // replaceItemAt throws when `path` is missing; do not leave the .tmp behind
+    }
 }
 
 // Decide what a Dock-icon activation (click or foreground launch) opens:
