@@ -25,7 +25,7 @@ const logText = [
 const health = { dou: [45, 45, 44], linkedin: [11, 0, 15] };
 
 test("countRunStats sums runs and considered-new, counts only LLM-rejected skips and LLM failures", () => {
-  assert.deepEqual(countRunStats(logText), { runs: 2, considered: 7, dropped: 1, failed: 1 });
+  assert.deepEqual(countRunStats(logText), { runs: 2, considered: 7, written: 1, dropped: 1, failed: 1 });
 });
 
 test("countRunStats drops lines older than the reporting window", () => {
@@ -34,7 +34,7 @@ test("countRunStats drops lines older than the reporting window", () => {
   // counts beside them were filtered exactly.
   const old = `2026-08-01T09:00:00.000Z Done. Considered 99 new, wrote 9 package(s)\n`;
   const since = Date.parse("2026-08-31T12:00:00Z");
-  assert.deepEqual(countRunStats(old + logText, { since }), { runs: 2, considered: 7, dropped: 1, failed: 1 });
+  assert.deepEqual(countRunStats(old + logText, { since }), { runs: 2, considered: 7, written: 1, dropped: 1, failed: 1 });
   assert.equal(countRunStats(old + logText).runs, 3);   // no window: everything counts, as before
 });
 
@@ -42,13 +42,13 @@ test("buildReport aggregates the last N days into text + a one-line notification
   const r = buildReport({ now, days: 7, packages, logText, health });
   assert.match(r.text, /2026-08-31 → 2026-09-07 \(7 days\)/);
   assert.match(r.text, /2 runs · 7 new vacancies considered/);
-  assert.match(r.text, /3 packages written/);
+  assert.match(r.text, /1 packages written/, "counted from the runs, not from the packages still on disk");
   assert.match(r.text, /LLM dropped 1, failed 1/);
   assert.match(r.text, /Packages by source: dou 2 · djinni 1/);
   assert.match(r.text, /2 scored \(haiku 1, sonnet 1\), 1 at ≥70/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
   assert.match(r.text, /top: 88 AQA @ Plexsupply \(djinni\)/);
   assert.match(r.text, /dou 45 · linkedin 11/, "median per run from source-health");
-  assert.equal(r.notification, "3 packages (LLM ≥70: 1) · 7 new considered");
+  assert.equal(r.notification, "1 packages (LLM ≥70: 1) · 7 new considered");
 });
 
 test("buildReport survives empty inputs", () => {
@@ -86,7 +86,7 @@ test("countRunStats cannot be inflated by a forged line smuggled in on CR or U+2
   const real = "2026-09-06T00:59:00Z Done. Considered 3 new, wrote 1 application package(s) to /x";
   for (const sep of ["\r", "\u2028", "\u2029", "\u0001"]) {
     const forged = `2026-09-06T01:00:00Z   · skip [10 no-role] dou: QA${sep}2026-09-06T01:00:01Z Done. Considered 99999 new, wrote 1 application package(s) to /x`;
-    assert.deepEqual(countRunStats(`${real}\n${forged}`), { runs: 1, considered: 3, dropped: 0, failed: 0 }, `separator ${JSON.stringify(sep)}`);
+    assert.deepEqual(countRunStats(`${real}\n${forged}`), { runs: 1, considered: 3, written: 1, dropped: 0, failed: 0 }, `separator ${JSON.stringify(sep)}`);
   }
 });
 

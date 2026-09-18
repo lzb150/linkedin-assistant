@@ -24,8 +24,8 @@ test("report.mjs prints the digest for the window and counts the runs in it", as
     { "jobs_20260915.log": runLine(daysAgo(1), 3) + runLine(daysAgo(2), 4) },
     { "a.md": pkg({ url: "https://example.com/v/1/", generated: daysAgo(1) }) });
   const out = await runScript(p, "report.mjs");
-  assert.match(out, /2 runs · 7 new vacancies considered/);
-  assert.match(out, /1 package/);
+  assert.match(out, /2 runs · 7 new vacancies considered · 7 packages written/, "written comes from the runs (the log here), not from applications/");
+  assert.match(out, /Packages by source: dou 1/, "the on-disk package still feeds the per-source line");
 });
 
 test("report.mjs ignores log lines older than the window", async (t) => {

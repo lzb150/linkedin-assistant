@@ -98,7 +98,7 @@ browser's filters — that keeps parameters valid:
 ```
 
 The global `minScore` (18) is only a keyword pre-gate; the LLM gate
-(`llm.minScore`, 60) does the real screening.
+(`llm.minScore`, 50) does the real screening.
 
 ### 5b. Country — `candidateCountry`
 

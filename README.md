@@ -48,12 +48,12 @@ click is always yours.
   into one package (the other source links are kept on the card)
 - **Foreign-location filter** — vacancies physically located abroad are dropped
   across all sources (the `excludeLocation` list in `jobs.config.json`)
-- Two gates for cold applications: keyword score ≥ 18 + an automation role, then the LLM fit ≥ 70 → only on-target jobs
+- Two gates for cold applications: keyword score ≥ 18 + an automation role, then the LLM fit ≥ 50 → only on-target jobs
 - Builds an application package: cover letter + link + resume path
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
   second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
   a one-line "why", and a tailored cover letter. The keyword score decides what
-  reaches the LLM; a fit below `llm.minScore` (default 60) drops the job instead of
+  reaches the LLM; a fit below `llm.minScore` (default 50) drops the job instead of
   writing a package. Any CLI failure still falls back to a keyword-only package.
   Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
   `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only). Matches past

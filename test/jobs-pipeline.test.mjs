@@ -6,7 +6,7 @@
 // "LLM silently off" and "LLM timeout" regressions both lived here for weeks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { makeProject, runScript, waitFor, pkg, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
 
@@ -186,4 +186,19 @@ test("an injection marker in the TITLE flags the package, not just one in the de
   const file = readdirSync(p.path("applications")).find((f) => f.endsWith(".md"));
   assert.ok(file, "the vacancy still gets a package — the marker records, it does not reject");
   assert.match(p.read("applications", file), /^llm_suspect: injection \(\d+ marker/m);
+});
+
+test("jobs.mjs: a typo'd numeric knob is reported and replaced by its default, not read as \"gate off\"", async (t) => {
+  // `score < "abc"` is false for every score, so a misspelt minScore used to
+  // pass everything through that gate with a clean log. The run still ends the
+  // same way as with the shipped config, and the owner is told why.
+  const p = setupProject(t, await serveFeed(t, () => FEED), { llm: { minScore: "abc" } });
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.minScore = "";
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+
+  const out = await runJobs(p);
+  assert.match(out, /⚠ jobs.config.json: minScore is "", not a number — using 25/);
+  assert.match(out, /⚠ jobs.config.json: llm.minScore is "abc", not a number — using 0/);
+  assert.match(out, /Considered 3 new, wrote \d+ application package/, "the run completes");
 });
