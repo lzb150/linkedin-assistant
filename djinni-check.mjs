@@ -131,7 +131,9 @@ try {
   } else {
     log("scan failed — keeping last known badge count (state not rewritten)");
   }
-  await ctx?.close();
+  // A rejected close would replace the exit code this run earned with an
+  // unhandled rejection; the state files above are already written.
+  try { await ctx?.close(); } catch (e) { log("browser close failed:", e?.message); }
 }
 
 log(

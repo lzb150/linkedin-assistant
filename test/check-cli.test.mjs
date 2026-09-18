@@ -55,7 +55,7 @@ test("check.mjs: a launch failure reports FAILED, not Done", async (t) => {
 // and "wrote a draft" — thread-open verification, bubble extraction, scoring,
 // draft writing, badge state — had no test: check-cli only drove the two
 // failure exits, so a miswiring of check.mjs to its helpers passed every test.
-const scanningPlaywright = (bubbles) => `
+const scanningPlaywright = (bubbles, { close = "async () => {}" } = {}) => `
 const threadUrl = "https://www.linkedin.com/messaging/thread/2-abc/";
 let current = "https://www.linkedin.com/messaging/?filter=unread";
 const el = (text, attrs = {}) => ({
@@ -78,7 +78,7 @@ const page = {
   $: async () => el("Jane Recruiter"),
 };
 export const chromium = {
-  launchPersistentContext: async () => ({ pages: () => [page], newPage: async () => page, close: async () => {} }),
+  launchPersistentContext: async () => ({ pages: () => [page], newPage: async () => page, close: ${close} }),
 };
 `;
 
@@ -110,4 +110,28 @@ test("check.mjs: a thread with no job content is skipped without a draft", async
   assert.match(out, /Done\. Scanned 1 unread, wrote 0 draft\(s\)/);
   assert.deepEqual(readdirSync(p.path("drafts")), [], "nothing drafted");
   assert.equal(JSON.parse(readFileSync(p.path("notify-state.json"), "utf8")).count, 1, "still one unread thread for the badge");
+});
+
+test("check.mjs: a quoted weight in the hand-edited skills.json still scores as a number", async (t) => {
+  // README says "edit freely". A weight typed as "5" used to concatenate into
+  // the score ("6054"), which then passed every threshold as a string.
+  const p = project(t, scanningPlaywright([
+    "Hi! We have a Senior QA Automation Engineer opening — Playwright, TypeScript, CI/CD. Interested in the vacancy?",
+  ]));
+  const skills = JSON.parse(readFileSync(p.path("skills.json"), "utf8"));
+  skills.skills.playwright = "5";
+  skills.roles.push(42);
+  writeFileSync(p.path("skills.json"), JSON.stringify(skills));
+
+  const out = await spawnScript(p, "check.mjs").done;
+  const score = Number(/score=(\d+) verdict=relevant/.exec(out)?.[1]);
+  assert.ok(score > 0 && score < 100, `a sane numeric score, got ${score}`);
+  assert.match(out, /Done\. Scanned 1 unread, wrote 1 draft\(s\)/);
+});
+
+test("check.mjs: a browser that fails to close does not turn a finished run into exit 1", async (t) => {
+  const p = project(t, scanningPlaywright(["Hey, long time! How have you been?"], { close: 'async () => { throw new Error("close exploded"); }' }));
+  const out = await spawnScript(p, "check.mjs").done;   // exit 0
+  assert.match(out, /browser close failed: close exploded/);
+  assert.match(out, /Done\. Scanned 1 unread/);
 });

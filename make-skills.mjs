@@ -13,7 +13,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, basename } from "node:path";
+import { dirname, resolve, basename } from "node:path";
 import { llmJSON } from "./lib/llm.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { buildSkillsPrompt, normalizeProfile, profileIsUsable, serializeProfile } from "./lib/skills-profile.mjs";
@@ -31,8 +31,9 @@ if (flag("help")) {
   process.exit(0);
 }
 
-const resumeFile = join(__dir, opt("resume", "resume.txt"));
-const outFile = join(__dir, opt("out", "skills.json"));
+// Relative paths are repo-relative; an absolute --resume/--out is used as given.
+const resumeFile = resolve(__dir, opt("resume", "resume.txt"));
+const outFile = resolve(__dir, opt("out", "skills.json"));
 const model = opt("model", "sonnet");
 const write = !flag("print");
 
