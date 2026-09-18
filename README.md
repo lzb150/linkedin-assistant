@@ -128,12 +128,37 @@ clean 0.
 cd ~/linkedin-assistant
 npm install                      # installs playwright
 npx playwright install chromium  # downloads the browser
+
+cp ~/path/to/your-resume.txt resume.txt   # plain text; drives scoring and the letters
+node make-skills.mjs             # builds skills.json — WHAT it looks for
+$EDITOR jobs.config.json         # WHERE it looks: feeds, searches, your country
+
 node login.mjs                   # YOU log in manually (handles 2FA). Never stores your password.
 ```
 
+**`resume.txt`** is the one file the tool cannot invent. Paste the full text —
+`make-skills.mjs` reads it to draft the keyword profile every vacancy is first
+screened against, and the local LLM re-scores each posting against it later.
+Run `node make-skills.mjs --print` first if you want to see the profile before
+it is written; read the result once either way, and adjust the weights.
+
+**`jobs.config.json`** ships pointed at QA automation vacancies. That is the
+step nothing can do for you: it is a choice of boards and search wording, not a
+fact to extract from a resume. Change the DOU feeds, the Djinni search URLs and
+the LinkedIn queries to your own field, and set `candidateCountry` to where you
+live — see [Adapting to another profession](#adapting-to-another-profession).
+
 `login.mjs` opens a real browser. Log in fully (2FA included); it detects the
 login by itself, saves the session into `.browser-profile/` and closes. It gives
-up after 6 minutes without saving anything — just re-run it.
+up after 6 minutes without saving anything — just re-run it. Pass `djinni` to
+log in there too: `node login.mjs djinni`.
+
+Then check it works before putting it on a schedule:
+
+```bash
+node jobs.mjs        # one pass over every enabled source
+node dashboard.mjs   # build applications/index.html and look at what it found
+```
 
 ## Inbox assistant — `check.mjs`
 
