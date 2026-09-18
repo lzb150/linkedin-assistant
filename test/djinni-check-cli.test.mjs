@@ -10,7 +10,7 @@ const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexi
 const SEEN = ["111", "222"];
 
 // A logged-in Djinni whose unread bucket the evaluate reads as `threads`.
-const playwrightWith = (threads) => `
+const playwrightWith = (threads, { close = "async () => {}" } = {}) => `
 const page = {
   url: () => "https://djinni.co/my/inbox?bucket=unread",
   goto: async () => {},
@@ -21,7 +21,7 @@ const page = {
   locator: () => ({ first: () => ({ innerText: async () => "", isVisible: async () => false }) }),
 };
 export const chromium = {
-  launchPersistentContext: async () => ({ pages: () => [page], newPage: async () => page, close: async () => {} }),
+  launchPersistentContext: async () => ({ pages: () => [page], newPage: async () => page, close: ${close} }),
 };
 `;
 const throwing = `export const chromium = { launchPersistentContext: async () => { throw new Error("boom"); } };`;
@@ -49,4 +49,11 @@ test("djinni-check.mjs: a real scrape does rewrite the seen store", async (t) =>
 test("djinni-check.mjs: a thrown run exits 1", async (t) => {
   const p = project(t, throwing);
   await assert.rejects(spawnScript(p, "djinni-check.mjs").done, /djinni-check\.mjs exit 1/);
+});
+
+test("djinni-check.mjs: a browser that fails to close does not turn a finished scan into exit 1", async (t) => {
+  const p = project(t, playwrightWith([{ id: "333", label: "Acme" }], { close: 'async () => { throw new Error("close exploded"); }' }));
+  const out = await spawnScript(p, "djinni-check.mjs").done;   // exit 0
+  assert.match(out, /browser close failed: close exploded/);
+  assert.match(out, /Done\. Djinni unread: 1/);
 });
