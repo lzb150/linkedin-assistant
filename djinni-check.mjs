@@ -74,7 +74,13 @@ try {
   log(`Djinni unread threads: ${threads.length}`);
 
   // Banner only for threads we have not already notified about (see freshThreads).
-  const { fresh, message } = freshThreads(threads, readJson(SEEN_FILE, []));
+  // A corrupt seen file reads as "nothing known", which re-banners every open
+  // thread once. That is noisy but harmless, and the write below replaces the
+  // file anyway — so recover, but do not do it silently.
+  let seenIds = [];
+  try { seenIds = readJson(SEEN_FILE, []); }
+  catch (e) { log(`⚠ ${SEEN_FILE} unreadable (${e.message}) — treating every current thread as new for this run`); }
+  const { fresh, message } = freshThreads(threads, seenIds);
 
   // Persist BEFORE the banner, not after: the two used to be the other way
   // round, so a crash or a kill in between left the ids unrecorded and the next

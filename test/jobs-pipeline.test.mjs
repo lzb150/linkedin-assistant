@@ -216,6 +216,65 @@ echo '{"score": 95, "why": "great fit", "red_flags": [], "cover": "Dear team.", 
   assert.doesNotMatch(md, /should not survive/, "unknown model keys are dropped by the allow-list");
 });
 
+test("jobs.mjs: an unreadable source-health.json is reported and left untouched, not silently reset", async (t) => {
+  // Reading it as {} and writing this run's counts back destroyed the 10-run
+  // baseline, and since the median rule needs 5 runs the degradation alerting
+  // stayed silently off for the next five — the window in which a broken
+  // scraper produces no jobs and no warning.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  const corrupt = '{"dou": [12, 14, 13],';                 // truncated mid-write
+  writeFileSync(p.path("source-health.json"), corrupt);
+  const out = await runScript(p, "jobs.mjs");
+  assert.match(out, /source-health\.json unreadable/, "the run says why alerting is off");
+  assert.equal(p.read("source-health.json"), corrupt, "the baseline file is left byte-identical");
+});
+
+test("jobs.mjs: a package already written from the SAME source and url is not written a second time", async (t) => {
+  // After a seen-store quarantine every live vacancy looks new again. The
+  // cross-run guard only caught a DIFFERENT source, so the same vacancy from
+  // the same board was re-scored and written again — the filename embeds a
+  // fresh minute stamp, so it could never collide and the duplicate was
+  // invisible. "Same source, different url" is still a distinct req.
+  const url = "https://jobs.dou.ua/companies/acme/vacancies/1/";
+  const p = setupProject(t, await serveFeed(t, () => rss([
+    { title: "Senior SDET (Playwright) в Acme, Київ", link: url, desc: AQA },
+  ])), { packages: { "existing.md": pkg({ source: "dou", title: "Senior SDET (Playwright)", company: "Acme", url }) } });
+  const out = await runScript(p, "jobs.mjs");
+  assert.match(out, /already packaged/, "recognised as the package we already have");
+  const files = readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));
+  assert.deepEqual(files, ["existing.md"], "no second package for the same source+url");
+  assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1, "re-stamped as seen so it settles next run");
+});
+
+test("jobs.mjs: a misspelt config key is reported, and a disabled source is named in the log", async (t) => {
+  // A typo'd `llm` turns the whole gate off and a typo'd source name drops that
+  // source — both used to look exactly like an ordinary run.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.llmm = cfg.llm;            // the whole block, misspelt
+  cfg.llm.enabledd = true;       // a misspelt key inside it
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+  const out = await runScript(p, "jobs.mjs");
+  assert.match(out, /unknown top-level key "llmm"/);
+  assert.match(out, /unknown llm\.enabledd/);
+  assert.match(out, /djinni: disabled in config — skipped/, "a source that is off says so");
+  assert.match(out, /linkedin: disabled in config — skipped/);
+});
+
+test("jobs.mjs: a corrupt skills.json degrades to an empty profile instead of killing the run", async (t) => {
+  // skills.json is hand-edited by design ("edit freely" in the README), and the
+  // parse was a top-level unguarded JSON.parse in a module every entry point
+  // imports — so one stray comma raised a SyntaxError that never named the file
+  // and killed the run before a single job was gathered.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  writeFileSync(p.path("skills.json"), '{"roles": ["sdet"],}');   // trailing comma
+  const out = await runScript(p, "jobs.mjs");
+  assert.match(out, /skills\.json unusable/, "the file is named");
+  assert.match(out, /node make-skills\.mjs/, "and the fix is spelled out");
+  assert.equal(readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).length, 0,
+    "an empty profile matches nothing — visibly quiet, not silently wrong");
+});
+
 test("jobs.mjs: a typo'd numeric knob is reported and replaced by its default, not read as \"gate off\"", async (t) => {
   // `score < "abc"` is false for every score, so a misspelt minScore used to
   // pass everything through that gate with a clean log. The run still ends the

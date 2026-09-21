@@ -77,6 +77,17 @@ const LLM_CONCURRENCY = knob("llm.concurrency", LLM.concurrency, 3, [1, Infinity
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
+// A misspelt key is not a no-op, it is a silently different run: "llm" typo'd
+// turns the whole LLM gate off (every keyword-passer gets a package) and a
+// typo'd source name drops that source entirely — both with a clean log. Names
+// we do not recognise are therefore reported rather than ignored. `_`-prefixed
+// keys are the documentation blocks the shipped config is full of.
+const KNOWN_TOP = new Set(["minScore", "requireRole", "candidateCountry", "excludeTitle", "excludeLocation", "llm", "dou", "djinni", "linkedin"]);
+const KNOWN_LLM = new Set(["enabled", "model", "maxPerRun", "concurrency", "minScore"]);
+const unknownIn = (obj, known) => Object.keys(obj || {}).filter((k) => !k.startsWith("_") && !known.has(k));
+for (const k of unknownIn(config, KNOWN_TOP)) log(`⚠ config: unknown top-level key "${k}" — ignored (misspelt? known keys: ${[...KNOWN_TOP].join(", ")})`);
+for (const k of unknownIn(LLM, KNOWN_LLM)) log(`⚠ config: unknown llm.${k} — ignored (misspelt? known keys: ${[...KNOWN_LLM].join(", ")})`);
+
 const notify = (msg) =>
   banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
 
@@ -87,8 +98,19 @@ const seen = loadSeenStore(SEEN_FILE);
 
 // source-health.json keeps the last 10 runs' `found` counts per source so we
 // can warn when a source degrades well below its recent norm (a likely sign
-// its scraper broke). Missing/unparseable/legacy file → normalized quietly.
-const health = normalizeHistory(readJson(HEALTH_FILE, {}));
+// its scraper broke). Missing/legacy file → normalized quietly.
+// An UNREADABLE one is different: reading it as {} and then writing this run's
+// counts back destroyed the baseline, and since the median rule needs 5 runs
+// the alerting stayed silently off for the next five. Keep the file untouched
+// and say so instead.
+let health = {};
+let healthReadable = true;
+try {
+  health = normalizeHistory(readJson(HEALTH_FILE, {}));
+} catch (e) {
+  healthReadable = false;
+  log(`⚠ ${HEALTH_FILE} unreadable (${e.message}) — degradation alerting is off for this run and the file is left untouched; fix or delete it`);
+}
 
 let jobs = [];
 const RUN_STATS = join(__dir, "run-stats.jsonl");   // one line per run; the weekly digest reads this instead of parsing its own log
@@ -125,7 +147,10 @@ const BROWSERLESS_SOURCES = [
   { name: "djinni", enabled: config.djinni?.enabled, fetch: (cfg, lg) => fetchDjinni(cfg, lg, { skip: knownJob }) },
 ];
 for (const s of BROWSERLESS_SOURCES) {
-  if (!s.enabled) continue;
+  // Say it out loud: a source turned off by a typo looked exactly like a source
+  // that simply found nothing, and it never reached summary.sources so health
+  // monitoring could not flag it either.
+  if (!s.enabled) { log(`${s.name}: disabled in config — skipped`); continue; }
   log(`Gathering ${s.name}...`);
   try {
     const found = await s.fetch(config[s.name], log);
@@ -154,6 +179,8 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
+if (DOU_ONLY) log("linkedin: skipped (DOU_ONLY=1)");
+else if (!config.linkedin?.enabled) log("linkedin: disabled in config — skipped");
 if (!DOU_ONLY && config.linkedin?.enabled) {
   let ctx;
   try {
@@ -213,7 +240,12 @@ const packageIndex = new Map();
 for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package skipped: ${f}`) })) {
   // "—" is the blank-company placeholder; canonicalKey scopes those by url,
   // so pass the url along instead of filtering on a truthy company.
-  if (fm.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: fm.file, source: fm.source || "" });
+  // The url is carried too: "same source = a distinct req" is only true when
+  // the URL differs. After a seen-store quarantine every live vacancy looks new
+  // again, and without the url check each one got re-scored (a paid LLM call)
+  // and written a SECOND time — the filename embeds a fresh minute stamp, so it
+  // could never collide and the duplicate was invisible.
+  if (fm.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: fm.file, source: fm.source || "", url: fm.url || "" });
 }
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
@@ -228,6 +260,15 @@ for (const job of jobs) {
   // a vacancy still live after 90 days must not resurface as new.
   if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
   const existing = packageIndex.get(canonicalKey(job));
+  // Same source AND same url = the very package we already wrote (the seen
+  // store lost it, the package did not). Re-stamp and move on: no re-score, no
+  // second file. A different url from the same source is still a distinct req.
+  if (existing && existing.source === job.source && existing.url && existing.url === job.url) {
+    log(`  · already packaged (${existing.file}) ${job.source}: ${job.title}`);
+    recordOutcome(summary, job.source, "seen");
+    seen.add(id);
+    continue;
+  }
   if (existing && existing.source !== job.source) {
     try { appendAltLink(join(APPS, existing.file), job.source, job.url); }
     catch (e) { log(`  · alt-link append failed (${existing.file}): ${e.message}`); }
@@ -394,7 +435,8 @@ log("\n" + formatTable(summary));
 const degraded = detectDegradations(health, summary);
 if (degraded.length) alerts.push(formatAlert(degraded));
 if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
-writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
+// Never write back a baseline we could not read: that is the silent reset.
+if (healthReadable) writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {

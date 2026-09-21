@@ -35,7 +35,12 @@ const { text, notification } = buildReport({
   packages,
   logText,
   runStats: readRunStats(join(dir, "run-stats.jsonl"), { since }),
-  health: normalizeHistory(readJson(join(dir, "source-health.json"), {})),
+  // The report writes nothing, so an unreadable health file only costs this
+  // one section — say so and carry on rather than killing the digest.
+  health: normalizeHistory((() => {
+    try { return readJson(join(dir, "source-health.json"), {}); }
+    catch (e) { console.error(`⚠ source-health.json unreadable (${e.message}) — the health section is empty`); return {}; }
+  })()),
 });
 console.log(text);
 if (process.argv.includes("--notify")) notify("Weekly job report", notification);

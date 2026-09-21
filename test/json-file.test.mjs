@@ -5,14 +5,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "../lib/json-file.mjs";
 
-test("readJson: parsed value, or the fallback for a missing / malformed file", (t) => {
+test("readJson: parsed value, fallback ONLY for a missing file, throws on a malformed one", (t) => {
+  // The malformed case was asserted the other way round until the callers were
+  // audited: every failure yielded the fallback, and the two callers that write
+  // this same file back (source-health.json, closed-check-state.json) then
+  // persisted that fallback — one corrupt read silently replaced the
+  // accumulated state, and the fresh data written over it hid the loss.
+  // "Missing" still means "start empty"; anything else is now the caller's
+  // decision to make out loud.
   const dir = mkdtempSync(join(tmpdir(), "rj-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "ok.json"), '{"a":1}');
   writeFileSync(join(dir, "bad.json"), "{not json");
   assert.deepEqual(readJson(join(dir, "ok.json"), {}), { a: 1 });
-  assert.deepEqual(readJson(join(dir, "bad.json"), { d: true }), { d: true });
-  assert.equal(readJson(join(dir, "missing.json"), null), null);
+  assert.equal(readJson(join(dir, "missing.json"), null), null, "ENOENT is still a fresh start");
+  assert.throws(() => readJson(join(dir, "bad.json"), { d: true }), /JSON/, "a corrupt file must not look like an empty one");
+  assert.throws(() => readJson(dir, null), { code: "EISDIR" }, "nor may any other read error");
 });
 
 test("writeJsonAtomic round-trips through readJson and leaves no .tmp behind", (t) => {

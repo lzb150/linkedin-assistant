@@ -126,3 +126,24 @@ test("closed-check: a package whose archive rename fails keeps its state entry",
   assert.match(out, /0 package\(s\) archived .*0 stale state entries dropped/);
   assert.equal(p.json("job-state.json")[gone].status, "viewed", "entry kept with the package");
 });
+
+// One corrupt read used to replace the whole stamp file: this run's ~150 stamps
+// were written over the accumulated set, so every other url looked never-probed
+// and the next run re-probed boards it had just probed — and the fresh stamps
+// hid the loss.
+test("closed-check: an unreadable closed-check-state.json is reported and left untouched", async (t) => {
+  const U = `${await server404(t)}/vacancies/1/`;
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "a.md": pkg({ url: U }) },
+    state: { _meta: {}, [U]: { status: "new" } },
+    bins: quiet,
+  });
+  const corrupt = '{"https://example.com/v/1/": "2026-09-01T00:00:00.000Z"';   // truncated
+  writeFileSync(p.path("closed-check-state.json"), corrupt);
+  const out = await runScript(p, "closed-check.mjs", LOCAL);
+  assert.match(out, /closed-check-state\.json unreadable/, "the run says stamps are not being updated");
+  assert.equal(p.read("closed-check-state.json"), corrupt, "the stamp file is left byte-identical");
+  // The run still does its real job — closures are independent of the stamps.
+  assert.equal(p.json("job-state.json")[U].status, "closed", "closures are still saved");
+});

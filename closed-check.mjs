@@ -27,7 +27,19 @@ const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO
 let partialRead = false;
 const packages = readPackages(APPS, { warn: (f, e) => { partialRead = true; log(`  · could not read ${f}: ${e.message}`); } });
 const mayPrune = () => packages.length && !partialRead;
-const checked = readJson(CHECKED, null) || {};
+// Re-check stamps. An unreadable file must not become an empty one: writing
+// this run's ~150 stamps over the accumulated set made every other url look
+// never-probed, so the next run re-probed boards it had just probed — and the
+// fresh stamps hid the loss. Keep it untouched and stop stamping for this run.
+let checked = {};
+let checkedReadable = true;
+try {
+  checked = readJson(CHECKED, null) || {};
+} catch (e) {
+  checkedReadable = false;
+  log(`⚠ ${CHECKED} unreadable (${e.message}) — re-check stamps are not updated this run and the file is left untouched; fix or delete it`);
+}
+const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, checked); };
 const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
 
 const todo = selectCandidates({ packages, stateMap: stateAtStart, checked });   // 150 per run, each url at most every 3 days
@@ -67,7 +79,7 @@ function applyClosures(stateMap) {
 function flush() {
   const { stateMap, n } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable mid-run — closures not saved"));
   if (n) writeStore(STATE, stateMap);
-  writeJsonAtomic(CHECKED, checked);
+  saveChecked();
 }
 
 let probed = 0;
@@ -127,5 +139,5 @@ if (savedNow || wouldPrune) {
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
-writeJsonAtomic(CHECKED, checked);
+saveChecked();
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
