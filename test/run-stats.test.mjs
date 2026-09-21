@@ -1,7 +1,7 @@
 // The per-run counter file that replaced regex-parsing jobs.mjs's own log.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { appendRunStat, readRunStats } from "../lib/run-stats.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
@@ -44,4 +44,23 @@ test("appendRunStat caps the file instead of growing for the life of the install
   assert.equal(lines.length, 5, "trimmed to the cap");
   assert.deepEqual(lines.map((l) => JSON.parse(l).considered), [3, 4, 5, 6, 7], "the newest entries survive");
   assert.equal(readRunStats(file).length, 5, "and the file is still parseable after the rewrite");
+});
+
+test("a failed line-cap trim is reported, even though a failed append stays silent", (t) => {
+  // The two used to share one catch. Swallowing the append is deliberate — the
+  // run's work is already on disk. Swallowing the trim meant the file could grow
+  // past MAX_LINES forever with nothing to notice it by, and the cap is the one
+  // thing this module promises.
+  const dir = tmpDir(t);
+  const file = join(dir, "run-stats.jsonl");
+  const many = Array.from({ length: 12 }, (_, i) => JSON.stringify({ at: new Date().toISOString(), n: i })).join("\n") + "\n";
+  writeFileSync(file, many);
+  const warns = [];
+  // writeTextAtomic writes "<file>.<pid>.tmp" then renames; a DIRECTORY at that
+  // path makes the trim (and only the trim) fail.
+  mkdirSync(`${file}.${process.pid}.tmp`);
+  appendRunStat(file, { considered: 1 }, new Date(), { maxLines: 5, warn: (s) => warns.push(s) });
+  assert.equal(warns.length, 1, "the trim failure is reported exactly once");
+  assert.match(warns[0], /could not trim/);
+  assert.ok(readFileSync(file, "utf8").split("\n").filter(Boolean).length > 5, "the append still landed");
 });

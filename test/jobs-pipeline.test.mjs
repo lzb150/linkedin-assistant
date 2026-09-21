@@ -6,7 +6,7 @@
 // "LLM silently off" and "LLM timeout" regressions both lived here for weeks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { makeProject, runScript, waitFor, pkg, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
 
@@ -291,4 +291,80 @@ test("jobs.mjs: a typo'd numeric knob is reported and replaced by its default, n
   assert.match(out, /⚠ jobs.config.json: llm.minScore is "abc", not a number — using 0/);
   assert.match(out, /⚠ jobs.config.json: llm.maxPerRun is true, not a number — using 15/);
   assert.match(out, /Considered 3 new, wrote \d+ application package/, "the run completes");
+});
+
+test("jobs.mjs: exits 1 only when every source it tried failed — a quiet run stays 0", async (t) => {
+  // launchd must see a failed run as failed (the convention djinni-check.mjs
+  // already follows), but the definition has to be narrow: the common case at
+  // night is a perfectly healthy run that simply finds nothing new, and marking
+  // that red would train the owner to ignore the signal.
+
+  // 1) Sources fine, nothing new to write → healthy, exit 0.
+  const quiet = setupProject(t, await serveFeed(t, () => rss([])));
+  const out = await runScript(quiet, "jobs.mjs");          // resolves ⇒ exit 0
+  assert.match(out, /Total jobs gathered: 0/);
+  assert.doesNotMatch(out, /All \d+ source\(s\) failed/);
+
+  // 2) A source that really throws (browser launch) and is the only one enabled
+  //    → the run accomplished nothing, exit 1.
+  const broken = makeProject(t, {
+    scripts: ["jobs.mjs", "dashboard.mjs"],
+    files: {
+      "skills.json": SKILLS_FIXTURE,
+      "resume.txt": "Eugene, Senior SDET. Playwright, TypeScript.",
+      "jobs.config.json": JSON.stringify({
+        minScore: 25, requireRole: true, excludeTitle: [], excludeLocation: [],
+        llm: { enabled: false },
+        dou: { enabled: false }, djinni: { enabled: false }, linkedin: { enabled: true, searches: [] },
+      }),
+    },
+    playwright: 'export const chromium = { launchPersistentContext: async () => { throw new Error("Executable doesn\'t exist at /x/chromium"); } };',
+  });
+  const err = await runScript(broken, "jobs.mjs").then(() => null, (e) => e);
+  assert.ok(err, "a run whose every source failed must exit non-zero");
+  assert.match(err.message, /jobs\.mjs exit 1/);
+  assert.match(err.message, /All 1 source\(s\) failed/);
+});
+
+test("jobs.mjs: a DOU feed outage does NOT fail the run (it is swallowed per feed by design)", async (t) => {
+  // Pinning a known limitation of the exit-status rule rather than claiming
+  // more than it does: fetchDou catches each feed's error so one dead feed
+  // cannot lose the others, which means even a total DOU outage reaches
+  // jobs.mjs as "found 0", never as a throw. Scraper-health alerting is what
+  // covers that case. Change this test deliberately if fetchDou ever rethrows
+  // when EVERY feed failed.
+  const p = setupProject(t, "http://127.0.0.1:1/rss");     // nothing listening
+  const out = await runScript(p, "jobs.mjs");              // resolves ⇒ exit 0
+  assert.match(out, /DOU feed error/);
+  assert.doesNotMatch(out, /All \d+ source\(s\) failed/);
+});
+
+test("jobs.mjs and dashboard.mjs create their output dirs owner-only", async (t) => {
+  // applications/ and drafts/ quote recruiter messages and job descriptions;
+  // they were 0755 with 0644 files. The mode applies at CREATION only, so an
+  // existing directory a user already has keeps whatever they set.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  rmSync(p.path("applications"), { recursive: true, force: true });   // let jobs.mjs create it
+  await runScript(p, "jobs.mjs");
+  assert.equal(statSync(p.path("applications")).mode & 0o777, 0o700, "applications/ is owner-only");
+  const md = readdirSync(p.path("applications")).find((f) => f.endsWith(".md"));
+  assert.ok(md, "a package was written");
+  assert.equal(statSync(p.path("applications", md)).mode & 0o777, 0o600, "packages are owner-only");
+  assert.equal(statSync(p.path("jobs-seen.json")).mode & 0o777, 0o600, "state written atomically is owner-only too");
+});
+
+test("the dashboard renders a whole cover letter even when the letter contains \"## Action\"", async (t) => {
+  // End to end over the delimiters: buildApplication writes them, dashboard.mjs
+  // prefers them. Packages written before they existed still render through the
+  // heading-scan fallback.
+  const p = setupProject(t, await serveFeed(t, () => FEED), {
+    claude: `#!/bin/sh
+cat > /dev/null
+echo '{"score": 90, "why": "good", "red_flags": [], "cover": "Dear team, I am great.\\n## Action\\nSECRET-TAIL"}'`,
+  });
+  await runScript(p, "jobs.mjs");
+  await runScript(p, "dashboard.mjs");
+  const html = p.read("applications", "index.html");
+  assert.match(html, /SECRET-TAIL/, "the tail after the fake heading still reaches the card");
+  assert.doesNotMatch(html, /<!--cover:(start|end)-->/, "the delimiters themselves are not rendered");
 });

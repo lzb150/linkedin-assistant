@@ -120,3 +120,32 @@ test("buildSkillsPrompt grounds the answer in the resume and caps how much it se
   assert.ok(prompt.length < 20_000, "a pasted book must not become the prompt");
   assert.match(buildSkillsPrompt("MY RESUME TEXT"), /MY RESUME TEXT/);
 });
+
+test("intIn rejects booleans, so \"maxSkills\": true cannot silently mean one skill", () => {
+  // Number(true) is 1, so this normalized to maxSkills 1: every vacancy scored
+  // on a single skill, fell under both thresholds, and the run wrote nothing
+  // with a clean log. lib/filters.mjs numberIn already refused booleans for the
+  // same reason; the two untrusted-config normalizers now agree.
+  assert.equal(normalizeProfile({ maxSkills: true }).maxSkills, 8, "true is not 1");
+  assert.equal(normalizeProfile({ maxSkills: false }).maxSkills, 8);
+  assert.equal(normalizeProfile({ maxSkills: null }).maxSkills, 8);
+  assert.equal(normalizeProfile({ maxSkills: [] }).maxSkills, 8);
+  // Real values, including the numeric strings the README invites, still work.
+  assert.equal(normalizeProfile({ maxSkills: 12 }).maxSkills, 12);
+  assert.equal(normalizeProfile({ maxSkills: "12" }).maxSkills, 12);
+});
+
+test("maybe stays strictly looser than relevant, including at the bottom of the range", () => {
+  // relevant:1 produced maybe:1 — the exact state the correction exists to rule
+  // out. scoreMessage tests `score >= relevant` first, so the "maybe" verdict
+  // became unreachable while the code claimed it had fixed the ordering.
+  const at = (relevant, maybe) => normalizeProfile({ thresholds: { relevant, maybe } }).thresholds;
+  assert.deepEqual(at(1, 5), { relevant: 2, maybe: 1 }, "relevant floors at 2 so the gates can differ");
+  assert.deepEqual(at(2, 9), { relevant: 2, maybe: 1 });
+  assert.deepEqual(at(8, 4), { relevant: 8, maybe: 4 }, "a sane pair is untouched");
+  assert.deepEqual(at(5, 5), { relevant: 5, maybe: 4 }, "equal still collapses to looser");
+  for (const [r, m] of [[1, 5], [2, 9], [5, 5], [8, 4], [100, 100]]) {
+    const th = at(r, m);
+    assert.ok(th.maybe < th.relevant, `maybe(${th.maybe}) must be < relevant(${th.relevant})`);
+  }
+});

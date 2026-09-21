@@ -215,3 +215,41 @@ test("oneLine strips bidi overrides, not just C0 control characters", () => {
   assert.equal(oneLine("QA\u200fDev"), "QA Dev");
   assert.equal(oneLine("Senior QA Engineer"), "Senior QA Engineer", "ordinary text is untouched");
 });
+
+test("sameSite refuses a scheme downgrade and non-http(s) schemes, not just a foreign host", () => {
+  // Pinning the hostname alone let a board (or anyone on-path) answer 301 with
+  // http://same.host/… and walk the rest of the chain in cleartext.
+  // lib/closed.mjs onBoardHost already checked the protocol; these now agree.
+  const hops = [];
+  const doFetch = async (u) => { hops.push(u); return { status: 200, headers: { get: () => null } }; };
+  const follow = (start, to) => fetchFollow(start, {}, {
+    doFetch: async (u) => (u === start
+      ? { status: 301, headers: { get: (h) => (h.toLowerCase() === "location" ? to : null) } }
+      : doFetch(u)),
+  });
+  return Promise.all([
+    assert.rejects(() => follow("https://djinni.co/jobs/1", "http://djinni.co/jobs/1"), /off the allowed host/, "https must not fall back to http"),
+    assert.rejects(() => follow("https://djinni.co/jobs/1", "file:///etc/passwd"), /off the allowed host/),
+    // An UPGRADE is fine, and a same-scheme hop is untouched.
+    follow("http://jobs.dou.ua/x", "https://jobs.dou.ua/y"),
+    follow("https://djinni.co/jobs/1", "https://djinni.co/jobs/2"),
+  ]).then(() => {
+    assert.deepEqual(hops, ["https://jobs.dou.ua/y", "https://djinni.co/jobs/2"]);
+  });
+});
+
+test("bodyText honours the charset from the BYTES when a response has no stream", async () => {
+  // The old branch did Buffer.from(await res.text(), "binary") — but text() has
+  // already decoded as UTF-8, so every replacement char it produced collapsed to
+  // 0x3F and "Привіт" came back as "эээээ". Bytes, or nothing.
+  const bytes = Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xb3, 0xf2]);   // "Привіт" in cp1251
+  const res = {
+    headers: { get: (h) => (h.toLowerCase() === "content-type" ? "text/html; charset=windows-1251" : null) },
+    arrayBuffer: async () => bytes,
+    text: async () => bytes.toString("utf8"),
+  };
+  assert.equal(await bodyText(res), "Привіт");
+  // A stub with no arrayBuffer() gets text() as-is rather than a corrupted re-decode.
+  const noBuf = { headers: { get: () => "text/html; charset=utf-8" }, text: async () => "plain" };
+  assert.equal(await bodyText(noBuf), "plain");
+});

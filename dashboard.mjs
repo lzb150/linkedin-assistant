@@ -14,7 +14,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const APPS = join(__dir, "applications");
 const OUT = join(APPS, "index.html");
 // Fresh clone has no applications/ yet; build an empty dashboard instead of crashing.
-mkdirSync(APPS, { recursive: true });
+mkdirSync(APPS, { recursive: true, mode: 0o700 });   // see jobs.mjs: owner-only at creation
 
 // The client script ships as two standalone files inlined at build time:
 // the unit-tested pure core (.cjs so node:test can require it) and the DOM
@@ -28,9 +28,13 @@ if (/<\/script/i.test(clientJs)) throw new Error("dashboard client JS must not c
 function parse(md) {
   const fm = parseFrontmatter(md);
   if (!fm) return null;
-  // cover note = text between "## Cover note" and "## Action"
+  // Cover note. Prefer the explicit delimiters buildApplication writes: the
+  // letter is model output, and one that contained its own "## Action" used to
+  // truncate the card while the file kept the full text. The heading scan stays
+  // as the fallback so packages written before the delimiters still render.
   // Anchored to a line start: a job TITLE of "## Cover note" sits in the H1 ("# ## Cover note — …") and must not match.
-  const cover = (md.match(/^## Cover note[^\n]*\n([\s\S]*?)\n## Action/m) || [])[1] || "";
+  const delimited = md.match(/^<!--cover:start-->\n([\s\S]*?)\n<!--cover:end-->/m);
+  const cover = delimited ? delimited[1] : ((md.match(/^## Cover note[^\n]*\n([\s\S]*?)\n## Action/m) || [])[1] || "");
   return { fm, cover: cover.trim() };
 }
 

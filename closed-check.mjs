@@ -15,8 +15,25 @@ import { log } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive, onBoardHost } from "./lib/closed.mjs";
 import { bodyText, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
+import { acquireProfileLock } from "./lib/run-lock.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
+
+// Run-wide lock, for the same reason jobs.mjs takes one: the probe loop runs for
+// minutes (1 req/s over up to 150 urls), so a manual run easily overlaps the
+// scheduled one. Each held its own in-memory `checked` map and wrote it whole,
+// so the last writer won and the other run's fresh stamps vanished — both then
+// re-probed the same urls the next day. (job-state.json was already safe: those
+// writes re-read and replay. The stamp file was not.)
+// Second run exits quietly with 0, so launchd does not flag a benign overlap.
+try {
+  acquireProfileLock(join(dir, "closed-check"));
+} catch (e) {
+  if (!/profile busy/.test(e.message)) throw e;
+  log("another closed-check.mjs run is active — exiting");
+  process.exit(0);
+}
+
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
 const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }

@@ -68,8 +68,19 @@ try {
   console.error(e.message);
   process.exit(1);
 }
-const page = ctx.pages()[0] || (await ctx.newPage());
-await page.goto(site.loginUrl, { waitUntil: "domcontentloaded" });
+// Inside the guard for the same reason the launch above is: a DNS or network
+// failure here is ordinary, and unguarded it printed a raw unhandled-rejection
+// stack AND leaked the browser context — the one path between the two guarded
+// regions that could do that.
+let page;
+try {
+  page = ctx.pages()[0] || (await ctx.newPage());
+  await page.goto(site.loginUrl, { waitUntil: "domcontentloaded" });
+} catch (e) {
+  console.error(`Could not open ${site.loginUrl}: ${e?.message?.split("\n")[0] || e}`);
+  await ctx.close().catch(() => {});
+  process.exit(1);
+}
 
 console.log("\n========================================================");
 console.log(" A browser window has opened.");

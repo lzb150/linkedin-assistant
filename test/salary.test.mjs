@@ -59,3 +59,24 @@ test("a range needs a real upper bound, not any digit that follows the dash", ()
   assert.equal(extractSalary("$3000–5000"), "$3000–5000");
   assert.equal(extractSalary("$3k–5k"), "$3k–5k");
 });
+
+test("a Cyrillic keyword needs a real word boundary, and the від…до range keeps its floor", () => {
+  // JS \b is ASCII-only, so "до" had no left boundary and matched inside other
+  // words: "щодо" ("regarding") was read as the ceiling keyword and the result
+  // came back as "до $5000/month". The number really is in the text, so it is
+  // still reported — but as the plain value it is, not as an upper bound.
+  assert.equal(extractSalary("щодо $5000/month питань"), "$5000/month", "not a ceiling: \"щодо\" is not \"до\"");
+  assert.doesNotMatch(extractSalary("щодо $5000/month питань"), /до/);
+  assert.equal(extractSalary("Детальніше щодо 5000 USD умов"), "5000 USD");
+  // ...but the keyword itself still works where it really is one.
+  assert.equal(extractSalary("Зарплата до $5 000"), "до $5 000");
+  assert.equal(extractSalary("up to $4,000"), "up to $4,000");
+  assert.equal(extractSalary("не більше $4k"), "не більше $4k");
+
+  // The usual UA range has no dash, so RANGE never saw it and CEILING reported
+  // the ceiling alone — the floor was silently dropped.
+  assert.equal(extractSalary("від $3000 до $5000"), "від $3000 до $5000");
+  assert.equal(extractSalary("Вилка від 3000 до 5000 USD"), "від 3000 до 5000 USD");
+  // A dashed range still wins on the forms it already handled.
+  assert.equal(extractSalary("$3,000–$5,000"), "$3,000–$5,000");
+});

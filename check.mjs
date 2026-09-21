@@ -25,7 +25,7 @@ import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
-mkdirSync(DRAFTS, { recursive: true }); // fresh clone has no drafts/ yet
+mkdirSync(DRAFTS, { recursive: true, mode: 0o700 }); // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 // Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`

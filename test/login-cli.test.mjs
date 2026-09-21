@@ -39,3 +39,27 @@ test("login.mjs: the abort is an exit 1, and no unhandled rejection is printed",
   assert.match(err.message, /login\.mjs exit 1/);
   assert.doesNotMatch(err.message, /UnhandledPromiseRejection|ERR_UNHANDLED_REJECTION/);
 });
+
+// The initial goto sat between the guarded launch and the guarded poll loop —
+// the one path in the script that could print a raw unhandled-rejection stack,
+// and it leaked the browser context on the way out.
+const gotoFails = `
+export const chromium = {
+  launchPersistentContext: async () => ({
+    pages: () => [{ goto: async () => { throw new Error("getaddrinfo ENOTFOUND www.linkedin.com"); } }],
+    newPage: async () => ({ goto: async () => { throw new Error("getaddrinfo ENOTFOUND www.linkedin.com"); } }),
+    close: async () => { console.log("CTX-CLOSED"); },
+  }),
+};
+`;
+
+test("login.mjs: a network failure opening the login page is a clean message, not a rejection stack", async (t) => {
+  const p = makeProject(t, { scripts: ["login.mjs"], bins: quiet, playwright: gotoFails });
+  const err = await spawnScript(p, "login.mjs").done.then(() => null, (e) => e);
+  assert.ok(err, "a failed login exits non-zero");
+  assert.match(err.message, /login\.mjs exit 1/);
+  assert.match(err.message, /Could not open https:\/\/www\.linkedin\.com/);
+  assert.match(err.message, /ENOTFOUND/, "the underlying cause is named");
+  assert.match(err.message, /CTX-CLOSED/, "the browser context is closed, not leaked");
+  assert.doesNotMatch(err.message, /UnhandledPromiseRejection|ERR_UNHANDLED_REJECTION/);
+});
