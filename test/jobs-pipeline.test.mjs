@@ -192,13 +192,16 @@ test("jobs.mjs: a typo'd numeric knob is reported and replaced by its default, n
   // `score < "abc"` is false for every score, so a misspelt minScore used to
   // pass everything through that gate with a clean log. The run still ends the
   // same way as with the shipped config, and the owner is told why.
-  const p = setupProject(t, await serveFeed(t, () => FEED), { llm: { minScore: "abc" } });
+  const p = setupProject(t, await serveFeed(t, () => FEED), { llm: { minScore: "abc", maxPerRun: true } });
   const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
   cfg.minScore = "";
+  cfg.dou.minScore = "high";
   writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
 
   const out = await runJobs(p);
   assert.match(out, /⚠ jobs.config.json: minScore is "", not a number — using 25/);
+  assert.match(out, /⚠ jobs.config.json: dou.minScore is "high", not a number — using 25/, "a per-source override falls back to the global gate, and says so");
   assert.match(out, /⚠ jobs.config.json: llm.minScore is "abc", not a number — using 0/);
+  assert.match(out, /⚠ jobs.config.json: llm.maxPerRun is true, not a number — using 15/);
   assert.match(out, /Considered 3 new, wrote \d+ application package/, "the run completes");
 });

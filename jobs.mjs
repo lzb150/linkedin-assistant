@@ -19,7 +19,7 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers } f
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList, numberIn } from "./lib/filters.mjs";
+import { filterByLocation, candidateCountryList, excludeList, knob as configKnob } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
@@ -64,15 +64,16 @@ const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__d
 // leave the filter rejecting everything while the prompt still said Ukraine).
 const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
 const LLM = config.llm || {};
-// A numeric knob that is not a number used to switch its gate off silently
-// (`score < "abc"` is false for every score). Fall back to the default and
-// say so once, in the log the owner already reads.
-const knob = (name, v, fallback, range) => {
-  if (v != null && Number.isNaN(numberIn(v, NaN, range))) log(`⚠ jobs.config.json: ${name} is ${JSON.stringify(v)}, not a number — using ${fallback}`);
-  return numberIn(v, fallback, range);
-};
+// Every numeric knob goes through here: a value that is not a number used to
+// switch its gate off silently (`score < "abc"` is false for every score).
+// It falls back to the default and says so once, in this run's log.
+const knob = (name, v, fallback, range) => configKnob(name, v, fallback, range, log);
 const MIN_SCORE = knob("minScore", config.minScore, 25);
+// A source may set its own minScore — it overrides the global.
+const SOURCE_MIN_SCORE = Object.fromEntries(["dou", "djinni", "linkedin"].map((s) => [s, knob(`${s}.minScore`, config[s]?.minScore, MIN_SCORE)]));
 const LLM_MIN_SCORE = knob("llm.minScore", LLM.minScore, 0, [0, 100]);   // 0 = advisory-only, as when unset
+const LLM_MAX_PER_RUN = knob("llm.maxPerRun", LLM.maxPerRun, 15, [1, Infinity]);   // 0 must not mean "defer everything forever"
+const LLM_CONCURRENCY = knob("llm.concurrency", LLM.concurrency, 3, [1, Infinity]);   // 0 must not mean zero workers (every verdict empty, gate bypassed)
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
@@ -245,8 +246,7 @@ for (const job of jobs) {
   }
   const scored = scoreMessage(job.text);
   // Cold applications: strict gate — high score AND an automation/SDET role match.
-  // A source may set its own minScore — it overrides the global.
-  const minScore = numberIn(config[job.source]?.minScore, MIN_SCORE);
+  const minScore = SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE;
   const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
   if (scored.score < minScore || !needRole) {
     // A card whose description failed to load (LinkedIn panel timeout) scores
@@ -269,7 +269,7 @@ for (const job of jobs) {
 matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 const label = (job) => `${job.title} @ ${job.company}`;
-const toScore = llmOn ? matches.slice(0, Math.max(1, Number(LLM.maxPerRun) || 15)) : matches;   // "0"/"abc" must not mean "defer everything forever"
+const toScore = llmOn ? matches.slice(0, LLM_MAX_PER_RUN) : matches;
 for (const { job, scored } of matches.slice(toScore.length)) {
   log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
 }
@@ -277,13 +277,12 @@ for (const { job, scored } of matches.slice(toScore.length)) {
 // sequence used to take 14 min) while the loop below consumes verdicts in score
 // order and writes each package as soon as its verdict is in — so a crash or a
 // sleeping Mac mid-scoring keeps every package already paid for, exactly like
-// the old sequential loop. A bad `concurrency` (0, "abc") must not mean zero
-// workers, which would leave every verdict empty and bypass the LLM gate.
+// the old sequential loop.
 const verdict = new Map();   // m → Promise<llm result | null>
 let scoring = Promise.resolve();
 if (llmOn) {
   const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
-  scoring = pool(toScore, Math.max(1, Number(LLM.concurrency) || 3), async (m) => {
+  scoring = pool(toScore, LLM_CONCURRENCY, async (m) => {
     // Every promise must settle. A throw in here used to leave `await
     // verdict.get(m)` pending forever — the run deadlocked mid-scoring with an
     // unhandled rejection on `scoring` — so a failure resolves null, which the
