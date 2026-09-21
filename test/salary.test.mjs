@@ -92,10 +92,9 @@ test("the від…до range needs a money marker, so years of experience are n
   assert.equal(extractSalary("Працюємо від 10 до 19 години"), null);
   assert.equal(extractSalary("команда від 100 до 200 людей"), null, "3+ digits alone are not money without a currency");
   // The same rule RANGE applies to its right-hand side: a currency symbol, or
-  // 3+ digits / a k suffix with a currency word.
-  assert.equal(extractSalary("від $3000 до $5000"), "від $3000 до $5000");
+  // 3+ digits / a k suffix with a currency word. (The plain "від $3000 до $5000"
+  // and "від 3000 до 5000 USD" forms are pinned by the test above.)
   assert.equal(extractSalary("від $3000 до $5000/month"), "від $3000 до $5000/month");
-  assert.equal(extractSalary("Вилка від 3000 до 5000 USD"), "від 3000 до 5000 USD");
   assert.equal(extractSalary("від 3000 USD до 5000 USD"), "від 3000 USD до 5000 USD");
   assert.equal(extractSalary("від $3k до $5k"), "від $3k до $5k");
 });
