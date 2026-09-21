@@ -80,3 +80,22 @@ test("a Cyrillic keyword needs a real word boundary, and the від…до range
   // A dashed range still wins on the forms it already handled.
   assert.equal(extractSalary("$3,000–$5,000"), "$3,000–$5,000");
 });
+
+test("the від…до range needs a money marker, so years of experience are not a salary", () => {
+  // "від X до Y" is also how postings phrase experience ("від 3 до 5 років"),
+  // team size and working hours. Bare small integers on both sides matched, and
+  // because UA_RANGE runs before CEILING/SINGLE it shadowed the real salary in
+  // the same posting: the card said "від 3 до 5" where the text said "до $5000".
+  assert.equal(extractSalary("Досвід роботи від 3 до 5 років. Зарплата до $5000"), "до $5000");
+  assert.equal(extractSalary("від 3 до 5 років досвіду. Оплата 4000 USD"), "4000 USD");
+  assert.equal(extractSalary("від 2 до 4 років досвіду з Playwright"), null);
+  assert.equal(extractSalary("Працюємо від 10 до 19 години"), null);
+  assert.equal(extractSalary("команда від 100 до 200 людей"), null, "3+ digits alone are not money without a currency");
+  // The same rule RANGE applies to its right-hand side: a currency symbol, or
+  // 3+ digits / a k suffix with a currency word.
+  assert.equal(extractSalary("від $3000 до $5000"), "від $3000 до $5000");
+  assert.equal(extractSalary("від $3000 до $5000/month"), "від $3000 до $5000/month");
+  assert.equal(extractSalary("Вилка від 3000 до 5000 USD"), "від 3000 до 5000 USD");
+  assert.equal(extractSalary("від 3000 USD до 5000 USD"), "від 3000 USD до 5000 USD");
+  assert.equal(extractSalary("від $3k до $5k"), "від $3k до $5k");
+});

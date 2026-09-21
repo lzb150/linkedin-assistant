@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readdirSync, readFileSync, chmodSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "../lib/json-file.mjs";
@@ -39,4 +39,19 @@ test("writeTextAtomic writes a payload larger than one pipe buffer in full", (t)
   const big = "x".repeat(8 * 1024 * 1024);
   writeTextAtomic(join(dir, "big.txt"), big);
   assert.equal(readFileSync(join(dir, "big.txt"), "utf8").length, big.length);
+});
+
+// The 0600 is documented as applying to REWRITES too, not only to files this
+// call creates: rename(2) swaps in the tmp inode, so the previous mode is gone.
+// Pinned so the comment and the behaviour cannot drift apart again.
+test("writeTextAtomic re-creates an existing file as 0600, whatever mode it had", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "rj-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "state.json");
+  writeFileSync(file, "{}");
+  chmodSync(file, 0o644);
+  assert.equal(statSync(file).mode & 0o777, 0o644, "precondition: the file starts out group/world-readable");
+  writeTextAtomic(file, '{"a":1}');
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(readFileSync(file, "utf8"), '{"a":1}');
 });

@@ -59,10 +59,11 @@ job-state.json
 job-state.*.bak
 closed-check-state.json
 
-# Browser-profile / run locks (lib/browser.mjs acquireProfileLock: `<name>.lock/` dirs)
+# Browser-profile / run locks (lib/run-lock.mjs acquireProfileLock: `<name>.lock/` dirs)
 .browser-profile.lock/
 .djinni-profile.lock/
 jobs-run.lock/
+closed-check.lock/
 
 # Atomic-write temp files and quarantined corrupt state files
 *.tmp

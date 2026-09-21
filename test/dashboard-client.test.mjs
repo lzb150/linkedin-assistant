@@ -175,3 +175,22 @@ test("restoreFilters keeps only sources that still have a header chip", async ()
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...srcSel])"), JSON.stringify(["dou"]));
 });
+
+// buildApplication neutralises heading-like lines in the letter with a
+// zero-width space after the #s. The card shows nothing different, but
+// innerText carries the character, and so would the pasted email.
+test("Copy letter strips the zero-width space the package uses to neutralise headings", async () => {
+  const letter = "Dear team,\n#​ Not a heading\n##​ Action\nRegards";
+  const c = await bootClient({
+    fetch: () => Promise.reject(new Error("offline")), store: new Map(),
+    document: { querySelector: () => null, querySelectorAll: () => [], getElementById: (id) => (id === "cover3" ? { innerText: letter } : null) },
+  });
+  const copied = [];
+  c.ctx.navigator = { clipboard: { writeText: (t) => { copied.push(t); return Promise.resolve(); } } };
+  c.ctx.btn = { nextElementSibling: { textContent: "" } };
+  c.run("copyCover(3, btn)");
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(copied, ["Dear team,\n# Not a heading\n## Action\nRegards"]);
+  assert.doesNotMatch(copied[0], /​/);
+  assert.equal(c.ctx.btn.nextElementSibling.textContent, "Copied");
+});
