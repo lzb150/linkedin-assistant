@@ -97,3 +97,26 @@ test("splitCards and parseCard accept single-quoted attributes", () => {
   assert.equal(job.title, "QA Automation Engineer");
   assert.equal(job.company, "Flamingo");
 });
+
+test("the title scan is bounded by the TAG, not by a character budget or the distance to a match", () => {
+  // The old single regex was `<h2[^>]{0,2048}class=…[^>]{0,2048}>([\s\S]{0,4096}?)</h2>`:
+  // at EVERY "<h2" it walked up to 2048 chars looking for class=, which cost
+  // ~1.3 s per MB on a card that never matches — 6.4 s of blocked event loop at
+  // the 5 MB body cap. Those budgets were also silent correctness limits.
+  const card = (h2) => `<a href="/jobs/1">x</a>${h2}`;
+
+  // 1) Attributes further from "<h2" than the old 2048-char budget allowed.
+  const padded = `<h2 ${"data-x='y' ".repeat(300)}class="job-item__position">Senior SDET</h2>`;
+  assert.equal(parseCard(card(padded))?.title, "Senior SDET", "a long attribute list no longer hides the class");
+
+  // 2) Inner text longer than the old 4096-char capture budget.
+  const long = "S".repeat(6000);
+  assert.equal(parseCard(card(`<h2 class="job-item__position">${long}</h2>`))?.title, long);
+
+  // 3) Tags that do NOT match are skipped without being rescanned, so a flood of
+  //    them cannot dominate: linear in the number of tags.
+  assertLinear("djinni title scan", (n) => parseCard(card(`${"<h2 ".repeat(n)}<h2 class="job-item__position">T</h2>`)), 20_000);
+
+  // 4) An unterminated tag ends the scan instead of looping.
+  assert.equal(parseCard(card("<h2 class=")), null);
+});

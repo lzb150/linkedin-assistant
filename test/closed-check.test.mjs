@@ -147,3 +147,27 @@ test("closed-check: an unreadable closed-check-state.json is reported and left u
   // The run still does its real job — closures are independent of the stamps.
   assert.equal(p.json("job-state.json")[U].status, "closed", "closures are still saved");
 });
+
+test("closed-check: a second overlapping run exits quietly instead of clobbering the stamp file", async (t) => {
+  // The probe loop runs for minutes (1 req/s over up to 150 urls), so a manual
+  // run easily overlaps the scheduled one. Each held its own in-memory `checked`
+  // map and wrote it whole, so the last writer won and the other run's fresh
+  // stamps vanished — both then re-probed the same urls the next day. jobs.mjs
+  // has taken a run lock for this reason all along; this one had none.
+  const U = `${await server404(t)}/vacancies/1/`;
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "a.md": pkg({ url: U }) },
+    state: { _meta: {}, [U]: { status: "new" } },
+    bins: quiet,
+  });
+  // A lock already held by a LIVE process (this test run) — the shape a
+  // concurrent run leaves behind.
+  mkdirSync(p.path("closed-check.lock"), { recursive: true });
+  writeFileSync(p.path("closed-check.lock", "pid"), String(process.pid));
+
+  const out = await runScript(p, "closed-check.mjs", LOCAL);   // resolves ⇒ exit 0
+  assert.match(out, /another closed-check\.mjs run is active — exiting/);
+  assert.doesNotMatch(out, /closed-check: probing/, "it stopped before touching anything");
+  assert.equal(p.json("job-state.json")[U].status, "new", "the other run's state is untouched");
+});

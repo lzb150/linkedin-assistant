@@ -14,7 +14,7 @@ export RESUME_PATH="$HOME/Downloads/your-resume.docx"   # attach hint in drafts 
 export CANDIDATE_NAME="Your Name"                       # signature in drafts and cover notes
 
 cd "$(dirname "$0")"
-mkdir -p logs   # fresh clones lack logs/; set -e would kill the run on the redirect
+mkdir -p -m 700 logs   # fresh clones lack logs/; set -e would kill the run on the redirect. 700: logs quote job/recruiter text (mode applies only when this call creates it)
 find "$PWD/logs" -name '*.log' ! -name 'state-server.log' ! -name 'jobs-badge.*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (launchd holds the server's and the badge daemon's logs open)
 # The two logs the rotation above must skip are the two launchd holds open, and
 # nothing else bounded them: state-server exits on EADDRINUSE and KeepAlive

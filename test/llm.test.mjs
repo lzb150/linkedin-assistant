@@ -266,3 +266,21 @@ test("killLiveChildren SIGKILLs each tracked process group and forgets it", () =
   assert.deepEqual(seen, [-1, -2, -3]);
   assert.equal(boom.size, 0);
 });
+
+test("a synchronous throw after the child spawned kills its process group instead of orphaning it", () => {
+  // finish() clears the timer, untracks the pid and deletes the temp cwd — but
+  // it does not kill. A throw between exec() returning and the end of the try
+  // therefore left a detached `claude` running out of a deleted directory, no
+  // longer in liveKids (so the exit/SIGINT reaper would not take it down) and
+  // with no timer left to stop it: exactly the orphan `detached` guards against.
+  const killed = [];
+  // exec returns a child whose stdin.end throws — the realistic shape of a
+  // synchronous failure after the process already exists.
+  const exec = () => ({ pid: 4242, stdin: { on() {}, end() { throw new Error("EPIPE"); } } });
+  return llmJSON("p", { exec, retryDelayMs: 0, kill: (pid, sig) => killed.push([pid, sig]) })
+    .then((out) => {
+      assert.equal(out, null, "the call still degrades to keyword-only rather than throwing");
+      assert.ok(killed.some(([pid, sig]) => pid === -4242 && sig === "SIGKILL"),
+        `the whole process group must be killed, got ${JSON.stringify(killed)}`);
+    });
+});

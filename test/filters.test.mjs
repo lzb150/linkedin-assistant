@@ -97,3 +97,28 @@ test("knob: logs once when a named knob is ignored, stays silent for a valid or 
   assert.equal(knob("llm.concurrency", undefined, 3, [1, Infinity], log), 3);
   assert.equal(lines.length, 2, "a valid or absent value is not worth a log line");
 });
+
+test("knob reports a value it had to CLAMP, not just one it could not read", () => {
+  // Clamping is right; doing it silently meant the config said one thing and the
+  // run did another (llm.minScore 500 → 100, concurrency 0 → 1) with a clean log.
+  const lines = [];
+  const log = (s) => lines.push(s);
+  assert.equal(knob("llm.minScore", 500, 0, [0, 100], log), 100);
+  assert.match(lines.at(-1), /llm\.minScore is 500, outside \[0, 100\] — using 100/);
+  assert.equal(knob("llm.concurrency", 0, 3, [1, Infinity], log), 1);
+  assert.match(lines.at(-1), /outside \[1, Infinity\] — using 1/);
+
+  // A value that needs no correction stays quiet, and a non-number still reports
+  // as "not a number" rather than as a clamp.
+  const quiet = [];
+  assert.equal(knob("minScore", 25, 25, [0, 100], (s) => quiet.push(s)), 25);
+  assert.equal(knob("minScore", "25", 25, [0, 100], (s) => quiet.push(s)), 25, "a numeric string is not a clamp");
+  assert.deepEqual(quiet, []);
+  const bad = [];
+  assert.equal(knob("minScore", "abc", 25, [0, 100], (s) => bad.push(s)), 25);
+  assert.match(bad[0], /not a number/);
+  // An unset knob says nothing at all.
+  const none = [];
+  knob("minScore", undefined, 25, [0, 100], (s) => none.push(s));
+  assert.deepEqual(none, []);
+});

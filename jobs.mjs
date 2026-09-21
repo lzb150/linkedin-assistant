@@ -50,7 +50,7 @@ try {
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 // Fresh clone has no applications/ yet; readPackages/writeTextAtomic below need it.
-mkdirSync(APPS, { recursive: true });
+mkdirSync(APPS, { recursive: true, mode: 0o700 });   // packages quote recruiter/job text — owner-only (mode applies at creation; existing dirs keep theirs)
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
 const DOU_ONLY = process.env.DOU_ONLY === "1";
@@ -113,6 +113,13 @@ try {
 }
 
 let jobs = [];
+// Exit status. Deliberately narrow: a run that gathered nothing because every
+// source it TRIED threw is a failed run and launchd should see it, but a run
+// where the sources worked and simply found no new vacancies is a healthy quiet
+// run — the common case at night — and must stay exit 0. One source down out of
+// several is also 0: source-health alerting already covers that, and flagging it
+// here would make a single flaky board mark every run red.
+let sourcesTried = 0, sourcesFailed = 0;
 const RUN_STATS = join(__dir, "run-stats.jsonl");   // one line per run; the weekly digest reads this instead of parsing its own log
 const summary = newSummary();
 
@@ -152,11 +159,13 @@ for (const s of BROWSERLESS_SOURCES) {
   // monitoring could not flag it either.
   if (!s.enabled) { log(`${s.name}: disabled in config — skipped`); continue; }
   log(`Gathering ${s.name}...`);
+  sourcesTried++;
   try {
     const found = await s.fetch(config[s.name], log);
     recordFound(summary, s.name, found.length);
     jobs.push(...found);
   } catch (e) {
+    sourcesFailed++;
     log(`${s.name} error:`, e.message);
     recordFound(summary, s.name, 0); // a hard failure must count as 0 so health monitoring alerts
   }
@@ -184,6 +193,7 @@ else if (!config.linkedin?.enabled) log("linkedin: disabled in config — skippe
 if (!DOU_ONLY && config.linkedin?.enabled) {
   let ctx;
   try {
+    sourcesTried++;
     ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
     const page = ctx.pages()[0] || (await ctx.newPage());
     // Own try/catch so a scrape failure is logged and counted as 0 for health monitoring.
@@ -191,13 +201,15 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
       const found = await fetchLinkedInChecked(page, config.linkedin);
       recordFound(summary, "linkedin", found.length);
       jobs.push(...found);
-    } catch (e) { log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
+    } catch (e) { sourcesFailed++; log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
   } catch (e) {
     log("Browser sources error:", e.message);
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
     // no 0-count either — leaving the source out of the summary keeps a
     // skipped run from looking like a scraper outage to health monitoring.
-    if (!/profile busy/.test(e.message)) {
+    if (/profile busy/.test(e.message)) sourcesTried--;   // not an outage: the source was never tried
+    else {
+      sourcesFailed++;
       if (!ctx) notify(`Browser launch failed: ${e.message}`);
       // Launch/lock failure happens before the inner catch: record 0 so health monitoring sees the outage.
       if (!summary.sources.linkedin) recordFound(summary, "linkedin", 0);
@@ -384,15 +396,19 @@ for (const m of toScore) {
     seen.add(id);   // persisted with the next written package, or at the end of the loop
     continue;
   }
-  const { filename, markdown } = buildApplication(job, scored, llm);
   // Skip the one package the way every other per-item failure in this loop
   // does. Unwrapped, a single ENOSPC/EACCES threw mid-loop and took the rest of
   // the run with it: the remaining matches, run stats, source health, the
   // dashboard refresh and the end-of-run banner.
+  // buildApplication is INSIDE the try, not one line above it: composing the
+  // package is per-item work too, and a throw there (a scraped field of an
+  // unexpected shape) had the whole blast radius this try exists to prevent.
+  let filename, markdown;
   try {
+    ({ filename, markdown } = buildApplication(job, scored, llm));
     writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
   } catch (e) {
-    log(`  · package write failed (${filename}): ${e.message}`);
+    log(`  · package build/write failed (${filename || lbl}): ${e.message}`);
     continue;
   }
   log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${lbl}`);
@@ -448,4 +464,9 @@ try {
 // One banner per run: breakage alerts + the new packages. Silent when neither.
 const bannerText = formatRunBanner(writtenList, alerts);
 if (bannerText) notify(bannerText);
-process.exit(0);
+// launchd must see a failed run as failed (the convention djinni-check.mjs:144
+// already follows). "Failed" is only "every source we tried threw" — a quiet
+// run that gathered nothing because there was nothing new stays 0.
+const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
+if (runFailed) log(`All ${sourcesTried} source(s) failed — exiting 1 so the scheduler sees it`);
+process.exit(runFailed ? 1 : 0);

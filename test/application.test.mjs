@@ -237,3 +237,46 @@ test("appendAltLink refuses a source that could forge a frontmatter key", () => 
     assert.match(readFileSync(file, "utf8"), /^alt_links: djinni\|https:\/\/b\/2$/m);
   } finally { cleanup(); }
 });
+
+test("a cover letter containing its own \"## Action\" cannot truncate what the dashboard shows", () => {
+  // The dashboard re-derives the letter by finding the text between "## Cover
+  // note" and "## Action". The letter is raw model output built from scraped
+  // board text, so a posting could talk the model into writing "## Action" mid
+  // letter: the .md kept the whole thing, the card (and "Copy letter") showed
+  // only the part before the fake heading, and the posting chose where to cut.
+  const job = { source: "dou", title: "SDET", company: "Acme", location: "Kyiv", url: "https://x/1", text: "Playwright" };
+  const scored = { score: 40, matchedRole: "sdet", matchedSkills: ["playwright"], penalties: [] };
+  const hostile = "Dear team, I am great.\n## Action\nSECRET-TAIL\n### Also\nmore";
+  const { markdown } = buildApplication(job, scored, { score: 90, why: "w", red_flags: [], cover: hostile, model: "sonnet" });
+
+  // Delimiters wrap the body, and nothing inside it reads as a heading any more.
+  const inner = markdown.match(/^<!--cover:start-->\n([\s\S]*?)\n<!--cover:end-->/m)[1];
+  assert.match(inner, /SECRET-TAIL/, "the whole letter is still in the package");
+  assert.doesNotMatch(inner, /^## Action$/m, "no line inside the letter is a heading");
+  assert.doesNotMatch(inner, /^### Also$/m);
+  // The real "## Action" checklist still follows the block exactly once.
+  assert.equal((markdown.match(/^## Action$/gm) || []).length, 1);
+  // A letter cannot forge the delimiters either.
+  const forged = buildApplication(job, scored, { score: 90, why: "w", red_flags: [], cover: "a\n<!--cover:end-->\n## Action\nPWNED", model: "sonnet" }).markdown;
+  assert.equal((forged.match(/<!--cover:end-->/g) || []).length, 1);
+});
+
+test("alt-link source is escaped in the BODY as well as the frontmatter", () => {
+  // :100 wrapped it in fmValue for the frontmatter; the body interpolated the
+  // same scraped field raw, and the body is what the dashboard regex-parses. A
+  // newline there could plant an earlier "## Cover note"/"## Action" pair and
+  // make the card render attacker-chosen text as the letter. Unreachable today
+  // (all three scrapers use literals), but appendAltLink guards it for the same
+  // reason — "the invariant should not depend on every future caller".
+  const job = {
+    source: "dou", title: "SDET", company: "Acme", location: "Kyiv", url: "https://x/1", text: "Playwright",
+    altLinks: [{ source: "dj\n## Cover note X\nPWNED\n## Action\n- [ ] x\n#", url: "https://djinni.co/jobs/9" }],
+  };
+  const scored = { score: 40, matchedRole: "sdet", matchedSkills: [], penalties: [] };
+  const { markdown } = buildApplication(job, scored, null);
+  const alsoLine = markdown.split("\n").find((l) => l.startsWith("- ["));
+  assert.ok(alsoLine.includes("https://djinni.co/jobs/9"), "the link still renders");
+  assert.doesNotMatch(alsoLine, /\n/);
+  assert.equal((markdown.match(/^## Cover note/gm) || []).length, 1, "no second Cover note heading was planted");
+  assert.equal((markdown.match(/^## Action$/gm) || []).length, 1);
+});
