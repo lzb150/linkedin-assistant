@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -82,4 +82,18 @@ test("numberIn: a typo'd numeric knob falls back instead of switching a gate off
   assert.equal(numberIn("40", 25), 40, "a quoted number is still a number");
   assert.equal(numberIn(500, 0, [0, 100]), 100);
   assert.equal(numberIn(0, 15, [1, Infinity]), 1);
+});
+
+test("knob: logs once when a named knob is ignored, stays silent for a valid or missing one", () => {
+  const lines = [];
+  const log = (l) => lines.push(l);
+  assert.equal(knob("djinni.pages", "abc", 3, [1, Infinity], log), 3);
+  assert.equal(knob("llm.maxPerRun", true, 15, [1, Infinity], log), 15, "Number(true) || 15 used to give 1 — one job per run, silently");
+  assert.deepEqual(lines, [
+    '⚠ jobs.config.json: djinni.pages is "abc", not a number — using 3',
+    "⚠ jobs.config.json: llm.maxPerRun is true, not a number — using 15",
+  ]);
+  assert.equal(knob("llm.concurrency", "4", 3, [1, Infinity], log), 4);
+  assert.equal(knob("llm.concurrency", undefined, 3, [1, Infinity], log), 3);
+  assert.equal(lines.length, 2, "a valid or absent value is not worth a log line");
 });
