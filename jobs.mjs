@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { scoreMessage } from "./lib/relevance.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
-import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers } from "./lib/llm.mjs";
+import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sanitizeVacancyText } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
@@ -309,21 +309,29 @@ for (const m of toScore) {
       // `red_flags` went into the package verbatim, so a posting could steer
       // the model into writing an arbitrarily long line there (fmValue keeps it
       // to one line, but not to a sane length). Bound everything that crosses.
+      // Built as an explicit allow-list, NOT `{...res}`: the spread carried
+      // every other key of the model's JSON through verbatim, so a posting
+      // could have the model emit its own `suspect` ("verified clean") and
+      // forge the very field that exists to warn about it. These six are the
+      // only keys anything downstream reads.
       llm = {
-        ...res,
         score: Math.min(100, Math.max(0, Math.round(n))),
         why: String(res.why ?? "").slice(0, 300),
         red_flags: (Array.isArray(res.red_flags) ? res.red_flags : []).slice(0, 10).map((f) => String(f).slice(0, 200)),
+        cover: typeof res.cover === "string" ? res.cover : "",
         model: LLM.model || "sonnet",
       };
       // A posting that talks to the screener may well have talked it into this
       // score. Record that alongside the number instead of letting an inflated
-      // score look like an ordinary good match. Scanning job.text is enough:
-      // composeText builds it as "<title> at <company>. <location>. <desc>",
-      // so every field buildJobPrompt puts in the prompt is already in here.
+      // score look like an ordinary good match. Scan the SANITIZED text: it is
+      // what the model actually saw, and composeText builds job.text as
+      // "<title> at <company>. <location>. <desc>", so every field
+      // buildJobPrompt puts in the prompt is already in here. Scanning the raw
+      // field let a posting split a payload with "<vacancy>" tokens and slip
+      // past the markers while the model read the reassembled sentence.
       // (Reviewed 2026-09-17: passing the fields in separately as well only
       // double-counts the markers and inflates the suspect line.)
-      const marks = injectionMarkers(job.text);
+      const marks = injectionMarkers(sanitizeVacancyText(job.text));
       if (marks.length) { llm.suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`; log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`); }
     }
     else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
