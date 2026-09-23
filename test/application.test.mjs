@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildApplication, coverPhrase } from "../lib/application.mjs";
+import { profile as liveSkillsProfile } from "../lib/relevance.mjs";
 
 const job = {
   source: "dou",
@@ -75,7 +76,7 @@ test("the cover note routes through skills.json's profile block", () => {
   assert.equal(coverPhrase(profile, "uk"), "фраза");
   assert.notEqual(coverPhrase(profile, "en"), coverPhrase(undefined, "en"), "the block must win over the legacy default");
   const { markdown } = buildApplication(job, scored);
-  assert.ok(markdown.includes(`solid experience in ${coverPhrase(undefined, "en")},`), "en cover embeds the phrase coverPhrase returns");
+  assert.ok(markdown.includes(`solid experience in ${coverPhrase(liveSkillsProfile.profile, "en")},`), "en cover embeds the live skills.json profile phrase");
 });
 
 // --- appendAltLink (cross-run dedup) ---

@@ -84,7 +84,7 @@ export const chromium = {
 
 test("check.mjs: an unread thread is opened, scored, drafted, and the badge is written", async (t) => {
   const p = project(t, scanningPlaywright([
-    "Hi! We have a Senior QA Automation Engineer opening — Playwright, TypeScript, CI/CD. Interested in the vacancy?",
+    "Hi! We have a Senior Frontend Engineer opening — React, Next.js, TypeScript. Interested in the vacancy?",
   ]));
   const out = await spawnScript(p, "check.mjs").done;
 
@@ -116,7 +116,7 @@ test("check.mjs: a quoted weight in the hand-edited skills.json still scores as 
   // README says "edit freely". A weight typed as "5" used to concatenate into
   // the score ("6054"), which then passed every threshold as a string.
   const p = project(t, scanningPlaywright([
-    "Hi! We have a Senior QA Automation Engineer opening — Playwright, TypeScript, CI/CD. Interested in the vacancy?",
+    "Hi! We have a Senior Frontend Engineer opening — Playwright, TypeScript, CI/CD. Interested in the vacancy?",
   ]));
   const skills = JSON.parse(readFileSync(p.path("skills.json"), "utf8"));
   skills.skills.playwright = "5";
