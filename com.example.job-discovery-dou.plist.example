@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Board/RSS job discovery (DOU_ONLY=1 run.sh jobs.mjs), hourly at :15 — ToS-clean, safe to run often.
+  Board/RSS job discovery (DOU_ONLY=1 run.sh jobs.mjs), every 15 minutes — ToS-clean, safe to run often.
   Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
 -->
 <plist version="1.0">
@@ -17,7 +17,12 @@
   <key>EnvironmentVariables</key>
   <dict><key>DOU_ONLY</key><string>1</string></dict>
   <key>StartCalendarInterval</key>
-  <dict><key>Minute</key><integer>15</integer></dict>
+  <array>
+    <dict><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Minute</key><integer>45</integer></dict>
+  </array>
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-dou.out.log</string>
   <key>StandardErrorPath</key>
