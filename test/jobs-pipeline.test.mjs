@@ -159,6 +159,16 @@ test("jobs.mjs: a card without a description is retried, not buried as seen", as
   assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1);
 });
 
+test("jobs.mjs: DOU_ONLY does not flag linkedin as 'not run at all'", async (t) => {
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME])));
+  // A prior full run's linkedin history — DOU_ONLY never touches linkedin, so
+  // without the jobs.mjs filter this reads as "absent" (disabled/misspelt?).
+  writeFileSync(p.path("source-health.json"), JSON.stringify({ linkedin: [46, 46, 46, 46, 46, 46] }));
+  const out = await runJobs(p);
+  assert.doesNotMatch(out, /linkedin: not run at all/, "DOU_ONLY deliberately skips linkedin — not a breakage");
+  assert.deepEqual(p.json("source-health.json").linkedin, [46, 46, 46, 46, 46, 46], "linkedin history left untouched by a DOU_ONLY run");
+});
+
 test("jobs.mjs: the same vacancy from another board joins the existing package as an alt link", async (t) => {
   const existing = pkg({ source: "djinni", title: "Senior SDET (Playwright)", company: "Acme", url: "https://djinni.co/jobs/1" });
   const p = setupProject(t, await serveFeed(t, () => rss([ACME])), { packages: { "old.md": existing } });

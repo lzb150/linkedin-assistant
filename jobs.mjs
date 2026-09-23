@@ -448,7 +448,13 @@ log("\n" + formatTable(summary));
 // Scraper-health: alert if a source came in far below its recent norm, then
 // append this run's counts to the history. An LLM failing more than twice in
 // one run is a breakage too (a single flake is not).
-const degraded = detectDegradations(health, summary);
+// DOU_ONLY deliberately skips linkedin every run: without this filter its
+// history (from a full run) makes the "absent" rule below fire as a false
+// "disabled or misspelt?" alert on every single DOU_ONLY run.
+const healthForRun = DOU_ONLY
+  ? Object.fromEntries(Object.entries(health).filter(([source]) => source !== "linkedin"))
+  : health;
+const degraded = detectDegradations(healthForRun, summary);
 if (degraded.length) alerts.push(formatAlert(degraded));
 if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
 // Never write back a baseline we could not read: that is the silent reset.
