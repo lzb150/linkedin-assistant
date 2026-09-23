@@ -45,17 +45,17 @@ test("buildReport aggregates the last N days into text + a one-line notification
   assert.match(r.text, /1 packages written/, "counted from the runs, not from the packages still on disk");
   assert.match(r.text, /LLM dropped 1, failed 1/);
   assert.match(r.text, /Packages by source: dou 2 · djinni 1/);
-  assert.match(r.text, /2 scored \(haiku 1, sonnet 1\), 1 at ≥70/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
+  assert.match(r.text, /2 scored \(haiku 1, sonnet 1\) · top:/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
   assert.match(r.text, /top: 88 AQA @ Plexsupply \(djinni\)/);
   assert.match(r.text, /dou 45 · linkedin 11/, "median per run from source-health");
-  assert.equal(r.notification, "1 packages (LLM ≥70: 1) · 7 new considered");
+  assert.equal(r.notification, "1 packages (LLM dropped 1) · 7 new considered");
 });
 
 test("buildReport survives empty inputs", () => {
   const r = buildReport({ now, days: 7, packages: [], logText: "", health: {} });
   assert.match(r.text, /0 runs · 0 new vacancies considered/);
   assert.match(r.text, /top: —/);
-  assert.equal(r.notification, "0 packages (LLM ≥70: 0) · 0 new considered");
+  assert.equal(r.notification, "0 packages (LLM dropped 0) · 0 new considered");
 });
 
 
