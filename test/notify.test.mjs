@@ -8,7 +8,7 @@ import { notify } from "../lib/notify.mjs";
 test("notify: linux uses notify-send and never throws", () => {
   let seen;
   notify("t", "m", { platform: "linux", exec: (cmd, args, cb) => { seen = { cmd, args }; cb(new Error("boom")); } });
-  assert.deepEqual(seen, { cmd: "notify-send", args: ["t", "m"] });
+  assert.deepEqual(seen, { cmd: "notify-send", args: ["--", "t", "m"] }, "-- so a message starting with '-' is not parsed as an option");
   notify("t", "m", { platform: "linux", exec: () => { throw new Error("boom"); } });
 });
 
@@ -34,5 +34,6 @@ test("notify: darwin with the app missing falls back to osascript with the Apple
     exec: (cmd, args, cb) => { seen = { cmd, args }; cb(); },
   });
   assert.equal(seen.cmd, "osascript");
-  assert.match(seen.args[1], /display notification "3 new" with title "Job assistant"/);
+  assert.deepEqual(seen.args.slice(-2), ["3 new", "Job assistant"], "text travels as argv, never spliced into AppleScript source");
+  assert.match(seen.args.join("\n"), /display notification \(item 1 of argv\) with title \(item 2 of argv\)/);
 });

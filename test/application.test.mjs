@@ -24,6 +24,7 @@ test("with llm the frontmatter carries llm_score and a single-line llm_why", () 
   const llm = { score: 85, why: "Strong Playwright\nfit", red_flags: ["on-site only"], cover: "Dear team, custom letter." };
   const { markdown } = buildApplication(job, scored, llm);
   assert.match(markdown, /^llm_score: 85$/m);
+  assert.doesNotMatch(markdown, /^llm_model:/m, "no model field unless the caller supplied one");
   // newlines collapsed, red flags folded in — frontmatter values must stay one line
   assert.match(markdown, /^llm_why: Strong Playwright fit ⚠ on-site only$/m);
 });
@@ -64,12 +65,17 @@ test("coverPhrase resolves the profile with per-language legacy defaults", () =>
 });
 
 test("the cover note routes through skills.json's profile block", () => {
-  // Read the real file instead of duplicating the string — proves the
-  // template interpolation path, whatever the phrase currently is.
-  const { profile } = JSON.parse(readFileSync(new URL("../skills.json", import.meta.url), "utf8"));
-  assert.ok(profile && profile.en, "skills.json must carry a profile block after this task");
+  // This used to read the LIVE skills.json and fall back to "test automation" —
+  // which is also coverPhrase's hard-coded legacy default, so the assertion held
+  // even if buildApplication ignored skills.json entirely. coverPhrase is the
+  // seam buildApplication goes through; pin it against an explicit block, and
+  // check the template only embeds whatever it returns.
+  const profile = { en: "a phrase no default would produce", uk: "фраза" };
+  assert.equal(coverPhrase(profile, "en"), "a phrase no default would produce");
+  assert.equal(coverPhrase(profile, "uk"), "фраза");
+  assert.notEqual(coverPhrase(profile, "en"), coverPhrase(undefined, "en"), "the block must win over the legacy default");
   const { markdown } = buildApplication(job, scored);
-  assert.ok(markdown.includes(`solid experience in ${profile.en},`), "en cover must embed profile.en");
+  assert.ok(markdown.includes(`solid experience in ${coverPhrase(undefined, "en")},`), "en cover embeds the phrase coverPhrase returns");
 });
 
 // --- appendAltLink (cross-run dedup) ---
@@ -182,4 +188,95 @@ test("appendAltLink handles CRLF packages (parseFrontmatter indexes them, so app
   writeFileSync(f, "---\r\ntitle: T\r\ncompany: C\r\nurl: https://a/1\r\n---\r\n\r\nbody\r\n");
   assert.equal(appendAltLink(f, "dou", "https://b/2"), true);
   assert.match(readFileSync(f, "utf8"), /alt_links: dou\|https:\/\/b\/2/);
+});
+
+// The LLM cover is raw model output, steerable by board text. A non-string
+// (array of paragraphs, number) used to throw in buildApplication and take the
+// whole jobs.mjs run down — no seen save, no dashboard, no banners.
+test("a non-string LLM cover falls back to the template letter instead of throwing", () => {
+  for (const cover of [["para 1", "para 2"], 5, true, { text: "x" }]) {
+    const { markdown } = buildApplication(job, scored, { score: 90, why: "fit", red_flags: [], cover });
+    assert.match(markdown, /^llm_score: 90$/m);
+    assert.doesNotMatch(markdown, /para 1|\[object Object\]/);
+  }
+});
+
+// Which model produced the score matters when calibrating the gate: haiku
+// scored weak fits ~27 points above sonnet, so mixed-era packages must be
+// distinguishable in the weekly report.
+test("with llm.model the frontmatter records llm_model", () => {
+  const { markdown } = buildApplication(job, scored, { score: 71, why: "ok", red_flags: [], cover: "x", model: "sonnet" });
+  assert.match(markdown, /^llm_model: sonnet$/m);
+});
+
+test("the LLM cover is capped at 4000 chars — the only other bound on that field is the 1 MB stdout buffer", () => {
+  const llm = { score: 85, why: "fit", red_flags: [], cover: "x".repeat(10_000) };
+  const { markdown } = buildApplication(job, scored, llm);
+  assert.ok(markdown.length < 6000, `package is ${markdown.length} chars`);
+});
+
+test("a flagged posting carries llm_suspect into the package frontmatter", () => {
+  const { markdown } = buildApplication(job, scored, { score: 95, model: "sonnet", suspect: "injection (2 markers)" });
+  assert.match(markdown, /^llm_suspect: injection \(2 markers\)$/m);
+  const clean = buildApplication(job, scored, { score: 95, model: "sonnet" });
+  assert.doesNotMatch(clean.markdown, /llm_suspect/, "no key at all when the posting reads normally");
+});
+
+test("appendAltLink refuses a source that could forge a frontmatter key", () => {
+  // `url` was guarded from the start; `source` was interpolated raw. The only
+  // caller passes a literal today, but the function is exported and the
+  // invariant should not depend on every future caller remembering it.
+  const base = "---\nsource: dou\ntitle: SDET\nurl: https://a/1\n---\n# SDET\n";
+  const { file, cleanup } = tmpPackage(base);
+  try {
+    assert.equal(appendAltLink(file, "djinni\nresume: /etc/passwd", "https://b/2"), false, "newline in source");
+    assert.equal(appendAltLink(file, "dj|inni", "https://b/2"), false, "pipe in source");
+    assert.equal(appendAltLink(file, "", "https://b/2"), false, "empty source");
+    assert.equal(readFileSync(file, "utf8"), base, "nothing was written on any refusal");
+    assert.equal(appendAltLink(file, "djinni", "https://b/2"), true, "an ordinary source still works");
+    assert.match(readFileSync(file, "utf8"), /^alt_links: djinni\|https:\/\/b\/2$/m);
+  } finally { cleanup(); }
+});
+
+test("a cover letter containing its own \"## Action\" cannot truncate what the dashboard shows", () => {
+  // The dashboard re-derives the letter by finding the text between "## Cover
+  // note" and "## Action". The letter is raw model output built from scraped
+  // board text, so a posting could talk the model into writing "## Action" mid
+  // letter: the .md kept the whole thing, the card (and "Copy letter") showed
+  // only the part before the fake heading, and the posting chose where to cut.
+  const job = { source: "dou", title: "SDET", company: "Acme", location: "Kyiv", url: "https://x/1", text: "Playwright" };
+  const scored = { score: 40, matchedRole: "sdet", matchedSkills: ["playwright"], penalties: [] };
+  const hostile = "Dear team, I am great.\n## Action\nSECRET-TAIL\n### Also\nmore";
+  const { markdown } = buildApplication(job, scored, { score: 90, why: "w", red_flags: [], cover: hostile, model: "sonnet" });
+
+  // Delimiters wrap the body, and nothing inside it reads as a heading any more.
+  const inner = markdown.match(/^<!--cover:start-->\n([\s\S]*?)\n<!--cover:end-->/m)[1];
+  assert.match(inner, /SECRET-TAIL/, "the whole letter is still in the package");
+  assert.doesNotMatch(inner, /^## Action$/m, "no line inside the letter is a heading");
+  assert.doesNotMatch(inner, /^### Also$/m);
+  // The real "## Action" checklist still follows the block exactly once.
+  assert.equal((markdown.match(/^## Action$/gm) || []).length, 1);
+  // A letter cannot forge the delimiters either.
+  const forged = buildApplication(job, scored, { score: 90, why: "w", red_flags: [], cover: "a\n<!--cover:end-->\n## Action\nPWNED", model: "sonnet" }).markdown;
+  assert.equal((forged.match(/<!--cover:end-->/g) || []).length, 1);
+});
+
+test("alt-link source is escaped in the BODY as well as the frontmatter", () => {
+  // :100 wrapped it in fmValue for the frontmatter; the body interpolated the
+  // same scraped field raw, and the body is what the dashboard regex-parses. A
+  // newline there could plant an earlier "## Cover note"/"## Action" pair and
+  // make the card render attacker-chosen text as the letter. Unreachable today
+  // (all three scrapers use literals), but appendAltLink guards it for the same
+  // reason — "the invariant should not depend on every future caller".
+  const job = {
+    source: "dou", title: "SDET", company: "Acme", location: "Kyiv", url: "https://x/1", text: "Playwright",
+    altLinks: [{ source: "dj\n## Cover note X\nPWNED\n## Action\n- [ ] x\n#", url: "https://djinni.co/jobs/9" }],
+  };
+  const scored = { score: 40, matchedRole: "sdet", matchedSkills: [], penalties: [] };
+  const { markdown } = buildApplication(job, scored, null);
+  const alsoLine = markdown.split("\n").find((l) => l.startsWith("- ["));
+  assert.ok(alsoLine.includes("https://djinni.co/jobs/9"), "the link still renders");
+  assert.doesNotMatch(alsoLine, /\n/);
+  assert.equal((markdown.match(/^## Cover note/gm) || []).length, 1, "no second Cover note heading was planted");
+  assert.equal((markdown.match(/^## Action$/gm) || []).length, 1);
 });

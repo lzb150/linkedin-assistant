@@ -224,3 +224,14 @@ test("canonicalKey drops a #-prefixed req number like a bare one", () => {
   assert.equal(k("QA Engineer (#3282)"), k("QA Engineer (3282)"));
   assert.equal(k("QA Engineer (#3282)"), k("QA Engineer"));
 });
+
+test("canonicalKey matches company-name variants across boards (first token), identityKey stays strict", () => {
+  const a = { company: "EPAM", title: "Senior QA Automation Engineer", url: "https://a/1" };
+  const b = { company: "EPAM Systems", title: "Senior QA Automation Engineer", url: "https://b/2" };
+  const c = { company: "DIGIS, a Fiverr company", title: "SDET", url: "https://c/3" };
+  assert.equal(canonicalKey(a), canonicalKey(b));
+  assert.equal(canonicalKey(c), canonicalKey({ company: "Digis", title: "SDET" }));
+  assert.notEqual(identityKey(a), identityKey(b), "the seen set keeps the strict spelling");
+  assert.equal(canonicalKey({ company: "", title: "SDET", url: "https://x.com/p/1" }), "x.com/p/1::sdet", "blank company still url-scoped");
+  assert.equal(dedupeJobs([{ ...a, source: "dou", text: "long text here" }, { ...b, source: "djinni", text: "short" }]).mergedCount, 1);
+});

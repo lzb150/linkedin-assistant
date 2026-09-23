@@ -11,7 +11,12 @@ const PORT = 7777;
 const HOST = "127.0.0.1";
 
 function send(res, code, body, type = "application/json") {
-  res.writeHead(code, { "content-type": type });
+  const headers = { "content-type": type };
+  // The page auto-POSTs lastVisit 4 s after load: a third-party page framing
+  // 127.0.0.1 invisibly would clear every NEW ribbon. Forbid framing (both headers:
+  // CSP is the standard, X-Frame-Options for browsers that ignore frame-ancestors).
+  if (type.startsWith("text/html")) Object.assign(headers, { "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
+  res.writeHead(code, headers);
   res.end(typeof body === "string" ? body : JSON.stringify(body));
 }
 

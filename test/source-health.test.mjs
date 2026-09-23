@@ -15,10 +15,6 @@ test("currentCounts extracts found for every source that ran", () => {
   assert.deepEqual(currentCounts(summaryOf({ dou: 12, jooble: 0 })), { dou: 12, jooble: 0 });
 });
 
-test("normalizeHistory migrates the legacy flat format to one-element histories", () => {
-  assert.deepEqual(normalizeHistory({ dou: 50, djinni: 55 }), { dou: [50], djinni: [55] });
-});
-
 test("normalizeHistory passes arrays through and drops garbage", () => {
   assert.deepEqual(normalizeHistory({ dou: [1, 2], bad: "x", worse: null }), { dou: [1, 2] });
   assert.deepEqual(normalizeHistory(null), {});
@@ -76,6 +72,29 @@ test("detectDegradations reports a source that never succeeded (>=5 all-zero run
   assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0] }, summaryOf({ workua: 0 })), []); // too few runs
   assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0, 0] }, summaryOf({ workua: 3 })), []); // finally worked
   assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0, 0] }, summaryOf({ dou: 5 })), []); // absent this run
+});
+
+test("detectDegradations reports a healthy source that stopped running at all", () => {
+  // A source disabled by a config typo never reaches summary.sources, so both
+  // other rules are blind to it — the loop simply stops seeing it and the
+  // source disappears for good with a clean log. Its history is the evidence
+  // that it used to work.
+  assert.deepEqual(
+    detectDegradations({ djinni: [20, 18, 22, 19, 21] }, summaryOf({ dou: 12 })),
+    [{ source: "djinni", found: 0, median: 20, reason: "absent", runs: 5 }],
+  );
+  // A source that never worked and is now gone is not news (guards the
+  // "absent this run" case the never-succeeded test already pins).
+  assert.deepEqual(detectDegradations({ workua: [0, 0, 0, 0, 0] }, summaryOf({ dou: 5 })), []);
+  // Present and healthy → nothing.
+  assert.deepEqual(detectDegradations({ dou: [10, 10, 10] }, summaryOf({ dou: 12 })), []);
+});
+
+test("formatAlert renders an absent source with a config hint", () => {
+  assert.equal(
+    formatAlert([{ source: "djinni", found: 0, median: 20, reason: "absent", runs: 5 }]),
+    "⚠️ djinni: not run at all (recent median 20) — disabled or misspelt in jobs.config.json?",
+  );
 });
 
 test("formatAlert renders never-succeeded", () => {

@@ -2,18 +2,25 @@
   "name": "linkedin-assistant",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
-  "description": "Draft-only LinkedIn message assistant: reads your own inbox, scores job messages against your resume, writes draft replies. Never sends.",
+  "description": "Draft-only LinkedIn message assistant and job radar: reads your own inbox, scores job messages against your resume, writes draft replies; finds matching vacancies on LinkedIn/DOU/Djinni and prepares application packages. Never sends or applies.",
   "scripts": {
     "login": "node login.mjs",
     "check": "node check.mjs",
     "jobs": "node jobs.mjs",
     "dashboard": "node dashboard.mjs && node state-server.mjs",
     "dashboard:bg": "./open-dashboard.sh",
-    "test": "node --test"
+    "test": "node --test test/",
+    "lint": "oxlint ."
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "playwright": "^1.49.0"
+    "playwright": "1.63.0"
+  },
+  "devDependencies": {
+    "oxlint": "1.16.0"
   }
 }

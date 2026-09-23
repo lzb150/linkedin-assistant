@@ -5,21 +5,26 @@
   "minScore": 25,
   "requireRole": true,
 
-  "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles. Matched in the title only, so senior roles that merely mention these words in the description are kept.",
-  "excludeTitle": ["junior", "intern", "internship", "trainee"],
+  "_candidateCountryComment": "Where the candidate lives and works remotely from — every spelling the boards use (English + local). Drives two things: the LLM gate scores a vacancy open only to residents of OTHER countries (or requiring relocation / an office abroad) at most 10, and Djinni's countries segment ('Тільки віддалено · Канада, Польща, Сербія') must name one of these or the whole world. The first entry is used in the English LLM prompt.",
+  "candidateCountry": ["Ukraine", "Україна"],
 
-  "_excludeLocationComment": "Boards also list vacancies physically located abroad (DOU marks them 'за кордоном', Jooble UA carries 'Краків, Польща' etc). Jobs whose location contains any of these substrings (case-insensitive) are dropped across ALL sources before scoring.",
+  "_excludeTitleComment": "Job titles containing any of these whole words are skipped before scoring (no application package), across all sources. Used to drop entry-level roles and manual-only QA. Matched in the title only (Latin words, whole-word), so senior roles that merely mention these words in the description are kept. Note: 'manual' also drops hybrid titles like 'QA Engineer (Manual + Automation)' — deliberate, the LLM gate is the fallback for descriptions.",
+  "excludeTitle": ["junior", "intern", "internship", "trainee", "manual"],
+
+  "_excludeLocationComment": "Boards also list vacancies physically located abroad (DOU marks them 'за кордоном', Djinni 'Тільки офіс · Польща' etc). Jobs whose location contains any of these substrings (case-insensitive) are dropped across ALL sources before scoring.",
   "excludeLocation": [
     "за кордоном", "Польща", "Poland", "Кіпр", "Cyprus", "Німеччина", "Germany",
     "Чехія", "Словаччина", "Румунія", "Угорщина", "Литва", "Болгарія",
     "Грузія", "Georgia", "Тбілісі", "Tbilisi"
   ],
 
-  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). The LLM NEVER gates: keyword minScore/requireRole decide what gets a package; the LLM only ranks, explains, and writes the letter. Any CLI failure silently falls back to keyword-only packages. maxPerRun caps CLI calls per run.",
+  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). Keyword minScore/requireRole decide what reaches the LLM; when the LLM answers with a fit score below llm.minScore (0–100) the job is dropped as low instead of getting a package. A CLI failure is retried once, then falls back to a keyword-only package (never lose a match to an outage). Set minScore to 0 to make the LLM advisory-only. maxPerRun caps CLI calls per run. `model` is the claude CLI alias (sonnet by default: stricter on weak fits and ~2x faster than haiku); `concurrency` = parallel CLI calls per run (default 3).",
   "llm": {
     "enabled": true,
     "model": "claude-fable-5",
-    "maxPerRun": 15
+    "maxPerRun": 15,
+    "concurrency": 3,
+    "minScore": 60
   },
 
   "dou": {

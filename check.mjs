@@ -2,28 +2,30 @@
 // threads, scores each against your resume profile, and writes a draft reply for
 // any relevant one. IT NEVER SENDS ANYTHING and never clicks "Send".
 //
-// Run:  node check.mjs              (headless; UNREAD threads only)
+// Run:  node check.mjs              (headless; UNREAD threads only, via LinkedIn's own
+//                                     ?filter=unread list — see the note at the goto below)
 //       HEADFUL=1 node check.mjs    (watch it work — useful for fixing selectors)
 //       MAX=10 node check.mjs       (cap how many threads to open)
 //       SCAN_ALL=1 node check.mjs   (scan recent threads regardless of read state;
-//                                     useful for a first pass / when unread marker is missed.
-//                                     seen.json still prevents duplicate drafts.)
+//                                     useful for a first pass. seen.json still prevents
+//                                     duplicate drafts. Does not touch the Dock badge.)
 
-import { launchBrowser } from "./lib/browser.mjs";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { launchBrowser, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
+import { threadIdFrom, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
+import { writeTextAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
-mkdirSync(DRAFTS, { recursive: true }); // fresh clone has no drafts/ yet
+mkdirSync(DRAFTS, { recursive: true, mode: 0o700 }); // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 // Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`
@@ -36,31 +38,17 @@ const SEL = {
   conversationList: ".msg-conversations-container__conversations-list",
   // Only the real <li> rows (avoids the duplicate inner .pillar cards).
   conversationCard: "li.msg-conversation-listitem",
-  // Multiple unread strategies; checked within each card (so the nav badge can't leak in).
-  unreadHint: ".msg-conversation-card--unread, .notification-badge--show, .msg-conversation-card__unread-count, [class*='unread-indicator'], [class*='unread']",
+  // Rendered inside the list container when ?filter=unread has nothing to show.
+  emptyUnread: "No unread messages",
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
+  // The open thread's own header title (no card to read when LinkedIn auto-opened it);
+  // the first message group's sender name is the fallback.
+  threadParticipantName: ".msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-s-message-group__name",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
-  threadTitle: "#thread-detail-jump-target, .msg-thread__title, h2",
 };
 
-// Unread detection: class/badge markers OR a bold participant name (LinkedIn bolds unread).
-async function cardIsUnread(card) {
-  try {
-    if (await card.$(SEL.unreadHint).then(Boolean)) return true;
-  } catch {}
-  try {
-    return await card.evaluate((el) => {
-      const n = el.querySelector("[class*='participant-names']");
-      if (!n) return false;
-      const w = getComputedStyle(n).fontWeight;
-      return parseInt(w, 10) >= 600 || w === "bold";
-    });
-  } catch {}
-  return false;
-}
-
 // Thread ids already processed; entries expire after 90 days so the file
-// stops growing forever (legacy array files migrate on load).
+// stops growing forever.
 const seen = loadSeenStore(SEEN_FILE);
 
 let ctx;
@@ -71,23 +59,46 @@ let unreadCount = 0;
 // a navigation failure would otherwise reset the badge to 0 and hide unread
 // messages until the next successful run.
 let counted = false;
+// A run that threw after launch used to log the error and still print "Done."
+// and exit 0, so launchd and the user both saw a healthy run.
+let outcome = "ok";   // ok | busy | failed — one 3-state result, not two booleans that have to stay in agreement
 
 try {
   ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
   const page = ctx.pages()[0] || (await ctx.newPage());
-  await page.goto("https://www.linkedin.com/messaging/", { waitUntil: "domcontentloaded", timeout: 30000 });
+  // /messaging/ auto-opens the newest thread on load, and an opened thread is
+  // read: every hourly check was silently reading the newest message before
+  // the unread scan ran (2026-09-14: a 14:50 message, 0 unread at 14:53; only
+  // one detection in three months of logs, when two threads were unread at
+  // once). LinkedIn's own unread filter lists exactly the unread threads and
+  // does not auto-open when empty; opening its first card is what we do anyway.
+  const INBOX = SCAN_ALL ? "https://www.linkedin.com/messaging/" : "https://www.linkedin.com/messaging/?filter=unread";
+  await page.goto(INBOX, { waitUntil: "domcontentloaded", timeout: 30000 });
 
   // Detect a logged-out session early and bail with a clear message.
-  if (/\/login|\/checkpoint|\/authwall/.test(page.url())) {
+  if (LINKEDIN_LOGGED_OUT.test(page.url())) {
     log("❌ Not logged in (session expired). Run:  node login.mjs");
     notify("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
     await ctx.close();
     process.exit(2);
   }
 
-  await page.waitForSelector(SEL.conversationList, { timeout: 20000 }).catch(() => {
-    log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
-  });
+  // Selector drift is not "inbox empty": without the list we must not zero the badge.
+  const listFound = await page.waitForSelector(SEL.conversationList, { timeout: 20000 }).then(() => true, () => false);
+  if (!listFound) log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
+  // The list container renders before its cards: a manual run at 15:18 (2026-09-14)
+  // found 0 cards and no empty-state text while one unread thread was there.
+  // Wait for a card, the empty-state text, or an auto-opened thread url (the
+  // filtered list may have dropped that thread already, so no card ever comes).
+  // The predicate names what it saw, so the empty-state check runs in one place.
+  const settled = listFound && await page.waitForFunction((S) =>
+    (location.pathname.includes("/messaging/thread/") && "thread")
+    || (document.querySelector(S.conversationCard) && "cards")
+    || ([...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)) && "empty"),
+  SEL, { timeout: 15000 }).then((h) => h.jsonValue(), () => null);
+  // The url flips to the thread before the list renders: give the cards (or the
+  // empty-state text) up to 3 s more, else the count below reads a list that is not there yet.
+  if (settled === "thread") await page.waitForFunction((S) => document.querySelector(S.conversationCard) || [...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)), SEL, { timeout: 3000 }).catch(() => {});
 
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
@@ -96,45 +107,68 @@ try {
   // Keep the Dock-badge daemon (Jobs.app) alive, then count ALL unread threads
   // (independent of MAX and the job-relevance filter) — this drives the badge.
   ensureJobsApp();
-  // Computed once per card; reused by the scan loop below.
-  const unread = [];
-  for (const card of cards) unread.push(await cardIsUnread(card));
-  unreadCount = unread.filter(Boolean).length;
-  log(`Unread threads: ${unreadCount}`);
-  counted = true;
+  // On the unread filter every card is unread. If LinkedIn auto-opened the first
+  // one (url is a thread), the list may already have dropped it as read: decided
+  // by id (is the open thread among the cards' hrefs?), not by count — with 2+
+  // unread an empty-list check missed it, so it was never scanned and the badge
+  // showed N−1. Do not read an empty list as drift then. A rendered list with
+  // zero cards and no thread is either LinkedIn's empty state (honest 0) or the
+  // card selector drifting (must not zero the badge) — the text decides.
+  const autoOpened = /\/messaging\/thread\//.test(page.url());
+  const openId = autoOpened ? threadIdFrom(page.url()) : null;
+  const ids = await page.$$eval(`${SEL.conversationCard} a[href*='/messaging/thread/']`, (as) => as.map((a) => a.href)).then((hrefs) => hrefs.map((h) => threadIdFrom(h)), () => []);
+  // No thread anchors at all (selector drift) while cards exist: the open thread
+  // is a card, not an extra — else the badge reads N+1 and it is scanned twice.
+  if (cards.length && !ids.length) log("⚠️  cards without a thread link — card selector may have drifted. Run with HEADFUL=1 to inspect.");
+  const openListed = autoOpened && (ids.length ? ids.includes(openId) : cards.length > 0);
+  const verdict = unreadVerdict({ cards: cards.length, autoOpened, openListed, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
+  ({ unreadCount, counted } = verdict);
+  if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);
+  if (verdict.drift) log("⚠️  Empty list without the empty-state text — card selector may have drifted. Run with HEADFUL=1 to inspect.");
 
-  for (const [i, card] of cards.entries()) {
+  // Threads to scan: the listed cards — preceded, when the auto-opened thread was
+  // already dropped from the filtered list, by the open thread itself (`null`
+  // card): opening it marked it read, so this run is the last chance to draft for it.
+  const targets = verdict.scanOpenFirst ? [null, ...cards] : cards;
+  if (verdict.scanOpenFirst) log("· auto-opened thread not in list — scanning it first");
+  for (const [i, card] of targets.entries()) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
 
-    // Is it unread? (best-effort, multi-strategy). SCAN_ALL bypasses this filter.
-    if (!SCAN_ALL && !unread[i]) continue;
-
     let name = "Recruiter";
     try {
-      const nameEl = await card.$(SEL.participantName);
+      const nameEl = await (card ? card.$(SEL.participantName) : page.$(SEL.threadParticipantName));
       if (nameEl) name = (await nameEl.innerText()).trim().split("\n")[0] || name;
     } catch {}
 
-    // Open the thread and verify we landed on THIS card's thread, else skip
-    // rather than misattribute the still-open previous thread to it. The card's
-    // own href is the ground truth; LinkedIn auto-opens the first thread on
-    // load, so for card 0 an unchanged URL is expected, not a failed click.
-    let href = null;
-    try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
-    const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
-    const before = page.url();
-    await card.click().catch(() => {});
-    await page.waitForTimeout(1500);
+    // Open the thread and verify we landed on THIS card's thread (threadOpened),
+    // else skip rather than misattribute the still-open previous thread to it.
+    // The auto-opened thread is already open: nothing to click or verify.
+    if (card) {
+      let href = null;
+      try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
+      const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
+      const before = page.url();
+      // 5 s, not Playwright's 30 s default: a detached handle used to stall the
+      // run inside this silent catch, up to ~6 min across the cards of one pass.
+      await card.click({ timeout: 5000 }).catch(() => {});
+      // Wait for THIS thread's url (up to 5 s) instead of a fixed 1.5 s: on a slow
+      // LinkedIn the late navigation used to land inside the next card's window.
+      if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
+      else await page.waitForTimeout(1500);
+      // `i` is the index within `targets` on purpose: threadOpened's "card 0 may keep
+      // its url" rule is for the auto-opened card, and with the `null` target first
+      // that card is NOT listed — the first real card must change the url like any other.
+      if (!threadOpened({ wantId, url: page.url(), before, index: i })) { log(`· could not open thread, skipping: ${name}`); continue; }
+    }
     const url = page.url();
-    const opened = wantId ? url.includes(wantId) : (url !== before || i === 0);
-    if (!opened) { log(`· could not open thread, skipping: ${name}`); continue; }
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
-    let bubbles = [], oldest = "", extractFailed = false;
+    let bubbles = [], oldest = "", extractFailed = false, bubbleCount = 0;
     try {
       const els = await page.$$(SEL.messageBubble);
+      bubbleCount = els.length;
       if (els.length) oldest = (await els[0].innerText()).trim();
       for (const el of els.slice(-12)) {
         const t = (await el.innerText()).trim();
@@ -144,24 +178,12 @@ try {
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
-    // Stable id from the thread url. URL-less fallback hashes name + the OLDEST
-    // bubble (not the first of the last-12 window, which shifts as replies arrive).
-    const idMatch = url.match(/thread\/([^/?#]+)/); // same shape as wantId: query/hash must not leak into the seen key
-    const threadId = idMatch
-      ? idMatch[1]
-      : `name:${createHash("sha1").update(`${name}\n${oldest}`).digest("hex").slice(0, 12)}`;
-
-    // Re-stamp so the TTL is "last seen" and a long-lived thread does not resurface.
-    if (seen.has(threadId)) { log(`· already processed: ${name}`); seen.add(threadId); continue; }
-
-    // An extraction failure is not "not a job message": leave the thread
-    // unseen so the next run retries instead of burying it for 90 days.
-    if (extractFailed) { log(`· skipping without marking seen: ${name}`); continue; }
-    if (!fullText || !looksLikeJobMessage(fullText)) {
-      log(`· not a job message, skipping: ${name}`);
-      seen.add(threadId);
-      continue;
-    }
+    const threadId = threadIdFrom(url, name, oldest);
+    const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen: seen.has(threadId), isJob: looksLikeJobMessage(fullText) });
+    if (markSeen) seen.add(threadId);   // "already" re-stamps so the TTL is "last seen"
+    if (action === "already") { log(`· already processed: ${name}`); continue; }
+    if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
+    if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
 
     const scored = scoreMessage(fullText);
     log(`· ${name}: score=${scored.score} verdict=${scored.verdict} [${scored.matchedSkills.join(",")}]`);
@@ -169,28 +191,38 @@ try {
     if (scored.verdict === "ignore") { seen.add(threadId); continue; }
 
     const { filename, markdown } = buildDraft({ name, url, snippet, fullText }, scored);
-    writeFileSync(join(DRAFTS, filename), markdown);
+    writeTextAtomic(join(DRAFTS, filename), markdown);   // a crash mid-write must not leave a half-written draft
     drafted++;
     seen.add(threadId);
   }
 } catch (err) {
   log("ERROR:", err?.message || err);
   // "profile busy" = benign overlap with another run (jobs.mjs/login.mjs); log only.
-  if (!ctx && !/profile busy/.test(err?.message || "")) notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
+  outcome = /profile busy/.test(err?.message || "") ? "busy" : "failed";
+  if (!ctx && outcome !== "busy") notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
   // Must not throw: writeState and ctx.close below still have to run.
-  try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); }
+  // Only a run that actually held the profile may write seen.json back: on the
+  // "profile busy" path this process loaded its snapshot before the lock holder
+  // started adding entries, so saving here rolls that holder's work back.
+  if (ctx) { try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); } }
   if (counted) {
     try {
       writeState(STATE_FILE, { count: unreadCount });
     } catch (e) {
       log("notify: writeState failed:", e?.message);
     }
-  } else {
+  } else if (!SCAN_ALL) {
     log("notify: scan failed before counting — keeping previous badge state");
   }
-  await ctx?.close();
+  // A rejected close would replace the exit code this run earned with an
+  // unhandled rejection; the state files above are already written.
+  try { await ctx?.close(); } catch (e) { log("browser close failed:", e?.message); }
 }
 
-log(`Done. Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
+if (outcome === "failed") {
+  log(`FAILED after scanning ${scanned} unread, ${drafted} draft(s) written to ${DRAFTS}`);
+  process.exit(1);
+}
+log(`${outcome === "busy" ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
 process.exit(0);

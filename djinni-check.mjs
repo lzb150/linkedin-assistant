@@ -9,13 +9,12 @@
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
 import { launchBrowser } from "./lib/browser.mjs";
-import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
-import { writeJsonAtomic } from "./lib/json-file.mjs";
+import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
-import { readBumpState, dueForCheck, nextBumpState, bumpProfile } from "./lib/djinni-bump.mjs";
+import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, freshThreads } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
@@ -24,7 +23,7 @@ const STATE_FILE = join(__dir, "djinni-notify-state.json");
 // given unread conversation only notifies once. A network error never touches
 // this file, so a transient blip can't trigger a spurious re-notification.
 const SEEN_FILE = join(__dir, "djinni-seen.json");
-// Monthly "Bump My Profile" throttle state (see lib/djinni-bump.mjs).
+// "Bump My Profile" throttle state (see lib/djinni-bump.mjs).
 const BUMP_STATE_FILE = join(__dir, "djinni-bump-state.json");
 
 // Djinni's own "unread" inbox bucket. Counting the conversation threads listed
@@ -33,9 +32,9 @@ const BUMP_STATE_FILE = join(__dir, "djinni-bump-state.json");
 const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 
 let ctx;
-let unreadCount = 0;
 let scanned = false; // true once we have a real count from a loaded page
 let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
+let failed = false;     // a thrown run used to log ERROR and still exit 0
 
 try {
   ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs instead of an unhandled rejection
@@ -43,11 +42,7 @@ try {
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.waitForTimeout(1500); // let the conversation list render
 
-  // Logged-out detection: Djinni redirects protected pages to /login, and the
-  // /logout link is absent when not authenticated. (A `sessionid` cookie is set
-  // even for anonymous visitors, so cookie presence is NOT a reliable signal.)
-  const loggedIn = !/\/login/.test(page.url()) && (await page.$("a[href='/logout']").then(Boolean));
-  if (!loggedIn) {
+  if (!(await djinniLoggedIn(page))) {
     // Intentionally do NOT writeState here (process.exit skips finally): leave
     // the last known count on the badge rather than zeroing it on a transient
     // session expiry.
@@ -74,42 +69,41 @@ try {
     }
     return [...byId.entries()].map(([id, label]) => ({ id, label }));
   });
-  unreadCount = threads.length;
   unreadThreads = threads;
   scanned = true;
-  log(`Djinni unread threads: ${unreadCount}`);
+  log(`Djinni unread threads: ${threads.length}`);
 
-  // Banner only for threads we have not already notified about. The seen set is
-  // the unread ids from the previous successful scan; a thread that is read (and
-  // leaves the unread bucket) drops out, so if it ever goes unread again it will
-  // notify afresh. First run with no seen file notifies for current unread.
-  let seen = [];
-  try {
-    if (existsSync(SEEN_FILE)) {
-      const raw = JSON.parse(readFileSync(SEEN_FILE, "utf8"));
-      if (Array.isArray(raw)) seen = raw.map(String);
-    }
-  } catch (e) { log("notify: reading seen file failed:", e?.message); }
+  // Banner only for threads we have not already notified about (see freshThreads).
+  // A corrupt seen file reads as "nothing known", which re-banners every open
+  // thread once. That is noisy but harmless, and the write below replaces the
+  // file anyway — so recover, but do not do it silently.
+  let seenIds = [];
+  try { seenIds = readJson(SEEN_FILE, []); }
+  catch (e) { log(`⚠ ${SEEN_FILE} unreadable (${e.message}) — treating every current thread as new for this run`); }
+  const { fresh, message } = freshThreads(threads, seenIds);
 
-  const seenSet = new Set(seen);
-  const fresh = threads.filter((t) => !seenSet.has(t.id));
+  // Persist BEFORE the banner, not after: the two used to be the other way
+  // round, so a crash or a kill in between left the ids unrecorded and the next
+  // run bannered the same threads a second time.
+  // Never rewrite the seen store from an empty result. A selector drift reads
+  // as an honest zero here, and truncating the file to [] means every existing
+  // conversation banners again the moment the selector is repaired. An empty
+  // bucket simply leaves the previous ids in place: they cost nothing, because
+  // freshThreads only ever asks whether a CURRENT thread is already known.
+  if (threads.length) {
+    try {
+      writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
+    } catch (e) { log("notify: writing seen file failed:", e?.message); }
+  }
+
   if (fresh.length) {
-    const first = fresh.find((t) => t.label)?.label;
-    const message =
-      fresh.length === 1
-        ? `New message${first ? `: ${first}` : ""}`
-        : `${fresh.length} new messages${first ? ` (incl. ${first})` : ""}`;
     notify("Djinni", message);
     log(`notify: banner for ${fresh.length} new thread(s)`);
   }
 
-  try {
-    writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
-  } catch (e) { log("notify: writing seen file failed:", e?.message); }
-
-  // Monthly profile bump: Djinni allows one per 30 days. At most one
-  // /my/profile/ visit a day (state-throttled); a bump failure never breaks
-  // the unread scan above.
+  // Profile bump: Djinni allows one per 7 days (button state is the truth). One
+  // /my/profile/ visit a day, hourly around the expected cooldown end
+  // (state-throttled); a bump failure never breaks the unread scan above.
   try {
     const bumpState = readBumpState(BUMP_STATE_FILE);
     if (dueForCheck(bumpState)) {
@@ -122,6 +116,7 @@ try {
   } catch (e) { log("bump failed:", e?.message); }
 } catch (err) {
   log("ERROR:", err?.message || err);
+  failed = true;
   if (!ctx) notify("Djinni assistant", `Browser launch failed: ${err?.message || err}`);
 } finally {
   // Only overwrite the badge when we actually loaded the page. On a network
@@ -133,8 +128,8 @@ try {
       // conversation on a Dock click: a single unread opens that thread, several
       // open the unread bucket.
       writeState(STATE_FILE, {
-        count: unreadCount,
-        pending: unreadThreads.map((t) => ({ id: t.id, label: t.label })),
+        count: unreadThreads.length,
+        pending: unreadThreads,
       });
     } catch (e) {
       log("notify: writeState failed:", e?.message);
@@ -142,12 +137,14 @@ try {
   } else {
     log("scan failed — keeping last known badge count (state not rewritten)");
   }
-  await ctx?.close();
+  // A rejected close would replace the exit code this run earned with an
+  // unhandled rejection; the state files above are already written.
+  try { await ctx?.close(); } catch (e) { log("browser close failed:", e?.message); }
 }
 
 log(
   scanned
-    ? `Done. Djinni unread: ${unreadCount} -> ${STATE_FILE}`
-    : `Done. Scan failed; badge left unchanged.`,
+    ? `Done. Djinni unread: ${unreadThreads.length} -> ${STATE_FILE}`
+    : `Scan failed; badge left unchanged.`,
 );
-process.exit(0);
+process.exit(failed ? 1 : 0);   // launchd must see a failed run as failed

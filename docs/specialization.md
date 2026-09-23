@@ -11,7 +11,7 @@ in four places.
 | `skills.json` | Scoring profile: `roles`, `skills`, `synonyms`, `antiKeywords`, `profile` | yes |
 | `jobs.config.json` | Where to search: per-source feeds and queries | yes |
 | `resume.txt` | Plain-text resume — grounds LLM re-scoring and cover letters | no (gitignored) |
-| `run.sh` / `run-jobs.sh` | `RESUME_PATH` — the PDF/DOCX attached to drafts; `CANDIDATE_NAME` — the signature on cover letters | no (gitignored) |
+| `run.sh` | `RESUME_PATH` — the PDF/DOCX attached to drafts; `CANDIDATE_NAME` — the signature on cover letters | no (gitignored) |
 
 ## From a job title to config
 
@@ -86,38 +86,39 @@ genitive position — they complete "досвід в …" / "опыт в …":
 
 ### 5. Searches — `jobs.config.json`
 
-Point **every** enabled source at the new field — there are six (`dou`,
-`djinni`, `jooble`, `workua`, `robota`, `linkedin`); a source left on the old
+Point **every** enabled source at the new field — there are three (`dou`,
+`djinni`, `linkedin`); a source left on the old
 searches keeps fetching the old profession. Copy real URLs from your
 browser's filters — that keeps parameters valid:
 
 ```json
 "dou":      { "feeds": ["https://jobs.dou.ua/vacancies/feeds/?search=fullstack"] },
 "djinni":   { "searches": ["https://djinni.co/jobs/?primary_keyword=Fullstack"] },
-"jooble":   { "searches": [{ "keywords": "fullstack developer", "location": "віддалено" }] },
-"workua":   { "searches": ["https://www.work.ua/jobs-fullstack/"] },
-"robota":   { "searches": ["https://robota.ua/zapros/fullstack/ukraine"] },
 "linkedin": { "searches": [{ "keywords": "Fullstack TypeScript React", "location": "Ukraine", "remote": true }] }
 ```
 
-Jooble runs on the Ukrainian market (`ua.jooble.org`), so `location` takes
-`""` (all of Ukraine), `"віддалено"` (remote only), or a city name — an
-English `"remote"` is not a location it recognizes.
+The global `minScore` (18) is only a keyword pre-gate; the LLM gate
+(`llm.minScore`, 50) does the real screening.
 
-The global `minScore` (25) gates cold applications; Jooble has a per-source
-override (18) because its API returns short snippets that score lower.
+### 5b. Country — `candidateCountry`
+
+Where the candidate lives and works remotely from, in every spelling the boards
+use (`["Ukraine", "Україна"]` ships). Djinni's countries segment must name one
+of these or the whole world; the LLM gate scores a vacancy closed to that
+country at most 10. Someone in Poland sets `["Poland", "Польща", "Країни ЄС"]`
+and moves `"Poland"`/`"Польща"` out of `excludeLocation`.
 
 ### 6. Resume
 
 Replace `resume.txt` with your plain-text resume (it drives LLM re-scoring
-and letters), and in `run.sh` / `run-jobs.sh` point `RESUME_PATH` at the
+and letters), and in `run.sh` point `RESUME_PATH` at the
 PDF/DOCX to attach and set `CANDIDATE_NAME` to the name that signs your
 cover letters. All three files are gitignored.
 
 ## Seniority
 
 - `excludeTitle` in `jobs.config.json` drops titles containing
-  `junior` / `intern` / `internship` / `trainee` before scoring —
+  `junior` / `intern` / `internship` / `trainee` / `manual` before scoring —
   whole-word, title-only.
 - There is no "senior-only" positive filter: the score is skill-based, and
   senior titles already match your role entries by substring.
@@ -132,10 +133,10 @@ to your resume.
 ## Checklist
 
 1. `skills.json` — roles, skills, synonyms, antiKeywords, profile updated.
-2. `jobs.config.json` — searches repointed for **all six** sources;
+2. `jobs.config.json` — searches repointed for **every enabled** source;
    `excludeTitle` still fits.
 3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
-   `run.sh` / `run-jobs.sh`.
+   `run.sh`.
 4. Verify: `node --test test/` (the suite runs on a frozen fixture profile,
    so it stays green regardless of your `skills.json`), then one
    `node jobs.mjs` run — the newest file in `applications/` should read

@@ -1,0 +1,67 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, existsSync, copyFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readPackages, archivePackages } from "../lib/packages.mjs";
+
+const pkg = (url) => `---\nsource: dou\ntitle: SDET\ncompany: Acme\nurl: ${url}\ngenerated: 2026-09-01T00:00:00Z\n---\n# SDET\n`;
+
+test("readPackages: frontmatter + file per .md, non-.md and unreadable skipped (warn called), archive/ ignored, missing dir → []", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "a.md"), pkg("https://x/1"));
+  writeFileSync(join(dir, "b.md"), pkg("https://x/2"));
+  writeFileSync(join(dir, "index.html"), "<html>");
+  mkdirSync(join(dir, "broken.md"));                       // a directory named *.md: readFileSync throws
+  mkdirSync(join(dir, "archive")); writeFileSync(join(dir, "archive", "old.md"), pkg("https://x/old"));
+  const warned = [];
+  const out = readPackages(dir, { warn: (f, e) => warned.push([f, typeof e.message]) });
+  assert.deepEqual(out.map((p) => [p.file, p.url, p.source, p.company]).sort(), [["a.md", "https://x/1", "dou", "Acme"], ["b.md", "https://x/2", "dou", "Acme"]]);
+  assert.deepEqual(warned, [["broken.md", "string"]]);
+  assert.deepEqual(readPackages(join(dir, "nope")), []);
+});
+
+test("readPackages: a frontmatter `file:` key never replaces the real filename (consumers join it under applications/)", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  copyFileSync(new URL("./fixtures/hostile-package.md", import.meta.url), join(dir, "hostile.md"));
+  assert.equal(readPackages(dir)[0].file, "hostile.md");
+});
+
+test("archivePackages moves the given files into <dir>/archive and returns the files moved", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const f of ["a.md", "b.md", "c.md"]) writeFileSync(join(dir, f), pkg("https://x/" + f));
+  assert.deepEqual(archivePackages(dir, ["a.md", "c.md"]), ["a.md", "c.md"]);
+  assert.deepEqual(readdirSync(dir).sort(), ["archive", "b.md"]);
+  assert.deepEqual(readdirSync(join(dir, "archive")).sort(), ["a.md", "c.md"]);
+  assert.deepEqual(archivePackages(dir, []), []);
+  assert.ok(existsSync(join(dir, "archive")));
+});
+
+test("archivePackages: a rename that fails is reported (warn) and leaves that package in place; the others still move", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const f of ["a.md", "b.md", "c.md"]) writeFileSync(join(dir, f), pkg("https://x/" + f));
+  mkdirSync(join(dir, "archive", "c.md"), { recursive: true });   // a file cannot be renamed onto a directory
+  const failed = [];
+  assert.deepEqual(archivePackages(dir, ["a.md", "c.md"], { warn: (f, e) => failed.push([f, typeof e.message]) }), ["a.md"]);
+  assert.deepEqual(failed, [["c.md", "string"]]);
+  assert.deepEqual(readdirSync(dir).sort(), ["archive", "b.md", "c.md"]);
+  assert.deepEqual(readdirSync(join(dir, "archive")).sort(), ["a.md", "c.md"]);
+});
+
+test("readPackages: a .md with no frontmatter warns, so the prune-safety gate sees an incomplete view", (t) => {
+  // It used to be pushed as a bare { file }: the dashboard dropped it silently
+  // and closed-check's partialRead gate stayed off, so state was pruned against
+  // a package list it did not know was short.
+  const dir = mkdtempSync(join(tmpdir(), "pk-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "good.md"), pkg("https://x/1"));
+  writeFileSync(join(dir, "bare.md"), "# just a heading, no frontmatter\n");
+  const warned = [];
+  const out = readPackages(dir, { warn: (f, e) => warned.push([f, e.message]) });
+  assert.deepEqual(out.map((p) => p.file), ["good.md"]);
+  assert.deepEqual(warned, [["bare.md", "no frontmatter"]]);
+});

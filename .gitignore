@@ -6,6 +6,12 @@ node_modules/
 
 # Generated output
 logs/
+# …but keep the directory itself: launchd does not create parents for
+# StandardOutPath, and state-server/jobs-badge never go through run.sh (the
+# only mkdir -p logs), so on a fresh clone their logs went nowhere.
+!logs/
+logs/*
+!logs/.gitkeep
 drafts/
 applications/
 
@@ -28,13 +34,7 @@ banners/
 
 # Machine-specific run wrappers & launchd agents — use the *.example templates
 run.sh
-run-jobs.sh
 com.*.plist
-
-# Machine-specific Windows wrappers & task registration — use the *.example templates
-scripts/windows/run.ps1
-scripts/windows/run-jobs.ps1
-scripts/windows/register-tasks.ps1
 
 # Personal resume — kept local only
 resume.txt
@@ -53,30 +53,27 @@ djinni-notify-state.json
 # Ids of Djinni threads already notified about (written by djinni-check.mjs)
 djinni-seen.json
 
-# Monthly profile-bump throttle state (written by djinni-check.mjs)
+# Profile-bump throttle state (written by djinni-check.mjs)
 djinni-bump-state.json
-
-# Machine-specific Djinni run wrapper — use run-djinni.sh.example
-run-djinni.sh
 
 # Dashboard job state and follow-up notify dedupe (machine-local runtime state)
 job-state.json
 followup-notify-state.json
 followup-notify-state.json.tmp
+job-state.*.bak
+closed-check-state.json
 
-# Stray applet backup from an old build-jobs.sh (committed by mistake once)
-Jobs.app.orig/
-
-# Browser-profile / run locks (lib/browser.mjs acquireProfileLock: `<name>.lock/` dirs)
+# Browser-profile / run locks (lib/run-lock.mjs acquireProfileLock: `<name>.lock/` dirs)
 .browser-profile.lock/
 .djinni-profile.lock/
 jobs-run.lock/
-state-server.lock/
-
-# Local tooling scratch dirs
-.superpowers/
-.playwright-cli/
+closed-check.lock/
 
 # Atomic-write temp files and quarantined corrupt state files
 *.tmp
 *.corrupt
+
+# Local tooling scratch dirs
+.superpowers/
+.playwright-cli/
+run-stats.jsonl

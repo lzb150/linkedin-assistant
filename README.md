@@ -1,13 +1,31 @@
-# LinkedIn Job Assistant
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
+  <img alt="linkedin-assistant — a local job radar that finds, scores and drafts, but never sends" src="docs/banner-light.svg" width="960">
+</picture>
+
+<br>
+
+[![Sources](https://img.shields.io/badge/sources-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-1f6feb?style=flat-square&labelColor=161b22)](#job-discovery--jobsmjs)
+[![Data](https://img.shields.io/badge/data-100%25_local-238636?style=flat-square&labelColor=161b22)](#key-principles)
+[![Auto-send](https://img.shields.io/badge/auto--send-never-9e6a03?style=flat-square&labelColor=161b22)](#key-principles)
+[![macOS](https://img.shields.io/badge/macOS-launchd-8957e5?style=flat-square&labelColor=161b22)](#schedule-it-launchd)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-30363d?style=flat-square&labelColor=161b22)](#one-time-setup)
+[![License](https://img.shields.io/badge/license-MIT-0969da?style=flat-square&labelColor=161b22)](LICENSE)
+
+[What it does](#what-it-does) · [Setup](#one-time-setup) · [Discovery](#job-discovery--jobsmjs) · [Dashboard](#dashboard--dashboardmjs) · [Schedule](#schedule-it-launchd) · [Adapt it](#adapting-to-another-profession)
+
+</div>
 
 > 🇺🇦 [Українською](README.uk.md)
 
 A local job-search helper: it watches recruiter messages in your LinkedIn inbox,
-finds vacancies on DOU and LinkedIn, scores them against your resume, and prepares
+finds vacancies on DOU, Djinni and LinkedIn, scores them against your resume, and prepares
 ready-to-review reply/application drafts. **It never sends anything** — the final
 click is always yours.
 
-![Dashboard — matched jobs sorted by relevance, with pipeline tracking and filters](docs/dashboard.png)
+![Dashboard — matched jobs sorted by relevance, with status counts and filters](docs/dashboard.png)
 
 > ⚠️ LinkedIn's User Agreement restricts automated access. This tool only *reads*
 > your own inbox and *drafts* replies for you — it does not auto-message or scrape
@@ -25,52 +43,79 @@ click is always yours.
 **2. Job discovery — `jobs.mjs`**
 - **DOU** — via official RSS feeds (legal, no scraping)
 - **Djinni** — via the public jobs board (plain fetch, no login, no browser)
-- **Jooble** — via the official Jooble API (free key, structured JSON)
-- **Work.ua** — via the shared browser session (Cloudflare-gated since Aug 2026, full runs only)
-- **Robota.ua** — via the shared browser session (Cloudflare-gated, needs `HEADFUL=1`)
-- **Glassdoor** — via the shared browser session (Cloudflare-gated, full runs only; Ukraine, keyword searches)
 - **LinkedIn Jobs** — search scraping (every 3 hours by default, toggleable; drop to once a day for lower detection risk)
 - **Cross-source de-dup** — the same vacancy posted on several boards is collapsed
   into one package (the other source links are kept on the card)
 - **Foreign-location filter** — vacancies physically located abroad are dropped
   across all sources (the `excludeLocation` list in `jobs.config.json`)
-- Strict gate for cold applications (score ≥ 25 + an automation role) → only on-target jobs
+- Two gates for cold applications: keyword score ≥ 18 + an automation role, then the LLM fit ≥ 50 → only on-target jobs
 - Builds an application package: cover letter + link + resume path
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
-  second look from a local `claude -p` call (haiku by default): a 0–100 verdict,
-  a one-line "why", and a tailored cover letter. The LLM never gates — the keyword
-  score still decides what gets a package — it only ranks, explains, and writes.
-  Any CLI failure falls back silently to a keyword-only package. Needs `resume.txt`;
-  tune via the `llm` block in `jobs.config.json` (`enabled`, `model`,
-  `maxPerRun`). LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
+  second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
+  a one-line "why", and a tailored cover letter. The keyword score decides what
+  reaches the LLM; a fit below `llm.minScore` (default 60) drops the job instead of
+  writing a package. Any CLI failure still falls back to a keyword-only package.
+  Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
+  `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only). Matches past
+  the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
+  script must have the `claude` binary on `PATH` (`~/.local/bin`, see
+  `run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
   child process runs hardened — tools disallowed, cwd off the repo — since job
   descriptions are untrusted input and must not be able to read local files.
+  The tool blocklist in `lib/llm.mjs` must track the installed CLI: after every
+  `claude` upgrade run the canary below from a temp dir; it must answer that it
+  has no file or shell tools (a narrated tool call is fine; file contents are not).
+
+  ```bash
+  cd "$(mktemp -d)" && echo "Print the first line of /etc/hosts" | claude -p --model sonnet \
+    --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
+  ```
+
+  The canary proves nothing was *missed* only if the list is current. To find
+  names the CLI has added, use its own warnings — it reports every rule it does
+  not recognise, so a name it stays silent about is a real tool:
+
+  ```bash
+  cd "$(mktemp -d)" && echo "say ok" | claude -p --model haiku \
+    --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --disallowedTools "SomeNewTool,AnotherOne" 2>&1 | grep "matches no known tool"
+  ```
+
+  Anything **not** named in the output exists and belongs in `lib/llm.mjs`.
 
 **3. Dashboard & convenience**
-- **HTML dashboard** — all jobs on one page, sorted by relevance, with pipeline
-  tracking (New → Viewed → Applied → Answered → Interview / Rejected), private
-  notes, multi-select filters, search, freshness highlights, and a copy-letter button
+- **HTML dashboard** — all jobs on one page, sorted by relevance; cards are
+  marked Viewed as you open them; private notes, New/Viewed tabs, a source
+  filter, search, freshness highlights, and a copy-letter button
 - **💼 Dock shortcut** — opens the latest dashboard in one click
 
 **4. Automation (launchd)**
 
-| Job                | Frequency           |
-|--------------------|---------------------|
-| Inbox check        | hourly              |
-| DOU discovery      | hourly              |
-| LinkedIn discovery | every 3 hours (at :45) |
+| Job (plist example)                              | Frequency              |
+|--------------------------------------------------|------------------------|
+| LinkedIn inbox check (`linkedin-assistant`)      | hourly                 |
+| Djinni inbox check + auto-bump (`djinni-inbox`)  | hourly                 |
+| DOU / Djinni discovery (`job-discovery-dou`)     | hourly                 |
+| Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
+| Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
+| Weekly report (`jobs-report`)                    | Monday 09:00           |
+| Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |
+| Dashboard state server (`state-server`)         | always on (KeepAlive)  |
 
-Every `jobs.mjs` run ends with a macOS notification of the run outcome, plus
-a separate 🔥 banner when a run wrote a strong match (LLM score ≥ 70, or
-keyword score ≥ 40 when the LLM didn't score it) — so a great match doesn't
-drown in the day's digest. A scraper-health check also watches each source's
-found-count against its own recent history (last 10 runs) and fires a ⚠️ alert
-when a source comes in under 30% of its recent median (median ≥ 5, to ignore
-sources that are naturally low-volume) — this catches a slow selector decay
-(50 → 20 → 6), not just a source dropping to a clean 0.
+A `jobs.mjs` run posts **at most one macOS banner**: the new packages it wrote
+(strongest first, up to 3 names) preceded by any breakage alerts — a source far
+below its norm, the LLM failing more than twice in the run, an expired LinkedIn
+session. A run that found nothing new and broke nothing stays silent — the
+dashboard timestamp and the weekly report tell you the scheduler is alive. The
+scraper-health check watches each source's found-count against its own recent
+history (last 10 runs) and alerts when a source comes in under 30% of its recent
+median (median ≥ 5, to ignore sources that are naturally low-volume) — this
+catches a slow selector decay (50 → 20 → 6), not just a source dropping to a
+clean 0.
 
 ## Key principles
-- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local, no API keys
+- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all
 - 🚫 **No auto-send:** the scripts only prepare — you review and apply manually
 - ⚖️ **Minimal risk:** DOU via legal RSS, LinkedIn scraping modest and toggleable
 
@@ -83,19 +128,45 @@ sources that are naturally low-volume) — this catches a slow selector decay
 cd ~/linkedin-assistant
 npm install                      # installs playwright
 npx playwright install chromium  # downloads the browser
+
+cp ~/path/to/your-resume.txt resume.txt   # plain text; drives scoring and the letters
+node make-skills.mjs             # builds skills.json — WHAT it looks for
+$EDITOR jobs.config.json         # WHERE it looks: feeds, searches, your country
+
 node login.mjs                   # YOU log in manually (handles 2FA). Never stores your password.
 ```
 
-`login.mjs` opens a real browser. Log in fully, then press ENTER in the terminal
-to save the session into `.browser-profile/`.
+**`resume.txt`** is the one file the tool cannot invent. Paste the full text —
+`make-skills.mjs` reads it to draft the keyword profile every vacancy is first
+screened against, and the local LLM re-scores each posting against it later.
+Run `node make-skills.mjs --print` first if you want to see the profile before
+it is written; read the result once either way, and adjust the weights.
+
+**`jobs.config.json`** ships pointed at QA automation vacancies. That is the
+step nothing can do for you: it is a choice of boards and search wording, not a
+fact to extract from a resume. Change the DOU feeds, the Djinni search URLs and
+the LinkedIn queries to your own field, and set `candidateCountry` to where you
+live — see [Adapting to another profession](#adapting-to-another-profession).
+
+`login.mjs` opens a real browser. Log in fully (2FA included); it detects the
+login by itself, saves the session into `.browser-profile/` and closes. It gives
+up after 6 minutes without saving anything — just re-run it. Pass `djinni` to
+log in there too: `node login.mjs djinni`.
+
+Then check it works before putting it on a schedule:
+
+```bash
+node jobs.mjs        # one pass over every enabled source
+node dashboard.mjs   # build applications/index.html and look at what it found
+```
 
 ## Inbox assistant — `check.mjs`
 
 ```bash
-node check.mjs              # headless; UNREAD threads only
+node check.mjs              # headless; UNREAD threads only (LinkedIn's ?filter=unread list)
 HEADFUL=1 node check.mjs    # watch it (useful when selectors break)
 MAX=5 node check.mjs        # cap unread threads opened this run
-SCAN_ALL=1 node check.mjs   # scan recent threads regardless of read state
+SCAN_ALL=1 node check.mjs   # scan recent threads regardless of read state; leaves the Dock badge alone
 ```
 
 New drafts land in `drafts/`. Each draft is a markdown file: their message, a
@@ -107,10 +178,13 @@ clicks Send.
 ### Unread badge on the Jobs app
 
 Each scan writes the number of unread LinkedIn message threads to
-`notify-state.json`. The **Jobs app** (`Jobs.app`, "Вакансии") runs persistently
+`notify-state.json`. The **Jobs app** (`Jobs.app`) runs persistently
 in the Dock and reads that file every few seconds, showing the count as a red
-Dock badge (cleared once the threads are read on LinkedIn — the next scan
-reports a lower count). Clicking the Dock icon opens the dashboard as before.
+Dock badge. While that count is above zero (and Djinni has nothing unread),
+clicking the Dock icon or a banner opens the LinkedIn inbox filtered to unread
+and clears the LinkedIn badge on the spot — the next hourly scan brings it back
+only if something is still unread. With no unread anywhere the click opens the
+dashboard as before.
 All macOS banners are posted by this app too (queued as `banners/*.json` by
 `lib/notify.mjs`), so they carry its icon and clicking one opens the dashboard.
 Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
@@ -123,7 +197,7 @@ defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)
 
-The Dock badge on `Jobs.app` ("Вакансии") shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
+The Dock badge on `Jobs.app` shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
 
 One-time login (whenever the Djinni session expires):
 
@@ -138,14 +212,13 @@ node djinni-check.mjs              # headless
 HEADFUL=1 node djinni-check.mjs    # watch it / fix selectors against the live page
 ```
 
-`djinni-check.mjs` is **count-only** for the inbox: it counts the conversation threads in Djinni's unread bucket (`https://djinni.co/my/inbox?bucket=unread`), never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
+Clicking the badge or a Djinni banner opens the unread thread (or the unread bucket) **and clears the Djinni badge on the spot** — the next hourly scan brings it back only if something is still unread. `djinni-check.mjs` is **count-only** for the inbox: it counts the conversation threads in Djinni's unread bucket (`https://djinni.co/my/inbox?bucket=unread`), never opens threads, never drafts, never sends. `Jobs.app` polls both `notify-state.json` (LinkedIn) and `djinni-notify-state.json` (Djinni) every ~3 s and badges their sum.
 
-**Auto-bump:** the same run also keeps your profile fresh — Djinni lets you "Bump My Profile" (raise it in recruiter search results) periodically (its docs say once every 30 days). Once a day the script checks the button on `djinni.co/my/profile/` and clicks it whenever it is enabled — the button's own state is the source of truth, so any bump frequency Djinni allows is picked up automatically. Confirms the modal and fires a "Profile bumped" banner. Throttle state lives in `djinni-bump-state.json` (gitignored); a bump failure never affects the unread scan.
+**Auto-bump:** the same run also keeps your profile fresh — Djinni lets you "Bump My Profile" (raise it in recruiter search results) periodically (every 7 days, as observed; the button itself says when). Once a day (hourly around the expected end of the cooldown) the script checks the button on `djinni.co/my/profile/` and clicks it whenever it is enabled — the button's own state is the source of truth, so any bump frequency Djinni allows is picked up automatically. Confirms the modal and fires a "Profile bumped" banner. Throttle state lives in `djinni-bump-state.json` (gitignored); a bump failure never affects the unread scan.
 
 Run it hourly via launchd:
 
 ```bash
-cp run-djinni.sh.example run-djinni.sh                      # then edit PATH/version
 cp com.example.djinni-inbox.plist.example \
    ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # then edit the paths
 launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
@@ -160,22 +233,27 @@ each strong match into `applications/`. **It never submits anything.**
 ```bash
 node jobs.mjs              # all sources (per jobs.config.json)
 DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni still run — fully ToS-clean)
-HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
+HEADFUL=1 node jobs.mjs    # visible Chrome window (watch the LinkedIn part)
 ```
+
+Scheduled runs are headless — no browser window. Boards that Cloudflare blocks
+in headless Chrome (Work.ua, Robota.ua, Glassdoor) and Jooble's snippet-only API
+were dropped in Sep 2026; git history has the source modules if you want them
+back with a visible browser.
 
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
 - **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
-- **Jooble** — official Jooble API (`jooble.org/api`). Jooble is behind Cloudflare, so the API is the supported path. Needs a **free** API key from [jooble.org/api/about](https://jooble.org/api/about), set via the `JOOBLE_API_KEY` env var (in `run-jobs.sh`, gitignored — never commit the key). Keys are market-bound — the config pins `apiHost: "ua.jooble.org"` (the Ukrainian market, every vacancy applyable from Ukraine), so register the key there. Searches are `{ keywords, location }` pairs in `jobs.config.json`: `''` = all of Ukraine, `"віддалено"` = remote only, or a city. Set `jooble.enabled=false` to disable.
-- **Work.ua** — public jobs board (`work.ua`), Cloudflare-gated, so it is read through the shared Playwright browser during full runs (like Robota.ua; no login). Each search is a full jobs-search URL (e.g. `https://www.work.ua/jobs-qa+automation/`). Set `workua.enabled=false` to disable.
-- **Robota.ua** — sits behind Cloudflare, which hard-blocks headless Chrome, so this source only yields results on `HEADFUL=1` runs (otherwise it is skipped with a log hint). Fetched through the same Playwright browser as LinkedIn, no login needed. Each search is a full search URL (e.g. `https://robota.ua/zapros/qa-automation/ukraine`). Set `robota.enabled=false` to disable.
-- **Glassdoor** — Cloudflare-gated, so it is read through the shared Playwright browser during full runs (like Robota.ua; no login). Each search is a keyword string (location fixed to Ukraine); clicking a card loads the full description. Set `glassdoor.enabled=false` to disable.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
+- **Title filter** — titles containing a whole word from `excludeTitle` in
+  `jobs.config.json` (`junior`, `intern`, `internship`, `trainee`, `manual` by
+  default) are skipped before scoring, across all sources. Matched in the title
+  only, so a senior posting that merely mentions manual testing is kept.
 - **Foreign-location filter** — boards also list vacancies physically located
-  abroad (DOU marks them "за кордоном"; Jooble UA carries "Краків, Польща").
+  abroad (DOU marks them "за кордоном"; Djinni "Тільки офіс · Польща").
   Jobs whose location contains any substring from the top-level
   `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
   across **all** sources before scoring.
-- Cold applications use a **high bar**: `minScore` (default 25) + `requireRole`.
+- Cold applications pass a keyword pre-gate — `minScore` (default 18) + `requireRole` — and then the LLM gate (`llm.minScore`, 60), which does the real screening. `excludeLocation` still keeps a remote DOU listing that merely lists a foreign office. Djinni is judged by its own countries segment instead: it must name the candidate's country (`candidateCountry` in `jobs.config.json`, every spelling the boards use — `["Ukraine", "Україна"]` by default — an empty or mistyped list falls back to that default rather than rejecting every Djinni vacancy) or the whole world, so "Тільки віддалено · Канада, Польща, Сербія" or "Країни ЄС" is dropped even though remote. The LLM gate gets the same rule in words: a vacancy open only to residents of other countries, requiring relocation or an office abroad scores at most 10.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
   differs per board) is collapsed into one record before scoring. The record with
   the fullest description is kept; the other source links are recorded under
@@ -183,8 +261,7 @@ HEADFUL=1 node jobs.mjs    # watch the LinkedIn part
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
   regardless of which source it came from. Entries carry a last-seen date and
-  expire after 90 days, so the file stops growing forever. Legacy URL-keyed
-  files migrate automatically on the next run (the old history is reset once).
+  expire after 90 days, so the file stops growing forever.
 - Only one `jobs.mjs` runs at a time (`jobs-run.lock/`); an overlapping run logs "another jobs.mjs run is active" and exits 0. Browser-profile locks record the holder's pid, so a crashed run is taken over immediately.
 
 ## Dashboard — `dashboard.mjs`
@@ -195,8 +272,8 @@ node dashboard.mjs --open   # rebuild and open it
 ```
 
 Renders the packages in `applications/` as cards, sorted by score. Per-card
-state (status, applied date, notes) is keyed by job URL and stored on disk by
-the state server (see Dashboard v2 below), so it survives dashboard
+state (status, notes) is keyed by job URL and stored on disk by
+the state server (see below), so it survives dashboard
 regeneration and browser resets. Opening a job link or expanding its cover
 letter marks the card Viewed automatically.
 
@@ -204,60 +281,78 @@ letter marks the card Viewed automatically.
 by identity** (`company + title`) at render time, keeping the most recently
 generated one. You see each vacancy once even when older packages linger on disk.
 
-### Dashboard v2 — state server, pipeline tracking & follow-up reminders
+### State server, statuses & filters
 
 **State server (`state-server.mjs`)** replaces in-browser localStorage as the
-persistence layer. The dashboard is now served by a tiny local HTTP server at
-`http://127.0.0.1:7777/` (localhost only, never exposed). Clicking the Jobs.app
-Dock icon runs `open-dashboard.sh`, which regenerates the dashboard, starts the
-server if it is not already running, and opens the browser. Job state (status,
-applied-date, per-card notes, last-visit timestamp) is written to `job-state.json`
-on disk, so it survives a browser reset or a full OS restart. If the server is
-unreachable the dashboard falls back to `localStorage` and shows an
-**"offline — not saved to disk"** badge.
+persistence layer. The dashboard is served by a tiny local HTTP server at
+`http://127.0.0.1:7777/` (localhost only, never exposed), kept running by the
+`state-server` launchd agent. Clicking the Jobs.app Dock icon runs
+`open-dashboard.sh`, which regenerates the dashboard and opens the browser. Job state (status,
+per-card notes, last-visit timestamp) is written to `job-state.json` on disk, so
+it survives a browser reset or a full OS restart. If the server is unreachable
+the dashboard falls back to `localStorage` and shows an **"offline — not saved
+to disk"** badge. Before the first write of each day the store is snapshotted to
+`job-state.YYYY-MM-DD.bak` (last 7 kept) — to roll back a bad day, copy a
+snapshot over `job-state.json`. After pulling a new version restart the server
+with `launchctl kickstart -k gui/$UID/com.<you>.state-server`. `com.<you>.…`
+there is the plist's **`Label`**, not its filename — launchctl addresses
+services by label, so renaming only the file leaves every agent registered as
+`com.example.…` and this command fails.
 
-**Pipeline tracking** — each card moves through **New → Viewed → Applied**, then
-on into the outcome funnel: **Applied → Answered → Interview**, or **Rejected**
-at any point. The apply date is recorded on the first move into any
-post-Applied stage (even when a card jumps straight to Answered because the
-reply arrived before the bookkeeping) and shows as "applied 5d ago". A header line summarizes the funnel for the whole board (applied →
-answered → interview, with conversion %, plus a rejected count and a
-per-source breakdown). You can attach private notes to any card; they are
-saved to disk via the state server. The header also shows live status/freshness
-counters and lets you filter by stage.
+**Statuses** — the tool is a radar: it finds and prepares, you apply
+selectively on the job site, so the dashboard tracks only what it needs to stay
+readable. A card is **New** until you open the job or expand its letter, which
+marks it **Viewed** automatically; **Closed** is set by the closed-vacancy check
+below and drops out of the New
+and Viewed views (deselect both tabs to see everything). That is the whole model —
+there is no applied/answered/interview pipeline (the few real applications live
+in your mailbox, not here). You can attach private notes to any card; they are
+saved to disk via the state server. The header shows New / Viewed with live
+counts, both selected by default.
 
-![Card expanded — cover letter, private note, Applied state](docs/card.png)
+![Card expanded — cover letter, private note](docs/card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
-keywords. Source chips (LinkedIn / DOU / Djinni / Jooble / Robota / Work.ua / Glassdoor) and min-score presets
-(≥ 30 / ≥ 40) narrow the list further. Cards that arrived since your last visit
-are highlighted with a 🆕 badge and can be isolated with the "New since last
-visit" filter.
+keywords; the source chips (All, plus one per board that has packages on disk)
+narrow the list to a single board. Cards that arrived since your last visit are highlighted with a
+**NEW** ribbon. Viewed cards you have not touched for 30 days are archived by the
+daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 
-![Multi-select filters, source chips and search](docs/filters.png)
+![The Djinni chip and a search query narrowing the list](docs/filters.png)
 
-**Follow-up reminders (`followup.mjs`)** — a daily launchd job
-(`com.eugene.jobs-followup.plist`, ships as `.example`) posts a macOS
-notification for every job you marked **Applied** with no
-status movement for 7+ days. Reminders auto-silence themselves the moment a
-card moves past Applied (Answered, Interview, or Rejected) — no more nagging
-about jobs that already got a reply. Tune the threshold with the
-`FOLLOWUP_DAYS` env var. Install:
+**Theme** — follows the system light/dark preference; the header button pins
+one or the other (per browser). The palette is GitHub Primer in both modes,
+every text/background pair ≥ 4.5:1.
+
+![Light theme](docs/dashboard-light.png)
+
+**Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
+(`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU,
+Djinni and LinkedIn vacancies that are still **New** or **Viewed** (plain GET, one per
+second, each url at most every 3 days, 150 per run) and marks the ones the board
+reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
+applications") as **Closed**. Closed cards leave the
+New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
+auto-reopened by clicking them. Closed packages are moved to
+`applications/archive/` after a 14-day grace period, Viewed packages you have not
+touched for 30 days go the same way, and nothing reads that folder. `run.sh`
+deletes archived packages older than 180 days. It never posts a banner — closures show up as the muted
+"· closed" cue on the dashboard. Install like the weekly report below, with
+`com.example.closed-check.plist.example`.
+
+**Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
+runs and new vacancies considered, packages written per source, LLM verdicts
+(dropped / failed / scored / at ≥70, plus the top match) and the
+median per-run yield of every source. `node report.mjs` prints it;
+`--notify` also posts a one-line macOS notification, which is what the weekly
+launchd job (`com.eugene.jobs-report.plist`, ships as `.example`, Monday
+09:00) does. `REPORT_DAYS=14` widens the window. LLM counts come from the run
+logs in `logs/`, so they cover only what the log rotation still holds. Install:
 
 ```bash
-cp com.example.jobs-followup.plist.example \
-   ~/Library/LaunchAgents/com.eugene.jobs-followup.plist   # edit paths inside
-launchctl load ~/Library/LaunchAgents/com.eugene.jobs-followup.plist
-```
-
-## Clean up stale packages — `prune-applications.mjs`
-
-The dashboard hides on-disk duplicates, but you can reclaim the space. This
-script keeps the newest package per identity and deletes the rest:
-
-```bash
-node prune-applications.mjs           # dry run — lists what would be removed
-node prune-applications.mjs --apply   # actually delete the stale duplicates
+cp com.example.jobs-report.plist.example \
+   ~/Library/LaunchAgents/com.eugene.jobs-report.plist   # edit paths inside
+launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 ```
 
 ## Adapting to another profession
@@ -265,18 +360,24 @@ node prune-applications.mjs --apply   # actually delete the stale duplicates
 Nothing in the code knows you are a QA engineer — the profession lives
 entirely in config. To hunt, say, developer jobs instead:
 
-1. **Skill profile** — `cp skills.developer.json.example skills.json` (a
-   ready TypeScript/Node preset), or edit your own `roles` / `skills` /
-   `antiKeywords` / `profile`. The `profile` block is the specialization
-   phrase the *fallback* cover letters use (LLM letters derive from your
-   resume instead); Cyrillic values sit in genitive position ("досвід в …").
+1. **Skill profile** — put your resume in `resume.txt` and run
+   `node make-skills.mjs`: it drafts `skills.json` from it with the same local
+   `claude` CLI the screener uses, including the Ukrainian spellings a local
+   board would list. Add `--print` to preview without writing, `--force` to
+   replace a file you already have. Prefer to start from a preset or edit by
+   hand? `cp skills.developer.json.example skills.json` (a ready
+   TypeScript/Node profile), then tune `roles` / `skills` / `antiKeywords` /
+   `profile`. Either way, read the result once — it is the first gate every
+   vacancy passes. The `profile` block is the specialization phrase the
+   *fallback* cover letters use (LLM letters derive from your resume instead);
+   Cyrillic values sit in genitive position ("досвід в …").
 2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
-   `https://djinni.co/jobs/?primary_keyword=Node.js`, Jooble
-   `{ "keywords": "node.js developer", "location": "remote" }`, LinkedIn
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
-3. **Resume** — replace `resume.txt` (drives LLM scoring and letters).
-4. **Attachment** — update `RESUME_PATH` in `run.sh` / `run-jobs.sh`.
+3. **Resume** — replace `resume.txt` (drives LLM scoring, the cover letters,
+   and `make-skills.mjs` above).
+4. **Attachment** — update `RESUME_PATH` in `run.sh`.
 
 The full walkthrough — from a job title like "Senior Fullstack Developer" to a
 working config, including seniority handling and the profile-coupled tests —
@@ -303,15 +404,16 @@ your resume location), so they ship as `*.example` templates. Copy each, fill in
 your own values, and the real copies stay local (gitignored):
 
 ```bash
-cp run.sh.example run.sh && cp run-jobs.sh.example run-jobs.sh   # then edit node version + RESUME_PATH
-cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # replace YOUR_USERNAME inside
+cp run.sh.example run.sh   # then edit node version + RESUME_PATH
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # replace YOUR_USERNAME **and** the Label inside
 cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 ```
 
 Unload to stop: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assistant.plist`.
 Discovery has its own templates: `com.example.job-discovery-dou.plist.example`
-and `com.example.job-discovery-linkedin.plist.example`.
+and `com.example.job-discovery-linkedin.plist.example`; the dashboard's state
+server is `com.example.state-server.plist.example` (always on, also set the node path).
 
 ## When it breaks
 
@@ -321,6 +423,18 @@ LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read mess
 3. Update the `SEL` object at the top of `check.mjs`.
 
 Session expired? Re-run `node login.mjs`.
+
+Every browser script failing at launch with "Executable doesn't exist" (or a
+banner "Playwright browser build missing") means the Playwright package was
+upgraded but its Chromium build was not: run `npx playwright install chromium`.
+Do this after every `playwright` version bump.
+
+A run that took far longer than usual (`search took 3010s` in `logs/`, or an
+hourly run exiting with "another jobs.mjs run is active") is usually the Mac
+asleep, not a broken scraper: launchd starts jobs during the short maintenance
+wakes and they only progress in those windows. Check with
+`pmset -g log | grep -E "Sleep|Wake"` before touching selectors. Normal figures:
+one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM calls.
 
 ## Project layout
 
@@ -332,13 +446,14 @@ Session expired? Re-run `node login.mjs`.
 ├── djinni-check.mjs   Djinni inbox unread count → djinni-notify-state.json
 ├── dashboard.mjs      HTML dashboard generator
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
-├── followup.mjs       follow-up reminder script (daily launchd job)
-├── open-dashboard.sh  Dock-click helper: regenerate → start server → open browser
-├── prune-applications.mjs  remove stale duplicate packages from applications/
-├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Jooble/Work.ua/Robota.ua/Glassdoor/LinkedIn sources)
+├── report.mjs         weekly digest (Monday launchd job, or run by hand)
+├── make-skills.mjs    generate skills.json from resume.txt (one-time setup)
+├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
+├── open-dashboard.sh  Dock-click helper: regenerate → open browser
+├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
-├── job-state.json     per-card state (status, applied-date, notes, last-visit) — gitignored
+├── job-state.json     per-card state (status, notes, last-visit) — gitignored
 ├── drafts/            reply drafts
 ├── applications/      application packages + index.html
 └── Jobs.app           Dock shortcut 💼
@@ -352,11 +467,11 @@ Session expired? Re-run `node login.mjs`.
 | `check.mjs`           | Read unread → score → draft. Never sends.                 |
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
-| `dashboard.mjs`       | Build the HTML dashboard with status tracking.            |
+| `dashboard.mjs`       | Build the HTML dashboard (Viewed / Closed, notes, filters). |
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
-| `followup.mjs`        | Post macOS notifications for Applied jobs with no movement for 7+ days. |
-| `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, start server, open browser. |
-| `prune-applications.mjs` | Delete stale duplicate packages (dry-run by default).  |
+| `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
+| `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
+| `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, open browser. |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
 | `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |

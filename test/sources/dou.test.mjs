@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -105,8 +106,7 @@ test("parseRss skips an item with no <link> so it cannot produce a blank '::titl
 });
 
 test("parseRss stays linear on a hostile item full of unclosed <title> openers", () => {
-  const xml = `<rss><channel><item>${"<title>".repeat(60_000)}</item></channel></rss>`;
-  const t = Date.now(); parseRss(xml); assert.ok(Date.now() - t < 500, "tag() must be bounded");
+  assertLinear("tag() opener scan", (n) => parseRss(`<rss><channel><item>${"<title>".repeat(n)}</item></channel></rss>`), 15_000);
 });
 
 test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () => {
@@ -125,6 +125,47 @@ test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () =>
 });
 
 test("parseRss stays linear on a hostile feed full of unclosed <item> openers", () => {
-  const xml = `<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`;
-  const t = Date.now(); assert.deepEqual(parseRss(xml), []); assert.ok(Date.now() - t < 500, "item scan must be bounded");
+  assert.deepEqual(parseRss(`<rss><channel>${"<item>".repeat(60_000)}</channel></rss>`), []);
+  assertLinear("item scan", (n) => parseRss(`<rss><channel>${"<item>".repeat(n)}</channel></rss>`), 15_000);
+});
+
+test("fetchDou runs its feeds concurrently but keeps results and log in config order", async () => {
+  const { fetchDou } = await import("../../lib/sources/dou.mjs");
+  const feed = (n) => `<rss><channel><item><title>QA${n} в Acme</title><link>https://jobs.dou.ua/x/${n}/</link><description>d</description></item></channel></rss>`;
+  // The first feed answers last: sequentially it would still be first in the
+  // output, and the pooled version must not reorder it either.
+  const delays = { "http://x/1": 30, "http://x/2": 0, "http://x/3": 0 };
+  let inFlight = 0, peak = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    peak = Math.max(peak, ++inFlight);
+    await new Promise((r) => setTimeout(r, delays[url]));
+    inFlight--;
+    return { ok: true, headers: { get: () => "" }, text: async () => feed(url.slice(-1)) };
+  };
+  const lines = [];
+  try {
+    const out = await fetchDou({ feeds: Object.keys(delays) }, (l) => lines.push(l));
+    assert.deepEqual(out.map((j) => j.url), ["https://jobs.dou.ua/x/1/", "https://jobs.dou.ua/x/2/", "https://jobs.dou.ua/x/3/"]);
+    assert.deepEqual(lines.map((l) => l.replace(/^.*: /, "")), ["http://x/1", "http://x/2", "http://x/3"]);
+    assert.ok(peak > 1, `feeds should overlap, peak in-flight was ${peak}`);
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("parseRss strips a CDATA wrapper that is padded with whitespace", () => {
+  const xml = `<rss><channel><item>
+    <title>\n  <![CDATA[ QA Engineer \u0432 Acme ]]>\n  </title>
+    <link>https://jobs.dou.ua/x/9/</link>
+    <description><![CDATA[ hello ]]></description>
+  </item></channel></rss>`;
+  const [item] = parseRss(xml);
+  assert.doesNotMatch(item.text, /CDATA|\]\]>/, "no wrapper markers leak into the scored text");
+  assert.match(item.title, /QA Engineer/);
+});
+
+test("a location part whose digits are glued to letters survives the salary filter", () => {
+  // `\\d{3,}` alone dropped the whole part for "\u0411\u0426 101A"; a bare figure is still a salary.
+  const item = (rest) => parseRss(`<rss><channel><item><title>QA \u0432 ${rest}</title><link>https://jobs.dou.ua/x/1/</link><description>d</description></item></channel></rss>`)[0];
+  assert.match(item("Acme, \u041a\u0438\u0457\u0432, \u0411\u0426 101A").location, /101A/, "a building number is location, not pay");
+  assert.doesNotMatch(item("Acme, \u041a\u0438\u0457\u0432, 20000").location, /20000/, "a bare figure is still dropped");
 });

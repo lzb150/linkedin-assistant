@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="200" viewBox="0 0 960 200" role="img" aria-label="linkedin-assistant: локальний радар вакансій — шукає, оцінює й готує чернетки, але нічого не надсилає">
+  <rect width="960" height="200" rx="12" fill="#0d1117" stroke="#30363d"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="48" y="86" font-size="44" font-weight="700" fill="#e6edf3">linkedin<tspan fill="#58a6ff">-</tspan>assistant</text>
+    <text x="48" y="122" font-size="18" fill="#8b949e">Локальний радар вакансій — шукає, оцінює, готує чернетки. Останній клік — ваш.</text>
+    <g font-size="13" font-weight="600">
+      <rect x="48" y="146" width="104" height="26" rx="13" fill="#1f6feb22" stroke="#1f6feb"/>
+      <text x="100" y="164" text-anchor="middle" fill="#58a6ff">3 джерела</text>
+      <rect x="162" y="146" width="122" height="26" rx="13" fill="#23863622" stroke="#238636"/>
+      <text x="223" y="164" text-anchor="middle" fill="#3fb950">лише локально</text>
+      <rect x="294" y="146" width="160" height="26" rx="13" fill="#161b22" stroke="#30363d"/>
+      <text x="374" y="164" text-anchor="middle" fill="#c9d1d9">нічого не надсилає</text>
+    </g>
+  </g>
+  <g transform="translate(792 40)" fill="none" stroke="#58a6ff" stroke-width="3">
+    <rect width="120" height="120" rx="16" stroke="#30363d" fill="#161b22"/>
+    <circle cx="60" cy="60" r="40"/>
+    <circle cx="60" cy="60" r="24"/>
+    <circle cx="60" cy="60" r="9" fill="#58a6ff"/>
+  </g>
+</svg>

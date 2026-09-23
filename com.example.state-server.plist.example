@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Dashboard state server (state-server.mjs) on 127.0.0.1:7777, always on: launchd starts
+  it at login and restarts it if it exits. After pulling a new version, restart it with
+    launchctl kickstart -k gui/$UID/com.<you>.state-server
+  Replace YOUR_USERNAME and the node path (launchd needs absolute paths). Install/uninstall:
+  README → "Schedule it (launchd)".
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.state-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_USERNAME/.nvm/versions/node/YOUR_NODE_VERSION/bin/node</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/state-server.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/state-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/state-server.log</string>
+</dict>
+</plist>

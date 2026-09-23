@@ -1,17 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  launchd job: starts the Jobs.app badge daemon at login. `--background` means
-  "show the unread Dock badge only, do NOT open the dashboard". Jobs.app stays
-  open and polls notify-state.json. check.mjs also re-launches it defensively
-  (open -g) on each scan. `open -W` gives launchd a live pid to track; it exits
-  0 however the app ended, so KeepAlive below is unconditional.
-  Install (replace YOUR_USERNAME first — with a wrong path launchd respawns
-  `open` every 10 s forever):
-    sed "s/YOUR_USERNAME/$USER/g" com.example.jobs-badge.plist.example > ~/Library/LaunchAgents/com.example.jobs-badge.plist
-    launchctl load ~/Library/LaunchAgents/com.example.jobs-badge.plist
-  Uninstall:
-    launchctl unload ~/Library/LaunchAgents/com.example.jobs-badge.plist
+  Jobs.app badge daemon, started at login. `--background` = show the unread Dock badge only,
+  do not open the dashboard. `open -W` gives launchd a live pid; it exits 0 however the app
+  ended, so KeepAlive is unconditional — with a WRONG path launchd respawns `open` every 10 s
+  forever, so replace YOUR_USERNAME (launchd needs absolute paths) before loading. Install/uninstall: README → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
