@@ -13,7 +13,6 @@ import { dirname, join } from "node:path";
 import { notify } from "./lib/notify.mjs";
 import { buildReport } from "./lib/report.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
-import { knob } from "./lib/filters.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const envDays = Number(process.env.REPORT_DAYS);
@@ -31,16 +30,8 @@ const logText = (existsSync(logsDir) ? readdirSync(logsDir) : [])
   .flatMap((f) => { try { return /^jobs_(dou_|full_)?\d{8}\.log$/.test(f) && statSync(join(logsDir, f)).mtimeMs >= since ? [readFileSync(join(logsDir, f), "utf8")] : []; } catch { return []; } })
   .join("\n");
 
-// The "strong" bucket is the LLM gate itself, read the way jobs.mjs reads it
-// (same fallback and range), so the digest cannot disagree with the runs.
-// Warnings go to stderr: stdout is the digest.
-const llmMinScore = (() => {
-  try { return knob("llm.minScore", readJson(join(dir, "jobs.config.json"), {}).llm?.minScore, 0, [0, 100], console.error); }
-  catch (e) { console.error(`⚠ jobs.config.json unreadable (${e.message}) — LLM gate taken as 0`); return 0; }
-})();
-
 const { text, notification } = buildReport({
-  now, days, llmMinScore,
+  now, days,
   packages,
   logText,
   runStats: readRunStats(join(dir, "run-stats.jsonl"), { since }),

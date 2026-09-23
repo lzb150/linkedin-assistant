@@ -39,32 +39,23 @@ test("countRunStats drops lines older than the reporting window", () => {
 });
 
 test("buildReport aggregates the last N days into text + a one-line notification", () => {
-  const r = buildReport({ now, days: 7, packages, logText, health, llmMinScore: 70 });
+  const r = buildReport({ now, days: 7, packages, logText, health });
   assert.match(r.text, /2026-08-31 → 2026-09-07 \(7 days\)/);
   assert.match(r.text, /2 runs · 7 new vacancies considered/);
   assert.match(r.text, /1 packages written/, "counted from the runs, not from the packages still on disk");
   assert.match(r.text, /LLM dropped 1, failed 1/);
   assert.match(r.text, /Packages by source: dou 2 · djinni 1/);
-  assert.match(r.text, /2 scored \(haiku 1, sonnet 1\), 1 at ≥70/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
+  assert.match(r.text, /2 scored \(haiku 1, sonnet 1\) · top:/, "per-model count so haiku-era and sonnet-era scores are not mixed up when tuning the gate");
   assert.match(r.text, /top: 88 AQA @ Plexsupply \(djinni\)/);
   assert.match(r.text, /dou 45 · linkedin 11/, "median per run from source-health");
-  assert.equal(r.notification, "1 packages (LLM ≥70: 1) · 7 new considered");
-});
-
-test("buildReport counts \"strong\" against the LLM gate it is given", () => {
-  // Pinned at 70 the bucket said nothing once the gate itself was 70: every
-  // cold package cleared it. It follows llm.minScore instead.
-  const at = (llmMinScore) => buildReport({ now, days: 7, packages, logText, health, llmMinScore });
-  assert.match(at(60).text, /2 scored \(haiku 1, sonnet 1\), 2 at ≥60/, "the gate itself counts as strong (llm_score 60 at gate 60)");
-  assert.equal(at(90).notification, "1 packages (LLM ≥90: 0) · 7 new considered");
-  assert.match(buildReport({ now, days: 7, packages, logText, health }).text, /2 at ≥0/, "no gate (llm.minScore unset) counts every scored package, as jobs.mjs treats it");
+  assert.equal(r.notification, "1 packages · 7 new considered");
 });
 
 test("buildReport survives empty inputs", () => {
-  const r = buildReport({ now, days: 7, packages: [], logText: "", health: {}, llmMinScore: 70 });
+  const r = buildReport({ now, days: 7, packages: [], logText: "", health: {} });
   assert.match(r.text, /0 runs · 0 new vacancies considered/);
   assert.match(r.text, /top: —/);
-  assert.equal(r.notification, "0 packages (LLM ≥70: 0) · 0 new considered");
+  assert.equal(r.notification, "0 packages · 0 new considered");
 });
 
 

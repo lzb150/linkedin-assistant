@@ -342,7 +342,7 @@ deletes archived packages older than 180 days. It never posts a banner — closu
 
 **Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
 runs and new vacancies considered, packages written per source, LLM verdicts
-(dropped / failed / scored / at or above `llm.minScore`, plus the top match) and the
+(dropped / failed / scored, plus the top match) and the
 median per-run yield of every source. `node report.mjs` prints it;
 `--notify` also posts a one-line macOS notification, which is what the weekly
 launchd job (`com.eugene.jobs-report.plist`, ships as `.example`, Monday
