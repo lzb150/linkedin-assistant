@@ -53,3 +53,12 @@ test("report.mjs runs with no logs/ and no packages at all", async (t) => {
   const out = await runScript(p, "report.mjs");
   assert.match(out, /0 runs/);
 });
+
+test("report.mjs takes the \"strong\" bucket from llm.minScore in jobs.config.json", async (t) => {
+  const scored = pkg({ url: "https://example.com/v/1/", generated: daysAgo(1) }).replace("\n---\n#", "\nllm_score: 75\n---\n#");
+  const packages = { "a.md": scored };
+  const p = makeProject(t, { scripts: ["report.mjs"], packages, bins: quiet, files: { "jobs.config.json": JSON.stringify({ llm: { minScore: 80 } }) } });
+  assert.match(await runScript(p, "report.mjs"), /1 scored.*, 0 at ≥80/);
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify({ llm: { minScore: 70 } }));
+  assert.match(await runScript(p, "report.mjs"), /1 scored.*, 1 at ≥70/);
+});
