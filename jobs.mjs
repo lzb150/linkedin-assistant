@@ -122,6 +122,7 @@ let jobs = [];
 let sourcesTried = 0, sourcesFailed = 0;
 const RUN_STATS = join(__dir, "run-stats.jsonl");   // one line per run; the weekly digest reads this instead of parsing its own log
 const summary = newSummary();
+const skippedSources = [];   // left out of this run on purpose — not "absent" to health monitoring
 
 // Seniority terms we never apply to. Matched as whole words in the TITLE only,
 // so a senior role whose description mentions "junior" (e.g. "mentor junior
@@ -188,7 +189,7 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
-if (DOU_ONLY) log("linkedin: skipped (DOU_ONLY=1)");
+if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); }
 else if (!config.linkedin?.enabled) log("linkedin: disabled in config — skipped");
 if (!DOU_ONLY && config.linkedin?.enabled) {
   let ctx;
@@ -207,7 +208,7 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
     // no 0-count either — leaving the source out of the summary keeps a
     // skipped run from looking like a scraper outage to health monitoring.
-    if (/profile busy/.test(e.message)) sourcesTried--;   // not an outage: the source was never tried
+    if (/profile busy/.test(e.message)) { sourcesTried--; skippedSources.push("linkedin"); }   // not an outage: the source was never tried
     else {
       sourcesFailed++;
       if (!ctx) notify(`Browser launch failed: ${e.message}`);
@@ -448,7 +449,7 @@ log("\n" + formatTable(summary));
 // Scraper-health: alert if a source came in far below its recent norm, then
 // append this run's counts to the history. An LLM failing more than twice in
 // one run is a breakage too (a single flake is not).
-const degraded = detectDegradations(health, summary);
+const degraded = detectDegradations(health, summary, { skipped: skippedSources });
 if (degraded.length) alerts.push(formatAlert(degraded));
 if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
 // Never write back a baseline we could not read: that is the silent reset.
