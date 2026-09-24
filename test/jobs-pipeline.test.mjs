@@ -368,3 +368,19 @@ echo '{"score": 90, "why": "good", "red_flags": [], "cover": "Dear team, I am gr
   assert.match(html, /SECRET-TAIL/, "the tail after the fake heading still reaches the card");
   assert.doesNotMatch(html, /<!--cover:(start|end)-->/, "the delimiters themselves are not rendered");
 });
+
+test("jobs.mjs: a DOU_ONLY run does not report the LinkedIn it skipped as absent; a disabled LinkedIn still is", async (t) => {
+  // linkedin: not run at all (recent median 26) fired on every hourly DOU-only
+  // run: the absent rule could not tell a deliberate skip from a config typo.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  writeFileSync(p.path("source-health.json"), JSON.stringify({ linkedin: [26, 25, 28, 27, 26] }));
+  await runJobs(p);                                          // DOU_ONLY=1, writes one package → one banner
+  const banner = await waitFor(p.path("notify.log"), /1 new/);
+  assert.doesNotMatch(banner, /not run at all/, "a deliberate skip is not an outage");
+
+  // Same history, no DOU_ONLY: linkedin is off in the config, which is what the rule exists for.
+  const q = setupProject(t, await serveFeed(t, () => FEED));
+  writeFileSync(q.path("source-health.json"), JSON.stringify({ linkedin: [26, 25, 28, 27, 26] }));
+  await runScript(q, "jobs.mjs");
+  assert.match(await waitFor(q.path("notify.log"), /not run at all/), /linkedin: not run at all \(recent median 26\)/);
+});
