@@ -436,10 +436,13 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 
 Сесія закінчилась? Перезапустіть `node login.mjs`.
 
-Усі браузерні скрипти падають на старті з «Executable doesn't exist» (або
-банер «Playwright browser build missing») — пакет Playwright оновили, а його
-збірку Chromium ні: виконайте `npx playwright install chromium`. Робіть це
-після кожного підняття версії `playwright`.
+Відсутня збірка Chromium (пакет Playwright оновили, а браузер ні, або хтось
+стер `~/Library/Caches/ms-playwright`) лікується сама: перший браузерний
+скрипт, що впав з «Executable doesn't exist», пише в лог `installing
+chromium…`, скачує збірку (~100 МБ, до 5 хвилин) і стартує повторно.
+`npx playwright install chromium` руками потрібен лише коли той запуск
+завершився банером «Playwright browser build missing … (install failed: …)» —
+не було мережі або Mac заснув під час завантаження.
 
 Запуск, що тривав набагато довше звичайного (`search took 3010s` у `logs/`
 або щогодинний запуск, що вийшов з «another jobs.mjs run is active»), —
