@@ -15,7 +15,7 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
-import { threadIdFrom, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
@@ -47,7 +47,7 @@ const SEL = {
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
 };
 
-// Thread ids already processed; entries expire after 90 days so the file
+// Thread messages already processed (thread id + newest bubble, see messageKey); entries expire after 90 days so the file
 // stops growing forever.
 const seen = loadSeenStore(SEEN_FILE);
 
@@ -178,22 +178,25 @@ try {
     const fullText = bubbles.join("\n");
     const snippet = bubbles.slice(-1)[0] || "";
 
-    const threadId = threadIdFrom(url, name, oldest);
-    const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen: seen.has(threadId), isJob: looksLikeJobMessage(fullText) });
-    if (markSeen) seen.add(threadId);   // "already" re-stamps so the TTL is "last seen"
+    const seenKey = messageKey(threadIdFrom(url, name, oldest), snippet);
+    const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen: seen.has(seenKey), isJob: looksLikeJobMessage(fullText) });
+    if (markSeen) seen.add(seenKey);   // "already" re-stamps so the TTL is "last seen"
     if (action === "already") { log(`· already processed: ${name}`); continue; }
     if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
+    // Opening the thread just marked it read, so the Dock badge drops it on the
+    // next scan: a banner is the only lasting signal of a new message.
+    if (!SCAN_ALL) notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140)}`);
     if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
 
     const scored = scoreMessage(fullText);
     log(`· ${name}: score=${scored.score} verdict=${scored.verdict} [${scored.matchedSkills.join(",")}]`);
 
-    if (scored.verdict === "ignore") { seen.add(threadId); continue; }
+    if (scored.verdict === "ignore") { seen.add(seenKey); continue; }
 
     const { filename, markdown } = buildDraft({ name, url, snippet, fullText }, scored);
     writeTextAtomic(join(DRAFTS, filename), markdown);   // a crash mid-write must not leave a half-written draft
     drafted++;
-    seen.add(threadId);
+    seen.add(seenKey);
   }
 } catch (err) {
   log("ERROR:", err?.message || err);

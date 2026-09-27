@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadIdFrom, threadOutcome, threadOpened, unreadVerdict } from "../lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadOutcome, threadOpened, unreadVerdict } from "../lib/inbox.mjs";
 
 test("threadIdFrom: the /thread/<id> segment, query and hash never leak; url-less falls back to name + OLDEST bubble hash", () => {
   assert.equal(threadIdFrom("https://www.linkedin.com/messaging/thread/2-abc==/?x=1#y", "Anna", "hi"), "2-abc==");
@@ -51,4 +51,14 @@ test("unreadVerdict: an omitted openListed is not silently treated as listed", (
   assert.equal(unreadVerdict({ ...base, openListed: true }).scanOpenFirst, false);
   assert.equal(unreadVerdict({ ...base, openListed: false }).scanOpenFirst, true);
   assert.equal(unreadVerdict(base).scanOpenFirst, true, "omitted behaves like not-listed, not like listed");
+});
+
+test("messageKey: a new reply in a known thread is a new key; the same newest bubble is the same key", () => {
+  const k = messageKey("2-abc==", "Hi, any news?");
+  assert.match(k, /^2-abc==#[0-9a-f]{12}$/);
+  assert.equal(k, messageKey("2-abc==", "Hi, any news?"));
+  assert.notEqual(k, messageKey("2-abc==", "Following up on the role"), "follow-up in an already-drafted thread");
+  assert.notEqual(k, "2-abc==", "legacy bare-id entries must not match");
+  assert.notEqual(k, messageKey("2-xyz==", "Hi, any news?"));
+  assert.equal(messageKey("2-abc==", undefined), messageKey("2-abc==", ""));
 });
