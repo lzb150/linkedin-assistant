@@ -185,6 +185,9 @@ clicking the Dock icon or a banner opens the LinkedIn inbox filtered to unread
 and clears the LinkedIn badge on the spot — the next hourly scan brings it back
 only if something is still unread. With no unread anywhere the click opens the
 dashboard as before.
+Every new unread LinkedIn message also posts a banner (`<name>: <message start>`):
+the scan opens the thread, which marks it read, so the badge alone would drop it
+on the next run.
 All macOS banners are posted by this app too (queued as `banners/*.json` by
 `lib/notify.mjs`), so they carry its icon and clicking one opens the dashboard.
 Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
@@ -482,7 +485,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 | `skills.json`         | Your skill profile + thresholds. Edit freely.             |
 | `resume.txt`          | Extracted from your .docx (reference).                    |
 | `drafts/`             | Output — review and send these manually.                  |
-| `seen.json`           | Tracks processed threads (no duplicate drafts).           |
+| `seen.json`           | Tracks processed messages (thread + newest message), so a follow-up in a known thread is processed again. |
 | `jobs-seen.json`      | Tracks processed vacancies by identity (no duplicate packages, across sources). |
 
 ## Contributing
