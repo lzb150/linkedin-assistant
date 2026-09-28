@@ -102,6 +102,7 @@
 | Скринька Djinni + автобамп (`djinni-inbox`)           | щогодини               |
 | Пошук на DOU / Djinni (`job-discovery-dou`)           | щогодини               |
 | Повний пошук із LinkedIn (`job-discovery-linkedin`)   | кожні 3 години (о :45) |
+| Дозапуск LinkedIn після DarkWake (`linkedin-catchup`) | кожні 15 хв (нічого не робить без маркера) |
 | Перевірка закритих + архів (`closed-check`)           | щодня 08:30            |
 | Тижневий звіт (`jobs-report`)                         | понеділок 09:00        |
 | Демон бейджа в Dock (`jobs-badge`)                    | постійно (KeepAlive)   |
@@ -428,6 +429,17 @@ launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 Пошук вакансій має власні шаблони: `com.example.job-discovery-dou.plist.example`
 і `com.example.job-discovery-linkedin.plist.example`; сервер стану дашборда —
 `com.example.state-server.plist.example` (постійно запущений, також вкажіть шлях до node).
+
+**LinkedIn і сплячий Mac.** Розклад, який Mac проспав, спрацьовує в наступному
+DarkWake — фоновому пробудженні на 5–10 с, — а на батареї `caffeinate -s` не
+тримає Mac, тож стрічка LinkedIn там ніколи не встигала завантажитись
+(`page.goto: Timeout 30000ms`, LinkedIn 0). Тепер `jobs.mjs` спершу питає
+`pmset`: у DarkWake на батареї він проганяє DOU і Djinni, пише в лог
+`linkedin: deferred`, не рахує LinkedIn у моніторингу здоров'я джерел і
+створює маркер `linkedin-pending`. `com.example.linkedin-catchup.plist.example`
+(`LINKEDIN_CATCHUP=1 run.sh jobs.mjs`, кожні 15 хв) без маркера одразу
+виходить; з маркером і повністю прокинутим Mac він збирає лише LinkedIn і
+знімає маркер. Від мережі нічого не відкладається.
 
 ## Коли щось ламається
 

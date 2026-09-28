@@ -73,3 +73,6 @@ closed-check.lock/
 .superpowers/
 .playwright-cli/
 run-stats.jsonl
+
+# LinkedIn deferred by a DarkWake run, cleared by the catch-up agent (jobs.mjs)
+linkedin-pending
