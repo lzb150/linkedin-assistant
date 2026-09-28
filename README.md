@@ -98,6 +98,7 @@ click is always yours.
 | Djinni inbox check + auto-bump (`djinni-inbox`)  | hourly                 |
 | DOU / Djinni discovery (`job-discovery-dou`)     | hourly                 |
 | Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
+| LinkedIn catch-up after a DarkWake (`linkedin-catchup`) | every 15 min (no-op unless pending) |
 | Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
 | Weekly report (`jobs-report`)                    | Monday 09:00           |
 | Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |
@@ -417,6 +418,17 @@ Unload to stop: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assist
 Discovery has its own templates: `com.example.job-discovery-dou.plist.example`
 and `com.example.job-discovery-linkedin.plist.example`; the dashboard's state
 server is `com.example.state-server.plist.example` (always on, also set the node path).
+
+**LinkedIn and a sleeping Mac.** A schedule the Mac slept through fires in the
+next DarkWake — a 5–10 s background wake — and on battery `caffeinate -s` cannot
+hold the Mac up, so the LinkedIn feed never loaded there (`page.goto: Timeout
+30000ms`, LinkedIn 0 found). `jobs.mjs` now checks `pmset` first: in a DarkWake
+on battery it still runs DOU and Djinni, logs `linkedin: deferred`, leaves
+LinkedIn out of health monitoring and writes a `linkedin-pending` marker.
+`com.example.linkedin-catchup.plist.example` (`LINKEDIN_CATCHUP=1 run.sh
+jobs.mjs`, every 15 min) exits at once without the marker; with it and the Mac
+fully awake it scrapes LinkedIn only and removes the marker. On AC power nothing
+is deferred.
 
 ## When it breaks
 

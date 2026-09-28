@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LinkedIn catch-up (LINKEDIN_CATCHUP=1 run.sh jobs.mjs), every 15 minutes. A job-discovery-linkedin
+  run that lands in a DarkWake on battery skips LinkedIn and leaves a linkedin-pending marker; this
+  agent scrapes LinkedIn once the Mac is fully awake and removes it. Without the marker run.sh exits
+  at once, so the other 95 ticks a day cost nothing and write no log.
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.linkedin-catchup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/run.sh</string>
+    <string>jobs.mjs</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LINKEDIN_CATCHUP</key>
+    <string>1</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/linkedin-catchup.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/linkedin-catchup.err.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

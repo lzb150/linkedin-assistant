@@ -6,8 +6,9 @@
 // Run:  node jobs.mjs              (all sources per jobs.config.json)
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
 //       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
+//       LINKEDIN_CATCHUP=1 node jobs.mjs  (LinkedIn only, and only when a DarkWake run deferred it)
 
-import { readFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
@@ -33,8 +34,23 @@ import { log, notify as banner } from "./lib/notify.mjs";
 import { launchBrowser, acquireProfileLock, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
+import { darkWakeOnBattery } from "./lib/wake.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+
+// LinkedIn deferred by a DarkWake run (see lib/wake.mjs). The marker is the
+// whole state: a regular run writes it instead of scraping, and the catch-up
+// agent (LINKEDIN_CATCHUP=1, every 15 min) scrapes LinkedIn only while it
+// exists and the Mac is fully awake, then removes it. Any LinkedIn attempt
+// clears it, so a real failure is still left to health monitoring instead of
+// being retried every 15 minutes.
+const PENDING = join(__dir, "linkedin-pending");
+const CATCHUP = process.env.LINKEDIN_CATCHUP === "1";
+if (CATCHUP && !existsSync(PENDING)) process.exit(0);   // the common case: nothing deferred, not worth a log line
+if (CATCHUP && darkWakeOnBattery()) {
+  log("linkedin catch-up: still in a DarkWake on battery — LinkedIn stays pending");
+  process.exit(0);
+}
 
 // Run-wide lock (jobs-run.lock/): two overlapping runs (launchd + manual) would
 // both read jobs-seen.json, both write packages for the same vacancy, and the
@@ -159,6 +175,7 @@ for (const s of BROWSERLESS_SOURCES) {
   // that simply found nothing, and it never reached summary.sources so health
   // monitoring could not flag it either.
   if (!s.enabled) { log(`${s.name}: disabled in config — skipped`); continue; }
+  if (CATCHUP) { skippedSources.push(s.name); continue; }   // they ran in the deferring run; the catch-up is for LinkedIn
   log(`Gathering ${s.name}...`);
   sourcesTried++;
   try {
@@ -189,10 +206,21 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
+const LINKEDIN_ON = !DOU_ONLY && Boolean(config.linkedin?.enabled);
+if (CATCHUP && !LINKEDIN_ON) rmSync(PENDING, { force: true });   // turned off since it was deferred: nothing to catch up
+// The feed needs more than a DarkWake's 5–10 s, so a run here only ever timed
+// out and reported LinkedIn as 0 found. Defer it and leave it out of health
+// monitoring: it was not tried, so it did not break.
+const LINKEDIN_DEFERRED = LINKEDIN_ON && darkWakeOnBattery();
 if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); }
 else if (!config.linkedin?.enabled) log("linkedin: disabled in config — skipped");
-if (!DOU_ONLY && config.linkedin?.enabled) {
-  let ctx;
+else if (LINKEDIN_DEFERRED) {
+  log("linkedin: deferred — the Mac is in a DarkWake on battery; the catch-up agent runs it after the next full wake");
+  skippedSources.push("linkedin");
+  try { writeFileSync(PENDING, `${new Date().toISOString()}\n`); } catch (e) { log("linkedin: pending marker not written:", e.message); }
+}
+if (LINKEDIN_ON && !LINKEDIN_DEFERRED) {
+  let ctx, busy = false;
   try {
     sourcesTried++;
     ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
@@ -208,7 +236,7 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
     // no 0-count either — leaving the source out of the summary keeps a
     // skipped run from looking like a scraper outage to health monitoring.
-    if (/profile busy/.test(e.message)) { sourcesTried--; skippedSources.push("linkedin"); }   // not an outage: the source was never tried
+    if (/profile busy/.test(e.message)) { busy = true; sourcesTried--; skippedSources.push("linkedin"); }   // not an outage: the source was never tried
     else {
       sourcesFailed++;
       if (!ctx) notify(`Browser launch failed: ${e.message}`);
@@ -220,6 +248,8 @@ if (!DOU_ONLY && config.linkedin?.enabled) {
     // dedup, scoring and every package write included, after the scraping was
     // already paid for. Closing a browser is never worth that.
     try { await ctx?.close(); } catch (e) { log("browser close failed:", e.message); }
+    // Busy = not tried: a pending catch-up stays pending for the next 15-minute tick.
+    if (!busy) rmSync(PENDING, { force: true });
   }
 }
 
