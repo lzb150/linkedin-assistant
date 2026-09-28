@@ -8,14 +8,16 @@
 //       MAX=10 node check.mjs       (cap how many threads to open)
 //       SCAN_ALL=1 node check.mjs   (scan recent threads regardless of read state;
 //                                     useful for a first pass. seen.json still prevents
-//                                     duplicate drafts. Does not touch the Dock badge.)
+//                                     duplicate drafts — keyed on THEIR newest message, so
+//                                     your own reply never re-drafts a thread. No banners,
+//                                     does not touch the Dock badge.)
 
 import { launchBrowser, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
-import { threadIdFrom, messageKey, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { writeState } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
@@ -45,9 +47,13 @@ const SEL = {
   // the first message group's sender name is the fallback.
   threadParticipantName: ".msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-s-message-group__name",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
+  // One per message; `--other` marks the ones THEY sent (checked on the live DOM
+  // 2026-09-28: 19 items, 7 incoming, the newest two your own replies).
+  messageItem: ".msg-s-event-listitem",
+  incomingClass: "msg-s-event-listitem--other",
 };
 
-// Thread messages already processed (thread id + newest bubble, see messageKey); entries expire after 90 days so the file
+// Thread states already processed (thread id + their newest message, see messageKey); entries expire after 90 days so the file
 // stops growing forever.
 const seen = loadSeenStore(SEEN_FILE);
 
@@ -165,8 +171,21 @@ try {
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
 
     // Read the message bubbles (most recent incoming text).
-    let bubbles = [], oldest = "", extractFailed = false, bubbleCount = 0;
+    let bubbles = [], oldest = "", extractFailed = false, bubbleCount = 0, items = [];
     try {
+      // The pane fills in after the url flips (live DOM 2026-09-28: 1 bubble at
+      // first, 17 half a second later): wait until the count holds still, else
+      // a partial list is hashed, scored and drafted.
+      for (let prev = -1, t = 0; t < 4000; t += 400) {
+        const n = (await page.$$(SEL.messageBubble)).length;
+        if (n > 0 && n === prev) break;
+        prev = n;
+        await page.waitForTimeout(400);
+      }
+      items = await page.$$eval(SEL.messageItem, (els, S) => els.map((e) => ({
+        incoming: e.classList.contains(S.incomingClass),
+        text: (e.querySelector(S.messageBubble)?.innerText || "").trim(),
+      })), SEL).catch(() => []);
       const els = await page.$$(SEL.messageBubble);
       bubbleCount = els.length;
       if (els.length) oldest = (await els[0].innerText()).trim();
@@ -176,10 +195,16 @@ try {
       }
     } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
     const fullText = bubbles.join("\n");
-    const snippet = bubbles.slice(-1)[0] || "";
+    // No list items (item selector drift): the bubbles stand in, direction unknown.
+    const { state, snippet: newest } = threadState(items.length ? items : bubbles.map((text) => ({ incoming: false, text })));
+    const snippet = newest || bubbles.slice(-1)[0] || "";
 
-    const seenKey = messageKey(threadIdFrom(url, name, oldest), snippet);
-    const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen: seen.has(seenKey), isJob: looksLikeJobMessage(fullText) });
+    const threadId = threadIdFrom(url, name, oldest);
+    const seenKey = messageKey(threadId, state);
+    // SCAN_ALL walks read threads too: a pre-#194 bare-id entry means "done", or
+    // the first such run re-drafts every thread drafted before the key change.
+    const alreadySeen = seen.has(seenKey) || (SCAN_ALL && seen.has(threadId));
+    const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen, isJob: looksLikeJobMessage(fullText) });
     if (markSeen) seen.add(seenKey);   // "already" re-stamps so the TTL is "last seen"
     if (action === "already") { log(`· already processed: ${name}`); continue; }
     if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }

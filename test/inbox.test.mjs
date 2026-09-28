@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadIdFrom, messageKey, threadOutcome, threadOpened, unreadVerdict } from "../lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "../lib/inbox.mjs";
 
 test("threadIdFrom: the /thread/<id> segment, query and hash never leak; url-less falls back to name + OLDEST bubble hash", () => {
   assert.equal(threadIdFrom("https://www.linkedin.com/messaging/thread/2-abc==/?x=1#y", "Anna", "hi"), "2-abc==");
@@ -61,4 +61,16 @@ test("messageKey: a new reply in a known thread is a new key; the same newest bu
   assert.notEqual(k, "2-abc==", "legacy bare-id entries must not match");
   assert.notEqual(k, messageKey("2-xyz==", "Hi, any news?"));
   assert.equal(messageKey("2-abc==", undefined), messageKey("2-abc==", ""));
+});
+
+test("threadState: only THEIR messages identify the state; an empty follow-up still moves it; no incoming falls back to all", () => {
+  const theirs = { incoming: true, text: "We have a role" };
+  const mine = { incoming: false, text: "Thanks!" };
+  assert.deepEqual(threadState([theirs, mine]), { state: "1\nWe have a role", snippet: "We have a role" }, "your reply is not their newest message");
+  assert.deepEqual(threadState([theirs, mine]).state, threadState([theirs]).state, "replying does not change the state");
+  const image = threadState([theirs, { incoming: true, text: "" }]);
+  assert.notEqual(image.state, threadState([theirs]).state, "image-only follow-up");
+  assert.equal(image.snippet, "We have a role", "the snippet is the newest message with text");
+  assert.deepEqual(threadState([mine]), { state: "1\nThanks!", snippet: "Thanks!" }, "no incoming items (selector drift) → every item");
+  assert.deepEqual(threadState([]), { state: "0\n", snippet: "" });
 });
