@@ -103,6 +103,18 @@ test("appendAltLink creates the alt_links line when absent", () => {
   } finally { cleanup(); }
 });
 
+test("appendAltLink writes a url holding $' / $& literally", () => {
+  // A string replacement expands those: $' pasted the package body into the frontmatter.
+  const { file, cleanup } = tmpPackage(FM);
+  try {
+    const url = "https://dj/jobs/1-a$'b$&c/";
+    assert.equal(appendAltLink(file, "djinni", url), true);
+    const md = readFileSync(file, "utf8");
+    const end = FM.indexOf("\n---");   // the closing fence
+    assert.equal(md, `${FM.slice(0, end)}\nalt_links: djinni|${url}${FM.slice(end)}`);
+  } finally { cleanup(); }
+});
+
 test("appendAltLink appends to an existing alt_links line", () => {
   const { file, cleanup } = tmpPackage(FM.replace("\n---\n", "\nalt_links: djinni|https://dj/1\n---\n"));
   try {

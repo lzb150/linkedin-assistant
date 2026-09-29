@@ -9,7 +9,7 @@
     "login": "node login.mjs",
     "check": "node check.mjs",
     "jobs": "node jobs.mjs",
-    "test": "node --test test/",
+    "test": "node --test",
     "lint": "oxlint ."
   },
   "engines": {
