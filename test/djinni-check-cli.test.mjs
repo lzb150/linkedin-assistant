@@ -10,12 +10,13 @@ const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexi
 const SEEN = ["111", "222"];
 
 // A logged-in Djinni whose unread bucket the evaluate reads as `threads`.
-const playwrightWith = (threads, { close = "async () => {}" } = {}) => `
+// `emptyBlock`: the page renders Djinni's empty-state block (.threads-empty).
+const playwrightWith = (threads, { close = "async () => {}", emptyBlock = false } = {}) => `
 const page = {
   url: () => "https://djinni.co/my/inbox?bucket=unread",
   goto: async () => {},
   waitForTimeout: async () => {},
-  $: async (sel) => (sel === "a[href='/logout']" ? {} : null),
+  $: async (sel) => (sel === "a[href='/logout']"${emptyBlock ? ' || sel === ".threads-empty"' : ""} ? {} : null),
   $$: async () => [],
   evaluate: async () => ${JSON.stringify(threads)},
   locator: () => ({ first: () => ({ innerText: async () => "", isVisible: async () => false }) }),
@@ -38,6 +39,14 @@ test("djinni-check.mjs: an empty scrape never wipes the seen store", async (t) =
   const p = project(t, playwrightWith([]));
   await spawnScript(p, "djinni-check.mjs").done;
   assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-seen.json"), "utf8")), SEEN);
+});
+
+test("djinni-check.mjs: Djinni's own empty state clears the seen store", async (t) => {
+  // A read thread left in the store would never banner again when the
+  // recruiter replies in it: freshThreads would call it already known.
+  const p = project(t, playwrightWith([], { emptyBlock: true }));
+  await spawnScript(p, "djinni-check.mjs").done;
+  assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-seen.json"), "utf8")), []);
 });
 
 test("djinni-check.mjs: a real scrape does rewrite the seen store", async (t) => {

@@ -69,6 +69,10 @@ try {
     }
     return [...byId.entries()].map(([id, label]) => ({ id, label }));
   });
+  // Djinni's own empty-state block (verified live 2026-09-29: `.threads-empty`,
+  // with an illustration and "Nothing found"). A class, not the text: the UI
+  // also ships in Ukrainian. Tells a truly empty bucket from a selector drift.
+  const bucketEmpty = !threads.length && (await page.$(".threads-empty").then(Boolean));
   unreadThreads = threads;
   scanned = true;
   log(`Djinni unread threads: ${threads.length}`);
@@ -85,12 +89,13 @@ try {
   // Persist BEFORE the banner, not after: the two used to be the other way
   // round, so a crash or a kill in between left the ids unrecorded and the next
   // run bannered the same threads a second time.
-  // Never rewrite the seen store from an empty result. A selector drift reads
-  // as an honest zero here, and truncating the file to [] means every existing
-  // conversation banners again the moment the selector is repaired. An empty
-  // bucket simply leaves the previous ids in place: they cost nothing, because
-  // freshThreads only ever asks whether a CURRENT thread is already known.
-  if (threads.length) {
+  // Never rewrite the seen store from an UNEXPLAINED empty result. A selector
+  // drift reads as an honest zero here, and truncating the file to [] means
+  // every existing conversation banners again the moment the selector is
+  // repaired. Only Djinni's own empty-state block makes zero trustworthy — and
+  // it must clear the store: a read thread that stays in it never banners
+  // again when the recruiter replies (freshThreads finds it "already known").
+  if (threads.length || bucketEmpty) {
     try {
       writeJsonAtomic(SEEN_FILE, threads.map((t) => t.id));
     } catch (e) { log("notify: writing seen file failed:", e?.message); }
