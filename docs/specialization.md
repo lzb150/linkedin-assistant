@@ -137,7 +137,7 @@ to your resume.
    `excludeTitle` still fits.
 3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
    `run.sh`.
-4. Verify: `node --test test/` (the suite runs on a frozen fixture profile,
+4. Verify: `npm test` (the suite runs on a frozen fixture profile,
    so it stays green regardless of your `skills.json`), then one
    `node jobs.mjs` run — the newest file in `applications/` should read
    like your new specialization.
