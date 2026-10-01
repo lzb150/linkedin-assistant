@@ -148,6 +148,15 @@ test("check.mjs: a new unread message posts a banner with the sender and the sta
   assert.match(await waitFor(p.path("notify.log"), /Jane Recruiter/), /Jane Recruiter: Hi! We have a Senior QA/, "the banner quotes their message, not your reply");
 });
 
+test("check.mjs: a thread that could not be read still posts a banner — the unread filter never lists it again", async (t) => {
+  // Opening it marked it read. Skipping it as "retry" before the banner left a
+  // new recruiter message with nothing but a log line.
+  const p = project(t, scanningPlaywright([], { items: [] }), { bins: {} });
+  const out = await spawnScript(p, "check.mjs").done;
+  assert.match(out, /skipping without marking seen: Jane Recruiter/);
+  assert.match(await waitFor(p.path("notify.log"), /Jane Recruiter/), /Jane Recruiter: new message \(could not read it/);
+});
+
 test("check.mjs: SCAN_ALL posts no banner", async (t) => {
   const p = project(t, scanningPlaywright([JOB]), { bins: {} });
   const out = await spawnScript(p, "check.mjs", { SCAN_ALL: "1" }).done;

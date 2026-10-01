@@ -48,6 +48,14 @@ test("fetchFollow follows a same-host redirect and reads the final page", async 
   assert.deepEqual(seen, ["https://djinni.co/jobs/1", "https://djinni.co/final"]);
 });
 
+test("fetchFollow and fetchText cancel the bodies they never read", async () => {
+  let cancelled = 0;
+  const body = { cancel: async () => { cancelled++; } };
+  const doFetch = async (u) => (u.endsWith("/final") ? { ok: false, status: 404, body } : { ...redirectTo("/final"), body });
+  assert.equal(await fetchText("https://djinni.co/jobs/1", () => {}, "djinni", doFetch), "");
+  assert.equal(cancelled, 2, "the redirect hop and the 404 body are both released");
+});
+
 test("fetchFollow refuses a redirect off the allowed host, and never requests it", async () => {
   const seen = [];
   const doFetch = async (u) => { seen.push(u); return redirectTo("http://127.0.0.1:7777/state"); };

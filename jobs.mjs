@@ -288,7 +288,12 @@ for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package 
   // again, and without the url check each one got re-scored (a paid LLM call)
   // and written a SECOND time — the filename embeds a fresh minute stamp, so it
   // could never collide and the duplicate was invisible.
-  if (fm.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: fm.file, source: fm.source || "", url: fm.url || "" });
+  // A list per key: two same-source reqs can share one, and keeping only the
+  // last one read lost the other's url — the same-url guard below then missed it.
+  if (!fm.title) continue;
+  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
+  if (!packageIndex.has(key)) packageIndex.set(key, []);
+  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "" });
 }
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
@@ -302,17 +307,19 @@ for (const job of jobs) {
   // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
   // a vacancy still live after 90 days must not resurface as new.
   if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
-  const existing = packageIndex.get(canonicalKey(job));
+  const packaged = packageIndex.get(canonicalKey(job)) || [];
   // Same source AND same url = the very package we already wrote (the seen
   // store lost it, the package did not). Re-stamp and move on: no re-score, no
   // second file. A different url from the same source is still a distinct req.
-  if (existing && existing.source === job.source && existing.url && existing.url === job.url) {
-    log(`  · already packaged (${existing.file}) ${job.source}: ${job.title}`);
+  const same = packaged.find((p) => p.source === job.source && p.url && p.url === job.url);
+  if (same) {
+    log(`  · already packaged (${same.file}) ${job.source}: ${job.title}`);
     recordOutcome(summary, job.source, "seen");
     seen.add(id);
     continue;
   }
-  if (existing && existing.source !== job.source) {
+  const existing = packaged.find((p) => p.source !== job.source);
+  if (existing) {
     try { appendAltLink(join(APPS, existing.file), job.source, job.url); }
     catch (e) { log(`  · alt-link append failed (${existing.file}): ${e.message}`); }
     log(`  · dup-of-existing (${existing.file}) ${job.source}: ${job.title}`);

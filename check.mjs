@@ -207,10 +207,12 @@ try {
     const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen, isJob: looksLikeJobMessage(fullText) });
     if (markSeen) seen.add(seenKey);   // "already" re-stamps so the TTL is "last seen"
     if (action === "already") { log(`· already processed: ${name}`); continue; }
-    if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
     // Opening the thread just marked it read, so the Dock badge drops it on the
-    // next scan: a banner is the only lasting signal of a new message.
-    if (!SCAN_ALL) notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140)}`);
+    // next scan: a banner is the only lasting signal of a new message. Posted
+    // before the retry skip: the unread filter never lists a read thread again,
+    // so a thread we could not read would otherwise vanish with a log line.
+    if (!SCAN_ALL) notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`);
+    if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
     if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
 
     const scored = scoreMessage(fullText);

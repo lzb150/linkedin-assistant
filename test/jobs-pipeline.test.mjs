@@ -246,6 +246,23 @@ test("jobs.mjs: a package already written from the SAME source and url is not wr
   assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1, "re-stamped as seen so it settles next run");
 });
 
+test("jobs.mjs: two same-source packages sharing a key both guard against a rewrite", async (t) => {
+  // The index kept one package per key, so whichever was read last hid the
+  // other's url: that vacancy was re-scored and written a second time.
+  const url = "https://jobs.dou.ua/companies/acme/vacancies/1/";
+  const other = "https://jobs.dou.ua/companies/acme/vacancies/2/";
+  const p = setupProject(t, await serveFeed(t, () => rss([
+    { title: "Senior SDET (Playwright) в Acme, Київ", link: url, desc: AQA },
+  ])), { packages: {
+    "a.md": pkg({ source: "dou", title: "Senior SDET (Playwright)", company: "Acme", url }),
+    "b.md": pkg({ source: "dou", title: "Senior SDET (Playwright)", company: "Acme", url: other }),
+  } });
+  const out = await runScript(p, "jobs.mjs");
+  assert.match(out, /already packaged \(a\.md\)/);
+  const files = readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).sort();
+  assert.deepEqual(files, ["a.md", "b.md"], "no third package");
+});
+
 test("jobs.mjs: a misspelt config key is reported, and a disabled source is named in the log", async (t) => {
   // A typo'd `llm` turns the whole gate off and a typo'd source name drops that
   // source — both used to look exactly like an ordinary run.

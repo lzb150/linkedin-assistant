@@ -67,7 +67,7 @@ closed-check.lock/
 
 # Atomic-write temp files and quarantined corrupt state files
 *.tmp
-*.corrupt
+*.corrupt*
 
 # Local tooling scratch dirs
 .superpowers/
