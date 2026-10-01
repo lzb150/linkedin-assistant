@@ -13,7 +13,7 @@ import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive, onBoardHost } from "./lib/closed.mjs";
-import { bodyText, fetchFollow } from "./lib/sources/html.mjs";
+import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 import { acquireProfileLock } from "./lib/run-lock.mjs";
 
@@ -106,7 +106,7 @@ for (const { url, source } of todo) {
     // frontmatter url: an open redirect on a board would otherwise aim this
     // daily job at anything the Mac can reach, the loopback state server included.
     const res = await fetchFollow(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000) }, { allow: (u) => onBoardHost(source, u) });
-    const status = res.status, html = status === 200 ? await bodyText(res) : "";
+    const status = res.status, html = status === 200 ? await bodyText(res) : (await discardBody(res), "");
     checked[url] = new Date().toISOString();
     if (isClosed({ source, status, html })) {
       pending.push(url);
