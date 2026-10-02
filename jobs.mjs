@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { scoreMessage } from "./lib/relevance.mjs";
+import { keywordGate, titleExcluder, seenEither } from "./lib/keyword-gate.mjs";
 import { buildApplication, appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sanitizeVacancyText } from "./lib/llm.mjs";
@@ -100,9 +100,17 @@ if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is mi
 // keys are the documentation blocks the shipped config is full of.
 const KNOWN_TOP = new Set(["minScore", "requireRole", "candidateCountry", "excludeTitle", "excludeLocation", "llm", "dou", "djinni", "linkedin"]);
 const KNOWN_LLM = new Set(["enabled", "model", "maxPerRun", "concurrency", "minScore"]);
+// Per-source keys: `djinni.serches` drops every Djinni search just as quietly.
+const KNOWN_SOURCE = {
+  dou: new Set(["enabled", "minScore", "feeds"]),
+  djinni: new Set(["enabled", "minScore", "searches", "maxResults", "pages", "concurrency", "fullDescription"]),
+  linkedin: new Set(["enabled", "minScore", "searches", "maxResults"]),
+};
 const unknownIn = (obj, known) => Object.keys(obj || {}).filter((k) => !k.startsWith("_") && !known.has(k));
 for (const k of unknownIn(config, KNOWN_TOP)) log(`⚠ config: unknown top-level key "${k}" — ignored (misspelt? known keys: ${[...KNOWN_TOP].join(", ")})`);
-for (const k of unknownIn(LLM, KNOWN_LLM)) log(`⚠ config: unknown llm.${k} — ignored (misspelt? known keys: ${[...KNOWN_LLM].join(", ")})`);
+for (const [section, known] of [["llm", KNOWN_LLM], ...Object.entries(KNOWN_SOURCE)]) {
+  for (const k of unknownIn(config[section], known)) log(`⚠ config: unknown ${section}.${k} — ignored (misspelt? known keys: ${[...known].join(", ")})`);
+}
 
 const notify = (msg) =>
   banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
@@ -140,29 +148,17 @@ const RUN_STATS = join(__dir, "run-stats.jsonl");   // one line per run; the wee
 const summary = newSummary();
 const skippedSources = [];   // left out of this run on purpose — not "absent" to health monitoring
 
-// Seniority terms we never apply to. Matched as whole words in the TITLE only,
-// so a senior role whose description mentions "junior" (e.g. "mentor junior
-// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
-// Regexes compiled once at load, not per job. Same normalization as the two
-// lists in lib/filters.mjs: a hand-edited excludeTitle that is not an array
-// used to throw here, before a single job was gathered.
-const EXCLUDE_TITLE = excludeList(config.excludeTitle).map((term) => ({
-  term,
-  re: new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
-}));
-function excludedByTitle(title) {
-  const t = (title || "").toLowerCase();
-  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
-}
+// Seniority terms we never apply to, matched as whole words in the TITLE only
+// (see lib/keyword-gate.mjs). Same normalization as the two lists in
+// lib/filters.mjs: a hand-edited excludeTitle that is not an array used to
+// throw here, before a single job was gathered.
+const excludedByTitle = titleExcluder(excludeList(config.excludeTitle));
 
 // Known before it is opened: already in the seen store (either key spelling) or
 // excluded by title. LinkedIn skips the click + 1.8 s and Djinni the detail-page
 // fetch for such jobs (most of every run); the scoring loop still re-stamps
 // the seen entry because the job is returned from its list fields.
-// ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
-// accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
-const legacyIdOf = (id) => id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
-const knownJob = (job) => { const id = identityKey(job); return seen.has(id) || seen.has(legacyIdOf(id)) || Boolean(excludedByTitle(job.title)); };
+const knownJob = (job) => seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title));
 
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board).
 // Same gather/record/collect shape.
@@ -280,7 +276,7 @@ log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length}
 // resurfacing on ANOTHER board must not spawn a second package — its link is
 // appended to the existing one instead. Same source = a distinct req, allowed.
 const packageIndex = new Map();
-for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package skipped: ${f}`) })) {
+for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable package skipped: ${f} (${e?.message})`) })) {
   // "—" is the blank-company placeholder; canonicalKey scopes those by url,
   // so pass the url along instead of filtering on a truthy company.
   // The url is carried too: "same source = a distinct req" is only true when
@@ -302,54 +298,29 @@ for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package 
 let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
 const matches = [];
 for (const job of jobs) {
-  const id = identityKey(job);
-  const legacyId = legacyIdOf(id);
-  // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
-  // a vacancy still live after 90 days must not resurface as new.
-  if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
-  const packaged = packageIndex.get(canonicalKey(job)) || [];
-  // Same source AND same url = the very package we already wrote (the seen
-  // store lost it, the package did not). Re-stamp and move on: no re-score, no
-  // second file. A different url from the same source is still a distinct req.
-  const same = packaged.find((p) => p.source === job.source && p.url && p.url === job.url);
-  if (same) {
-    log(`  · already packaged (${same.file}) ${job.source}: ${job.title}`);
-    recordOutcome(summary, job.source, "seen");
-    seen.add(id);
-    continue;
+  const g = keywordGate(job, {
+    seen, packageIndex, excludedByTitle,
+    minScore: SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE,
+    requireRole: config.requireRole,
+  });
+  const { id } = g;
+  if (g.considered) considered++;
+  switch (g.kind) {
+    case "seen": break;   // re-stamped below: the TTL is "last seen", so a vacancy still live after 90 days never resurfaces
+    case "packaged": log(`  · already packaged (${g.file}) ${job.source}: ${job.title}`); break;
+    case "dup":
+      try { appendAltLink(join(APPS, g.file), job.source, job.url); }
+      catch (e) { log(`  · alt-link append failed (${g.file}): ${e.message}`); }
+      log(`  · dup-of-existing (${g.file}) ${job.source}: ${job.title}`);
+      break;
+    case "excluded": log(`  · skip [excluded:${g.term}] ${job.source}: ${job.title}`); break;
+    case "low":
+      log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
+      break;
+    case "match": matches.push({ id, job, scored: g.scored }); continue;
   }
-  const existing = packaged.find((p) => p.source !== job.source);
-  if (existing) {
-    try { appendAltLink(join(APPS, existing.file), job.source, job.url); }
-    catch (e) { log(`  · alt-link append failed (${existing.file}): ${e.message}`); }
-    log(`  · dup-of-existing (${existing.file}) ${job.source}: ${job.title}`);
-    recordOutcome(summary, job.source, "seen");
-    seen.add(id);
-    continue;
-  }
-  considered++;
-  const excluded = excludedByTitle(job.title);
-  if (excluded) {
-    log(`  · skip [excluded:${excluded}] ${job.source}: ${job.title}`);
-    recordOutcome(summary, job.source, "excluded");
-    seen.add(id);
-    continue;
-  }
-  const scored = scoreMessage(job.text);
-  // Cold applications: strict gate — high score AND an automation/SDET role match.
-  const minScore = SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE;
-  const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
-  if (scored.score < minScore || !needRole) {
-    // A card whose description failed to load (LinkedIn panel timeout) scores
-    // on its title alone; marking it seen would bury it for the 90-day TTL.
-    // Leave it unseen so the next run re-reads the description.
-    const noDesc = (job.text || "").length < 300;
-    log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${noDesc ? " (no description — will retry)" : ""}`);
-    recordOutcome(summary, job.source, "low");
-    if (!noDesc) seen.add(id);
-    continue;
-  }
-  matches.push({ id, job, scored });
+  recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
+  if (!g.retry) seen.add(id);   // a "low" with no description stays unseen so the next run re-reads it
 }
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
@@ -372,7 +343,10 @@ for (const { job, scored } of matches.slice(toScore.length)) {
 const verdict = new Map();   // m → Promise<llm result | null>
 let scoring = Promise.resolve();
 if (llmOn) {
-  const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
+  // One deferred promise per match: the pool settles it, the loop below awaits it.
+  // (Promise.withResolvers is Node 22+; CI also runs 20.)
+  const resolvers = new Map();
+  for (const m of toScore) verdict.set(m, new Promise((resolve) => resolvers.set(m, resolve)));
   scoring = pool(toScore, LLM_CONCURRENCY, async (m) => {
     // Every promise must settle. A throw in here used to leave `await
     // verdict.get(m)` pending forever — the run deadlocked mid-scoring with an

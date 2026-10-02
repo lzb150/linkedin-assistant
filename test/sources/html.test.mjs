@@ -261,3 +261,15 @@ test("bodyText honours the charset from the BYTES when a response has no stream"
   const noBuf = { headers: { get: () => "text/html; charset=utf-8" }, text: async () => "plain" };
   assert.equal(await bodyText(noBuf), "plain");
 });
+
+test("orderedPool returns items and replays log lines in input order, whatever order workers finish in", async () => {
+  const { orderedPool } = await import("../../lib/sources/html.mjs");
+  const logged = [];
+  const out = await orderedPool([30, 0, 10], 3, async (ms, say) => {
+    await new Promise((r) => setTimeout(r, ms));
+    say(`line ${ms}`);
+    return ms === 10 ? undefined : [ms, ms + 1];   // a worker returning nothing contributes nothing
+  }, (l) => logged.push(l));
+  assert.deepEqual(out, [30, 31, 0, 1]);
+  assert.deepEqual(logged, ["line 30", "line 0", "line 10"]);
+});

@@ -3,11 +3,9 @@
 import { readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { identityKey } from "./lib/dedup.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { detectLang } from "./lib/lang.mjs";
+import { parse, toItem, collapseItems, renderCard, sourceChips } from "./lib/dashboard-render.mjs";
 import { execFile } from "node:child_process";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -25,153 +23,17 @@ const clientJs = ["dashboard-client-core.cjs", "dashboard-client-dom.js"]
   .join("\n");
 if (/<\/script/i.test(clientJs)) throw new Error("dashboard client JS must not contain </script>");
 
-function parse(md) {
-  const fm = parseFrontmatter(md);
-  if (!fm) return null;
-  // Cover note. Prefer the explicit delimiters buildApplication writes: the
-  // letter is model output, and one that contained its own "## Action" used to
-  // truncate the card while the file kept the full text. The heading scan stays
-  // as the fallback so packages written before the delimiters still render.
-  // Anchored to a line start: a job TITLE of "## Cover note" sits in the H1 ("# ## Cover note — …") and must not match.
-  const delimited = md.match(/^<!--cover:start-->\n([\s\S]*?)\n<!--cover:end-->/m);
-  const cover = delimited ? delimited[1] : ((md.match(/^## Cover note[^\n]*\n([\s\S]*?)\n## Action/m) || [])[1] || "");
-  return { fm, cover: cover.trim() };
-}
-
-// Also escapes the apostrophe. Every interpolation site happens to use double
-// quotes today, so leaving ' alone was safe — but that is an invariant nothing
-// checks and one single-quoted attribute would break silently.
-const esc = (s) =>
-  (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-// Frontmatter urls come from scraped job postings — only ever link http(s),
-// so a hostile posting can't smuggle a javascript: url into an href.
-// Cyrillic text (titles / locations come from Ukrainian boards) gets its lang so screen readers switch voice;
-// the shared detector tells uk from ru, a blanket lang="uk" would misvoice a Russian title.
-const langAttr = (s) => { const l = detectLang(s); return l === "en" ? "" : ` lang="${l}"`; };
-
-const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
-
 // The shared reader skips what cannot be read (a directory named x.md, a
 // permission error) with a warning instead of aborting the build. `raw` asks it
 // for the body too — the cover note is not frontmatter — so each package is
 // read once instead of twice, and a package archived between the two reads can
 // no longer disappear underneath us.
 const warn = (f, e) => console.warn(`unreadable package skipped: ${f} (${e.message})`);
-const parsed = readPackages(APPS, { warn, raw: true })
+const items = collapseItems(readPackages(APPS, { warn, raw: true })
   .map(({ _raw }) => parse(_raw))
   .filter(Boolean)
-  .map((x) => ({
-    ...x,
-    score: Number.isFinite(parseInt(x.fm.score, 10)) ? parseInt(x.fm.score, 10) : 0,
-    llm: /^\d+$/.test(x.fm.llm_score || "") ? parseInt(x.fm.llm_score, 10) : null,
-    generated: x.fm.generated || "",
-  }));
-
-// applications/ is append-only: historical runs left many packages for the same
-// vacancy (boards used to change a job's URL between runs when seen was URL-keyed).
-// Collapse to one card per identity (company+title), keeping the most recently
-// generated package so the dashboard reflects the latest data.
-const byIdentity = new Map();
-for (const it of parsed) {
-  const key = identityKey({ company: it.fm.company, title: it.fm.title, url: it.fm.url }); // url scopes blank companies
-  const prev = byIdentity.get(key);
-  if (!prev || (it.fm.generated || "") > (prev.fm.generated || "")) byIdentity.set(key, it);
-}
-const items = [...byIdentity.values()].sort(
-  (a, b) => (b.llm ?? -1) - (a.llm ?? -1) || b.score - a.score,
-);
-
-// Score band → CSS class (colours live in the theme tokens, see <style>).
-function scoreBand(s) {
-  if (s >= 40) return "hi";    // green
-  if (s >= 30) return "mid";   // amber
-  return "lo";                  // gray
-}
-
-// Everything per-source the page needs, keyed once: badge colour and chip
-// label used to be two object literals over the same three keys, so adding a
-// board meant editing both. Unknown/future sources fall back to gray with their
-// raw name. Colours are all ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
-const SOURCES = {
-  linkedin: { color: "#0a66c2", label: "LinkedIn" },
-  dou: { color: "#c93c33", label: "DOU" },
-  djinni: { color: "#3d3bd4", label: "Djinni" },
-};
-// hasOwn: source is frontmatter text, "constructor" must not resolve.
-const sourceMeta = (source) => (Object.hasOwn(SOURCES, source) ? SOURCES[source] : null);
-function badge(source) {
-  return `<span class="src" style="background:${sourceMeta(source)?.color || "#6e7781"}">${esc(source)}</span>`;
-}
-
-// Source chips only for boards that actually have packages on disk: a disabled
-// board's chip disappears by itself once its last package is archived.
-const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
-  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(sourceMeta(src)?.label || src)}</button>`)
-  .join("\n      ");
-
-const cards = items
-  .map((it, idx) => {
-    const f = it.fm;
-    const skills = (f.matched_skills || "")
-      .split(",").map((s) => s.trim()).filter(Boolean)
-      .map((s) => `<span class="chip">${esc(s)}</span>`).join("");
-    // Same vacancy on other boards (collected by dedupeJobs): "source|url, ...".
-    // Split only before the next "source|" so commas inside URLs survive.
-    const alt = (f.alt_links || "")
-      .split(/,\s*(?=[a-z]+\|)/).map((s) => s.trim()).filter(Boolean)
-      // A pair with no "|" is malformed (hand-edited frontmatter): indexOf
-      // returns -1, which used to label the link with the pair minus its last
-      // character and point it at the whole string. Drop it instead.
-      .filter((pair) => pair.includes("|"))
-      .map((pair) => {
-        const sep = pair.indexOf("|");
-        const src = pair.slice(0, sep), url = pair.slice(sep + 1);
-        return `<a class="alt" href="${esc(safeUrl(url))}" target="_blank" rel="noopener">${esc(src)} ↗</a>`;
-      }).join("");
-    const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
-    // The server keys state by http(s) url and 400s anything else: a card with
-    // a bad url renders read-only (no status buttons / note / auto-viewed).
-    const live = safeUrl(f.url) !== "#";
-    const auto = live ? ` onclick="autoStatus(this.closest('.card'),'viewed')"` : "";
-    // Every per-card control used to carry the same accessible name on every
-    // card — "New", "Viewed", "Copy letter", "Note", "Status", "Private note" —
-    // so a screen-reader user tabbing through could not tell which vacancy they
-    // were acting on (WCAG 2.4.6 / 4.1.2). `which` disambiguates them, and the
-    // article takes its own name from its heading.
-    const which = esc(`${f.title || "—"} at ${f.company || "—"}`);
-    return `
-<article class="card" aria-labelledby="t${idx}"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
-  <div class="head">
-    <span class="score ${scoreBand(it.score)}"><span class="sr-only">keyword score </span>${it.score}</span>
-    <div class="titles">
-      <h2 id="t${idx}"${langAttr(f.title)}>${esc(f.title || "—")}<span class="sr-only card-status"></span></h2>
-      <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · <span${langAttr(f.location)}>${esc(f.location || "")}</span> · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
-      ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span>${f.llm_suspect ? ` <span class="suspect" title="The posting contains text addressed to the screener, so this score may have been asked for">⚠ ${esc(f.llm_suspect)}</span>` : ""} <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
-    </div>
-    <div class="actions">
-      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open job: ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
-      ${live ? `<div class="status-seg" role="group" aria-label="Status — ${which}">
-        <button data-status="new" aria-pressed="false" aria-label="Mark New — ${which}" onclick="setStatus(this.closest('.card'),'new')">New</button>
-        <button data-status="viewed" aria-pressed="false" aria-label="Mark Viewed — ${which}" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
-      </div>` : ""}
-    </div>
-  </div>
-  <div class="skills">${skills}</div>
-  ${altRow}
-  <details${live ? ` ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')"` : ""}>
-    <summary>Cover letter<span class="sr-only"> — ${which}</span></summary>
-    <pre id="cover${idx}" lang="${esc(f.cover_language || "en")}">${esc(it.cover)}</pre>
-    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter<span class="sr-only"> — ${which}</span></button><span class="sr-only" role="status"></span>
-    <span class="resume"><span aria-hidden="true">📎</span> resume: ${esc(f.resume || "")}</span>
-  </details>
-  ${live ? `<details class="note-wrap">
-    <summary><span aria-hidden="true">📝</span> Note<span class="sr-only"> — ${which}</span> <span class="note-has" hidden>●<span class="sr-only"> has note</span></span></summary>
-    <textarea class="note" rows="3" maxlength="10000" aria-label="Private note — ${which}" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
-  </details>` : ""}
-</article>`;
-  })
-  .join("\n");
+  .map(toItem));
+const cards = items.map(renderCard).join("\n");
 
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -199,7 +61,6 @@ const html = `<!doctype html>
     --accent: light-dark(#0969da, #58a6ff); --accent-fill: light-dark(#0969da, #1f6feb); --focus: light-dark(#0969da, #58a6ff);
     --success-fill: light-dark(#1f883d, #238636); --success-fill-hover: light-dark(#1a7f37, #1a7f37); --success-text: light-dark(#1a7f37, #3fb950);
     --attention-fill: light-dark(#9a6700, #9e6a03); --attention-text: light-dark(#9a6700, #d29922);
-    --danger-fill: light-dark(#cf222e, #da3633); --danger-text: light-dark(#cf222e, #f85149);
     --done-fill: light-dark(#8250df, #8957e5); --neutral-fill: light-dark(#6e7781, #6e7681); --closed-border: light-dark(#8c959f, #6e7681);
     --chip-bg: light-dark(#eaf2ff, #0d2440); --chip-text: light-dark(#0a66c2, #79c0ff);
     --score-hi: light-dark(#1a7f37, #238636); --score-mid: light-dark(#9a6700, #9e6a03); --score-lo: light-dark(#6e7781, #6e7681);
@@ -296,7 +157,7 @@ const html = `<!doctype html>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
       <button data-src="all" class="active" aria-pressed="true" onclick="setSource(this.dataset.src)">All</button>
-      ${sourceChips}
+      ${sourceChips(items)}
     </div>
     <span id="shown" class="sr-only" role="status"></span>
     <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">🌙 Dark</button>

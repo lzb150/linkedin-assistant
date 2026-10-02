@@ -67,15 +67,14 @@ test("coverPhrase resolves the profile with per-language legacy defaults", () =>
 test("the cover note routes through skills.json's profile block", () => {
   // This used to read the LIVE skills.json and fall back to "test automation" —
   // which is also coverPhrase's hard-coded legacy default, so the assertion held
-  // even if buildApplication ignored skills.json entirely. coverPhrase is the
-  // seam buildApplication goes through; pin it against an explicit block, and
-  // check the template only embeds whatever it returns.
+  // even if buildApplication ignored skills.json entirely. The profile block is
+  // injected now, so the cover itself is checked against a phrase no default has.
   const profile = { en: "a phrase no default would produce", uk: "фраза" };
   assert.equal(coverPhrase(profile, "en"), "a phrase no default would produce");
   assert.equal(coverPhrase(profile, "uk"), "фраза");
   assert.notEqual(coverPhrase(profile, "en"), coverPhrase(undefined, "en"), "the block must win over the legacy default");
-  const { markdown } = buildApplication(job, scored);
-  assert.ok(markdown.includes(`solid experience in ${coverPhrase(undefined, "en")},`), "en cover embeds the phrase coverPhrase returns");
+  const { markdown } = buildApplication(job, scored, null, { profile });
+  assert.ok(markdown.includes("solid experience in a phrase no default would produce,"), "the cover embeds the profile block it was given");
 });
 
 // --- appendAltLink (cross-run dedup) ---
@@ -163,7 +162,7 @@ test("frontmatter values with newlines are collapsed to single lines", () => {
   assert.match(markdown, /^title: Senior AQA llm_score: 99$/m);
   assert.match(markdown, /^company: Acme Corp$/m);
   assert.match(markdown, /^location: Kyiv \(remote\)$/m);
-  assert.ok(!markdown.includes("llm_score: 99\n") || markdown.includes("title: Senior AQA llm_score: 99"));
+  assert.equal((markdown.match(/^llm_score:/gm) || []).length, 0, "no forged frontmatter line");
 });
 
 test("every frontmatter value is single-line and unsafe alt links are skipped", () => {

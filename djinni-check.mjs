@@ -8,7 +8,7 @@
 // Run:  node djinni-check.mjs              (headless)
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
-import { launchBrowser } from "./lib/browser.mjs";
+import { runScan } from "./lib/scan-run.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeState } from "./lib/notify-state.mjs";
@@ -31,14 +31,12 @@ const BUMP_STATE_FILE = join(__dir, "djinni-bump-state.json");
 // each thread is a link of the form /my/inbox/<id>/.
 const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 
-let ctx;
 let scanned = false; // true once we have a real count from a loaded page
 let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
-let failed = false;     // a thrown run used to log ERROR and still exit 0
 
-try {
-  ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs instead of an unhandled rejection
-  const page = ctx.pages()[0] || (await ctx.newPage());
+const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan, finish });
+
+async function scan(page, ctx) {
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.waitForTimeout(1500); // let the conversation list render
 
@@ -119,37 +117,30 @@ try {
       if (outcome === "unverified") notify("Djinni assistant", "Bump attempt could not be verified — check djinni.co/my/profile/ manually.");
     }
   } catch (e) { log("bump failed:", e?.message); }
-} catch (err) {
-  log("ERROR:", err?.message || err);
-  failed = true;
-  if (!ctx) notify("Djinni assistant", `Browser launch failed: ${err?.message || err}`);
-} finally {
+}
+
+function finish() {
   // Only overwrite the badge when we actually loaded the page. On a network
   // error (page never loaded) leave the last known count so the badge does not
   // flicker to 0 — same policy as the session-expiry path above.
-  if (scanned) {
-    try {
-      // Persist the unread threads (id + label) too, so Jobs.app can open the
-      // conversation on a Dock click: a single unread opens that thread, several
-      // open the unread bucket.
-      writeState(STATE_FILE, {
-        count: unreadThreads.length,
-        pending: unreadThreads,
-      });
-    } catch (e) {
-      log("notify: writeState failed:", e?.message);
-    }
-  } else {
-    log("scan failed — keeping last known badge count (state not rewritten)");
+  if (!scanned) { log("scan failed — keeping last known badge count (state not rewritten)"); return; }
+  try {
+    // Persist the unread threads (id + label) too, so Jobs.app can open the
+    // conversation on a Dock click: a single unread opens that thread, several
+    // open the unread bucket.
+    writeState(STATE_FILE, {
+      count: unreadThreads.length,
+      pending: unreadThreads,
+    });
+  } catch (e) {
+    log("notify: writeState failed:", e?.message);
   }
-  // A rejected close would replace the exit code this run earned with an
-  // unhandled rejection; the state files above are already written.
-  try { await ctx?.close(); } catch (e) { log("browser close failed:", e?.message); }
 }
 
-log(
+if (outcome === "busy") log("Skipped (profile busy) — badge left unchanged.");
+else log(
   scanned
     ? `Done. Djinni unread: ${unreadThreads.length} -> ${STATE_FILE}`
     : `Scan failed; badge left unchanged.`,
 );
-process.exit(failed ? 1 : 0);   // launchd must see a failed run as failed
+process.exit(outcome === "failed" ? 1 : 0);   // launchd must see a failed run as failed; a busy profile is a benign overlap

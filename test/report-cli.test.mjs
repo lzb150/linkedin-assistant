@@ -6,9 +6,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, utimesSync } from "node:fs";
-import { makeProject, pkg, runScript } from "./helpers/e2e.mjs";
+import { makeProject, pkg, runScript, QUIET_BINS } from "./helpers/e2e.mjs";
 
-const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+const quiet = QUIET_BINS;
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const runLine = (iso, n) => `${iso} Done. Considered ${n} new, wrote ${n} package(s)\n`;
 

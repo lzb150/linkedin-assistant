@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, utimesSync } from "node:fs";
 import { spawnSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import { acquireProfileLock } from "../lib/browser.mjs";
@@ -16,13 +16,17 @@ test("acquireProfileLock creates the lock, rejects a second holder, releases", (
   assert.ok(!existsSync(`${p}.lock`));
 });
 
-test("acquireProfileLock takes over a stale lock (no pid file → mtime fallback)", (t) => {
+test("acquireProfileLock reclaims an empty pid file only once its mtime is stale", (t) => {
+  // An empty pid file names no owner, so liveness cannot decide: the mtime does.
   const p = join(tmpDir(t), "profile");
   mkdirSync(`${p}.lock`);
-  // pretend "now" is 3h in the future so the fresh dir looks stale
-  const release = acquireProfileLock(p, { now: Date.now() + 3 * 3600_000 });
-  assert.ok(existsSync(`${p}.lock`));
-  assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid));
+  const pid = join(`${p}.lock`, "pid");
+  writeFileSync(pid, "");
+  assert.throws(() => acquireProfileLock(p), /profile busy/, "fresh: left alone");
+  const old = new Date(Date.now() - 3 * 3600_000);
+  utimesSync(pid, old, old);
+  const release = acquireProfileLock(p);
+  assert.equal(readFileSync(pid, "utf8"), String(process.pid));
   release();
 });
 
@@ -73,7 +77,7 @@ test("a second run cannot take over a lock that was stale but has since been cla
   // The old design made the mkdir the lock and wrote the pid afterwards, so two
   // runs that both judged the same lock stale could both remove it and both
   // "win" — the second rm deleted the first's directory. The pid file is the
-  // lock now, created with O_EXCL, and a takeover re-reads it before unlinking.
+  // lock now, created with O_EXCL; this covers B judging AFTER A claimed.
   const p = join(tmpDir(t), "profile");
   const dead = spawnSync("true").pid;
   mkdirSync(`${p}.lock`);
@@ -86,6 +90,21 @@ test("a second run cannot take over a lock that was stale but has since been cla
   assert.throws(() => acquireProfileLock(p), /profile busy/);
   assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid), "A still holds it");
   release();
+});
+
+test("a racer that judged the lock dead BEFORE another run took it over does not evict that run", (t) => {
+  // B snapshots the dead pid, then A takes over and claims before B renames.
+  // B's rename then moves A's LIVE lock aside; it must notice and put it back.
+  const p = join(tmpDir(t), "profile");
+  const dead = spawnSync("true").pid;
+  mkdirSync(`${p}.lock`);
+  const pid = join(`${p}.lock`, "pid");
+  writeFileSync(pid, String(dead));
+  let releaseA;
+  assert.throws(() => acquireProfileLock(p, { beforeTakeover: () => { releaseA = acquireProfileLock(p); } }), /profile busy/);
+  assert.equal(readFileSync(pid, "utf8"), String(process.pid), "A's lock is back in place");
+  releaseA();
+  assert.ok(!existsSync(`${p}.lock`), "A could still release it");
 });
 
 test("acquireProfileLock survives the lock directory vanishing between mkdir and the claim", (t) => {
