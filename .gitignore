@@ -28,6 +28,7 @@ notify-state.json
 
 # Built Dock app bundle (machine-specific paths baked in; rebuild locally)
 Jobs.app/
+.jobs-build.*/
 
 # Banner queue written by lib/notify.mjs, drained by Jobs.app
 banners/

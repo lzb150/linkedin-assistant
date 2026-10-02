@@ -29,33 +29,11 @@ test("status and note persist across a server restart", async (t) => {
   assert.match(html, /<html>/);
 });
 
-test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
-  const { port } = await startStateServer(t);
-  // Same postState as lib/dashboard-client-dom.js: a non-ok response throws with .status.
-  async function postState(body) {
-    const r = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!r.ok) { const e = new Error("post failed " + r.status); e.status = r.status; throw e; }
-    return r.json();
-  }
-  let state = {}, offline = false;
-  const patches = [
-    { url: "javascript:alert(1)", patch: { status: "viewed" } },          // 400
-    { url: "https://example.com/jobs/1/", patch: { status: "closed" } }, // ok
-  ];
-  try {
-    for (const body of patches) {
-      try { state = await postState(body); }
-      catch (e) { if (e.status >= 400 && e.status < 500) continue; throw e; }
-    }
-  } catch { offline = true; }
-  assert.equal(offline, false);
-  assert.equal(state["https://example.com/jobs/1/"].status, "closed");
-});
-
 // Boot the inlined client (core + dom) in a vm against a fake window.
 async function bootClient({ fetch, store, document }) {
   const ctx = vm.createContext({
-    setTimeout, clearTimeout, Date, JSON, console, fetch,
+    // unref'd: init() schedules advanceLastVisit 4 s out, which must not hold the test open.
+    setTimeout: (f, ms) => { const h = setTimeout(f, ms); h.unref?.(); return h; }, clearTimeout, Date, JSON, console, fetch,
     localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
     document: document || { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
   });
@@ -65,6 +43,112 @@ async function bootClient({ fetch, store, document }) {
   return { ctx, run: (code) => vm.runInContext(code, ctx) };
 }
 const fakeCard = (url) => ({ dataset: { url }, classList: { toggle() {} }, querySelectorAll: () => [], querySelector: () => null });
+
+test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
+  // Runs the real initState push loop: a 4xx drops that one patch and moves on,
+  // only a network failure means offline.
+  const { port, statePath } = await startStateServer(t);
+  const BAD = "javascript:alert(1)", GOOD = "https://example.com/jobs/1/";
+  const store = new Map([
+    ["jobStatus", JSON.stringify({ _meta: {}, [BAD]: { status: "viewed" }, [GOOD]: { status: "closed" } })],
+    ["jobStatusDirty", JSON.stringify([BAD, GOOD])],
+  ]);
+  const c = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  assert.equal(c.run("online"), true, "a 4xx is not offline");
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), []);
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk[GOOD].status, "closed");
+  assert.ok(!(BAD in onDisk));
+});
+
+// A DOM just rich enough for the card/filter code: real cards, the header's
+// status and source buttons, and the elements applyFilter writes to.
+function fakeDom(cards) {
+  const el = (extra = {}) => ({ textContent: "", hidden: false, value: "", ...extra });
+  const btn = (dataset) => ({ dataset, classList: { toggle() {} }, setAttribute(k, v) { this[k] = v; } });
+  const doc = {
+    activeElement: null,
+    querySelector: () => null,
+    getElementById: (id) => ids[id] ?? null,
+    querySelectorAll: (sel) => ({
+      ".card": cards,
+      ".filter-seg button": [btn({ filter: "new" }), btn({ filter: "viewed" })],
+      ".src-seg button": [btn({ src: "all" }), btn({ src: "dou" }), btn({ src: "djinni" })],
+    })[sel] || [],
+    documentElement: { dataset: {} },
+  };
+  const ids = {
+    q: el({ focus() { doc.activeElement = ids.q; } }),
+    shown: el(), "no-match": el({ hidden: true }), "cnt-new": el(), "cnt-viewed": el(),
+  };
+  return { doc, ids };
+}
+function domCard({ url, generated = "", source = "dou", search = "" }) {
+  const btn = (status) => ({ dataset: { status }, classList: { toggle() {} }, setAttribute(k, v) { this[k] = v; } });
+  const card = {
+    dataset: { url, generated, source, search }, style: {}, classes: new Set(),
+    classList: { toggle: (c, on) => (on ? card.classes.add(c) : card.classes.delete(c)) },
+    cue: { textContent: "" }, dot: { hidden: true }, ribbon: null, inner: { blur() {} },
+    buttons: [btn("new"), btn("viewed")],
+    contains: (x) => x === card.inner,
+    querySelectorAll: (sel) => (sel === ".status-seg button" ? card.buttons : []),
+    querySelector: (sel) => ({
+      ".card-status": card.cue, ".note-has": card.dot, ".ribbon": card.ribbon,
+      ".titles h2": { insertAdjacentHTML: () => { card.ribbon = { remove: () => { card.ribbon = null; } }; } },
+    })[sel] ?? null,
+  };
+  return card;
+}
+
+test("cards: counts, status cues, NEW ribbon, filtering, no-match and focus relocation run in the real client", async () => {
+  const A = "https://a/1", B = "https://b/1", C = "https://c/1";
+  const store = new Map([["jobStatus", JSON.stringify({
+    _meta: { lastVisit: "2026-09-10T00:00:00Z" },
+    [A]: { status: "viewed", note: "called back" },
+    [B]: { status: "closed" },
+  })]]);
+  const cards = [
+    domCard({ url: A, generated: "2026-09-01T00:00:00Z", search: "sdet acme" }),
+    domCard({ url: B, generated: "2026-09-01T00:00:00Z", source: "djinni", search: "qa beta" }),
+    domCard({ url: C, generated: "2026-09-20T00:00:00Z", source: "djinni", search: "playwright gamma" }),
+  ];
+  const [a, b, c] = cards;
+  const { doc, ids } = fakeDom(cards);
+  const client = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
+  await new Promise((r) => setImmediate(r));   // init() continues after `ready`
+
+  // renderCard mirrors state into the DOM.
+  assert.equal(a.cue.textContent, ", viewed");
+  assert.equal(b.cue.textContent, ", closed");
+  assert.equal(a.dot.hidden, false, "note dot for a card with a note");
+  assert.equal(a.buttons[1]["aria-pressed"], "true");
+  assert.equal(a.buttons[0]["aria-pressed"], "false");
+  // markFreshness: only the card generated after the last visit gets the ribbon.
+  assert.ok(c.ribbon && c.classes.has("fresh"));
+  assert.ok(!a.ribbon && !a.classes.has("fresh"));
+  // applyFilter with the New+Viewed default: closed hidden, counts per header button.
+  assert.equal(ids["cnt-new"].textContent, 1);
+  assert.equal(ids["cnt-viewed"].textContent, 1);
+  assert.equal(b.style.display, "none");
+  assert.equal(a.style.display, "");
+  assert.equal(ids.shown.textContent, "2 jobs shown");
+  assert.equal(ids["no-match"].hidden, true);
+
+  // Filtering away the card that holds focus moves focus to the search box
+  // (WCAG 2.4.3) and shows the on-screen no-match message.
+  doc.activeElement = c.inner;
+  client.run("query = 'zzz'; applyFilter()");
+  assert.equal(doc.activeElement, ids.q);
+  assert.equal(ids.shown.textContent, "0 jobs shown");
+  assert.equal(ids["no-match"].hidden, false);
+  assert.equal(JSON.parse(store.get("jobFilters2")).query, "zzz", "filters saved");
+
+  // A source chip narrows to that board.
+  client.run("query = ''; setSource('djinni')");
+  assert.equal(ids.shown.textContent, "1 jobs shown");
+  assert.equal(c.style.display, "");
+  assert.equal(a.style.display, "none");
+});
 
 // After an online session the cache stays as a read mirror of the server, so
 // an offline reload shows the real statuses and notes.
@@ -150,7 +234,9 @@ test("flash then markOffline still shows the offline badge", async () => {
 test("autoStatus never overrides closed; restoreFilters drops unknown statuses", async () => {
   const U2 = "https://example.com/jobs/2/", U3 = "https://example.com/jobs/3/";
   const store = new Map([["jobFilters2", JSON.stringify({ status: ["applied", "closed", "new"], src: [], query: "" })]]);
-  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  // The header's status buttons are what restoreFilters checks against.
+  const { doc } = fakeDom([]);
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...statusSel])"), JSON.stringify(["new"]));
   for (const [u, st] of [[U2, "closed"], [U3, "viewed"]]) await c.run(`patchEntry(${JSON.stringify(u)}, { status: ${JSON.stringify(st)} })`);

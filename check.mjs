@@ -12,7 +12,8 @@
 //                                     your own reply never re-drafts a thread. No banners,
 //                                     does not touch the Dock badge.)
 
-import { launchBrowser, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { runScan } from "./lib/scan-run.mjs";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -57,7 +58,6 @@ const SEL = {
 // stops growing forever.
 const seen = loadSeenStore(SEEN_FILE);
 
-let ctx;
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
@@ -66,12 +66,11 @@ let unreadCount = 0;
 // messages until the next successful run.
 let counted = false;
 // A run that threw after launch used to log the error and still print "Done."
-// and exit 0, so launchd and the user both saw a healthy run.
-let outcome = "ok";   // ok | busy | failed — one 3-state result, not two booleans that have to stay in agreement
+// and exit 0, so launchd and the user both saw a healthy run: runScan maps it
+// to one 3-state outcome (ok | busy | failed).
+const outcome = await runScan({ profile: PROFILE, app: "LinkedIn assistant", scan, finish });
 
-try {
-  ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
-  const page = ctx.pages()[0] || (await ctx.newPage());
+async function scan(page, ctx) {
   // /messaging/ auto-opens the newest thread on load, and an opened thread is
   // read: every hourly check was silently reading the newest message before
   // the unread scan ran (2026-09-14: a 14:50 message, 0 unread at 14:53; only
@@ -225,17 +224,13 @@ try {
     drafted++;
     seen.add(seenKey);
   }
-} catch (err) {
-  log("ERROR:", err?.message || err);
-  // "profile busy" = benign overlap with another run (jobs.mjs/login.mjs); log only.
-  outcome = /profile busy/.test(err?.message || "") ? "busy" : "failed";
-  if (!ctx && outcome !== "busy") notify("LinkedIn assistant", `Browser launch failed: ${err?.message || err}`);
-} finally {
-  // Must not throw: writeState and ctx.close below still have to run.
+}
+
+function finish({ held }) {
   // Only a run that actually held the profile may write seen.json back: on the
   // "profile busy" path this process loaded its snapshot before the lock holder
   // started adding entries, so saving here rolls that holder's work back.
-  if (ctx) { try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); } }
+  if (held) { try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); } }
   if (counted) {
     try {
       writeState(STATE_FILE, { count: unreadCount });
@@ -245,9 +240,6 @@ try {
   } else if (!SCAN_ALL) {
     log("notify: scan failed before counting — keeping previous badge state");
   }
-  // A rejected close would replace the exit code this run earned with an
-  // unhandled rejection; the state files above are already written.
-  try { await ctx?.close(); } catch (e) { log("browser close failed:", e?.message); }
 }
 
 if (outcome === "failed") {

@@ -3,10 +3,10 @@
 // and the drift guard that stops an empty scrape from wiping the seen store.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, readFileSync } from "node:fs";
-import { makeProject, spawnScript } from "./helpers/e2e.mjs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import { makeProject, spawnScript, QUIET_BINS } from "./helpers/e2e.mjs";
 
-const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+const quiet = QUIET_BINS;
 const SEEN = ["111", "222"];
 
 // A logged-in Djinni whose unread bucket the evaluate reads as `threads`.
@@ -65,4 +65,17 @@ test("djinni-check.mjs: a browser that fails to close does not turn a finished s
   const out = await spawnScript(p, "djinni-check.mjs").done;   // exit 0
   assert.match(out, /browser close failed: close exploded/);
   assert.match(out, /Done\. Djinni unread: 1/);
+});
+
+test("djinni-check.mjs: a busy profile is a benign overlap — exit 0, no banner, badge untouched", async (t) => {
+  // The lock is held by a live pid (this process), as when `node login.mjs
+  // djinni` or a manual run overlaps the hourly agent. check.mjs and
+  // closed-check.mjs already treat this as exit 0 with no banner.
+  const p = makeProject(t, { scripts: ["djinni-check.mjs"], bins: {}, playwright: playwrightWith([{ id: "1", label: "x" }]) });
+  mkdirSync(p.path(".djinni-profile.lock"), { recursive: true });
+  writeFileSync(p.path(".djinni-profile.lock", "pid"), String(process.pid));
+  const out = await spawnScript(p, "djinni-check.mjs").done;   // resolves only on exit 0
+  assert.match(out, /Skipped \(profile busy\)/);
+  assert.ok(!existsSync(p.path("notify.log")), "no banner for a busy profile");
+  assert.ok(!existsSync(p.path("djinni-notify-state.json")), "badge state not rewritten");
 });

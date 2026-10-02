@@ -120,3 +120,14 @@ test("the title scan is bounded by the TAG, not by a character budget or the dis
   // 4) An unterminated tag ends the scan instead of looping.
   assert.equal(parseCard(card("<h2 class=")), null);
 });
+
+test("parseCard strips control characters and bidi overrides from title, company and location", () => {
+  const card = `<div id="job-item-1"><a href="/jobs/1-x/">x</a>`
+    + `<h2 class="job-item__position">QA‮Eng\u0007x</h2>`
+    + `<span class="small text-gray-800">Acme Corp</span>`
+    + `<div class="fw-medium d-flex flex-wrap">Remote\u0000 · Ukraine</div></div>`;
+  const job = parseCard(card);
+  assert.equal(job.title, "QA Eng x");
+  assert.equal(job.company, "Acme Corp");
+  assert.equal(job.location, "Remote · Ukraine");
+});

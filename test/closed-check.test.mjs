@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { makeProject, pkg, spawnScript, runScript } from "./helpers/e2e.mjs";
+import { makeProject, pkg, spawnScript, runScript, QUIET_BINS } from "./helpers/e2e.mjs";
 
 // A board that reports every vacancy gone.
 async function server404(t) {
@@ -14,7 +14,7 @@ async function server404(t) {
   t.after(() => srv.close());
   return `http://127.0.0.1:${srv.address().port}`;
 }
-const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+const quiet = QUIET_BINS;
 // The fixture board lives on loopback; the host allowlist must be told so.
 const LOCAL = { CLOSED_HOSTS: JSON.stringify({ dou: "127.0.0.1" }) };
 

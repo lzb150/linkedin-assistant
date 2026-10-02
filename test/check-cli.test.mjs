@@ -6,10 +6,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
-import { makeProject, spawnScript, waitFor } from "./helpers/e2e.mjs";
+import { makeProject, spawnScript, waitFor, QUIET_BINS } from "./helpers/e2e.mjs";
 import { messageKey } from "../lib/inbox.mjs";
 
-const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+const quiet = QUIET_BINS;
 const SEEN = { "thread-kept": new Date().toISOString() };
 
 // Launch throws before any page work — enough for the two failure paths.

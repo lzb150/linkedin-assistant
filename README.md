@@ -53,10 +53,10 @@ click is always yours.
 - **LLM re-scoring & tailored cover letters** — the strongest keyword matches get a
   second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
   a one-line "why", and a tailored cover letter. The keyword score decides what
-  reaches the LLM; a fit below `llm.minScore` (default 70) drops the job instead of
+  reaches the LLM; a fit below `llm.minScore` (shipped as 70) drops the job instead of
   writing a package. Any CLI failure still falls back to a keyword-only package.
   Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
-  `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only). Matches past
+  `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only, which is also what a missing key means). Matches past
   the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
   script must have the `claude` binary on `PATH` (`~/.local/bin`, see
   `run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
@@ -246,8 +246,8 @@ were dropped in Sep 2026; git history has the source modules if you want them
 back with a visible browser.
 
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
-- **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. Set `djinni.enabled=false` to disable.
-- **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). Set `linkedin.enabled=false` to disable.
+- **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. On only with `djinni.enabled: true` (as shipped). `pages` (default 3) is how many pages of 15 each search reads — Djinni does not list newest-first; `concurrency` (default 5) caps the parallel detail-page fetches; `fullDescription: false` scores on the listing snippet only.
+- **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). On only with `linkedin.enabled: true` (as shipped). DOU is the one source that is on unless `dou.enabled: false`.
 - **Title filter** — titles containing a whole word from `excludeTitle` in
   `jobs.config.json` (`junior`, `intern`, `internship`, `trainee`, `manual` by
   default) are skipped before scoring, across all sources. Matched in the title
@@ -257,7 +257,7 @@ back with a visible browser.
   Jobs whose location contains any substring from the top-level
   `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
   across **all** sources before scoring.
-- Cold applications pass a keyword pre-gate — `minScore` (default 18) + `requireRole` — and then the LLM gate (`llm.minScore`, 70), which does the real screening. `excludeLocation` still keeps a remote DOU listing that merely lists a foreign office. Djinni is judged by its own countries segment instead: it must name the candidate's country (`candidateCountry` in `jobs.config.json`, every spelling the boards use — `["Ukraine", "Україна"]` by default — an empty or mistyped list falls back to that default rather than rejecting every Djinni vacancy) or the whole world, so "Тільки віддалено · Канада, Польща, Сербія" or "Країни ЄС" is dropped even though remote. The LLM gate gets the same rule in words: a vacancy open only to residents of other countries, requiring relocation or an office abroad scores at most 10.
+- Cold applications pass a keyword pre-gate — `minScore` (shipped as 18; 25 if the key is missing) + `requireRole` — and then the LLM gate (`llm.minScore`, shipped as 70; a missing key means advisory-only), which does the real screening. `excludeLocation` still keeps a remote DOU listing that merely lists a foreign office. Djinni is judged by its own countries segment instead: it must name the candidate's country (`candidateCountry` in `jobs.config.json`, every spelling the boards use — `["Ukraine", "Україна"]` by default — an empty or mistyped list falls back to that default rather than rejecting every Djinni vacancy) or the whole world, so "Тільки віддалено · Канада, Польща, Сербія" or "Країни ЄС" is dropped even though remote. The LLM gate gets the same rule in words: a vacancy open only to residents of other countries, requiring relocation or an office abroad scores at most 10.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
   differs per board) is collapsed into one record before scoring. The record with
   the fullest description is kept; the other source links are recorded under
@@ -368,7 +368,9 @@ entirely in config. To hunt, say, developer jobs instead:
    `node make-skills.mjs`: it drafts `skills.json` from it with the same local
    `claude` CLI the screener uses, including the Ukrainian spellings a local
    board would list. Add `--print` to preview without writing, `--force` to
-   replace a file you already have. Prefer to start from a preset or edit by
+   replace a file you already have; `--resume <file>`, `--out <file>` and
+   `--model <alias>` pick another input, output or `claude` model (an unknown
+   flag is rejected). Prefer to start from a preset or edit by
    hand? `cp skills.developer.json.example skills.json` (a ready
    TypeScript/Node profile), then tune `roles` / `skills` / `antiKeywords` /
    `profile`. Either way, read the result once — it is the first gate every
@@ -495,7 +497,7 @@ one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM call
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |
 | `lib/application.mjs` | Builds the application-package markdown.                  |
 | `skills.json`         | Your skill profile + thresholds. Edit freely.             |
-| `resume.txt`          | Extracted from your .docx (reference).                    |
+| `resume.txt`          | Your full resume as plain text (scoring, LLM, letters).   |
 | `drafts/`             | Output — review and send these manually.                  |
 | `seen.json`           | Tracks processed messages (thread + newest message), so a follow-up in a known thread is processed again. |
 | `jobs-seen.json`      | Tracks processed vacancies by identity (no duplicate packages, across sources). |

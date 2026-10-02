@@ -51,6 +51,9 @@ export const SKILLS_FIXTURE = readFileSync(join(ROOT, "test", "fixtures", "skill
 export const pkg = ({ source = "dou", title = "SDET", company = "Acme", url, generated = "2026-09-01T00:00:00Z" }) =>
   `---\nsource: ${source}\ntitle: ${title}\ncompany: ${company}\nurl: ${url}\ngenerated: ${generated}\n---\n# ${title}\n`;
 
+// Fake notifiers that log nothing, for tests that do not assert on banners.
+export const QUIET_BINS = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+
 const LOG_ARGS = (dir, file) => `#!/bin/sh\necho "$*" >> "${dir}/${file}"\n`;
 
 /**
@@ -98,10 +101,11 @@ export function makeProject(t, { scripts = [], packages = {}, state, files = {},
 //   const run = spawnScript(p, "closed-check.mjs");
 //   await run.output(/probing/);   // resolve once stdout+stderr matches
 //   const out = await run.done;    // resolves with the combined output on exit 0
-export function spawnScript(p, script, env = {}) {
+//   spawnScript(p, "make-skills.mjs", {}, ["--print"])   // CLI args
+export function spawnScript(p, script, env = {}, args = []) {
   // A hung script (the very regression these tests exist for) must fail the
   // test, not hang CI until the runner kills it — hence the hard timeout.
-  const child = spawn(process.execPath, [p.path(script)], { cwd: p.dir, env: { ...p.env, ...env }, timeout: 120_000, killSignal: "SIGKILL" });
+  const child = spawn(process.execPath, [p.path(script), ...args], { cwd: p.dir, env: { ...p.env, ...env }, timeout: 120_000, killSignal: "SIGKILL" });
   let out = "";
   const waiters = [];
   const onData = (d) => { out += d; for (const w of waiters) if (w.re.test(out)) w.res(); };
