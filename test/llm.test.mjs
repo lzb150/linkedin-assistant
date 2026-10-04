@@ -199,6 +199,8 @@ test("extractJSON: linear string/escape-aware brace matching", () => {
   assert.deepEqual(extractJSON('{"s":"back\\\\"}'), { s: "back\\" });            // escaped backslash right before the closing quote
   assert.equal(extractJSON("{broken"), null);
   assertLinear("extractJSON braces", (n) => extractJSON('{"a":"' + "}".repeat(n)), 250_000);
+  // The raw-newline escape path splices the output too; it must stay linear as well.
+  assertLinear("extractJSON raw newlines", (n) => extractJSON('{"a":"' + "x\n".repeat(n) + '"}'), 100_000);
 });
 
 test("injectionMarkers flags text aimed at the screener and leaves real postings alone", () => {
