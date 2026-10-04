@@ -47,6 +47,19 @@ test("closed-check: edits landing during the run win — another url's status su
   assert.ok(Object.keys(p.json("closed-check-state.json")).includes(U), "check stamp written");
 });
 
+// A 429/5xx is no answer about the vacancy. Stamping it like a real probe put
+// the url to sleep for the 3-day re-check window, so one rate-limited run
+// delayed every closure it touched by days instead of until the next run.
+test("closed-check: a rate-limited probe is not stamped, so the next run retries it", async (t) => {
+  const srv = createServer((_req, res) => { res.statusCode = 429; res.end("slow down"); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const U = `http://127.0.0.1:${srv.address().port}/vacancies/3/`;
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "c.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });
+  assert.match(await runScript(p, "closed-check.mjs", LOCAL), /0 closed, 1 probed/);
+  assert.ok(!Object.keys(p.json("closed-check-state.json")).includes(U), "no stamp for an inconclusive answer");
+});
+
 test("closed-check: with no concurrent edit the closure is recorded", async (t) => {
   const U = `${await server404(t)}/vacancies/2/`;
   const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "b.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });

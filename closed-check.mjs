@@ -107,7 +107,9 @@ for (const { url, source } of todo) {
     // daily job at anything the Mac can reach, the loopback state server included.
     const res = await fetchFollow(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000) }, { allow: (u) => onBoardHost(source, u) });
     const status = res.status, html = status === 200 ? await bodyText(res) : (await discardBody(res), "");
-    checked[url] = new Date().toISOString();
+    // Stamp only a real answer about the vacancy. A 429/5xx/Cloudflare page says
+    // nothing, and a stamp would park the url for the whole re-check window.
+    if (status === 200 || status === 404 || status === 410) checked[url] = new Date().toISOString();
     if (isClosed({ source, status, html })) {
       pending.push(url);
       const p = byUrl.get(url);
