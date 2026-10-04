@@ -464,7 +464,12 @@ const degraded = detectDegradations(health, summary, { skipped: skippedSources }
 if (degraded.length) alerts.push(formatAlert(degraded));
 if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
 // Never write back a baseline we could not read: that is the silent reset.
-if (healthReadable) writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
+// Guarded like the package write: an ENOSPC/EACCES here used to take down the
+// dashboard refresh, the banner and the exit code below with it.
+if (healthReadable) {
+  try { writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary))); }
+  catch (e) { log(`⚠ ${HEALTH_FILE} not written (${e.message}) — this run is missing from the health baseline`); }
+}
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
 try {
