@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
-import { writeState } from "./lib/notify-state.mjs";
+import { writeState, readPending, linkedinBadge } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
@@ -61,6 +61,8 @@ const seen = loadSeenStore(SEEN_FILE);
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
+// Threads bannered this run ({ id, label }): they keep the Dock badge until clicked.
+const notified = [];
 // Only overwrite the badge state when the scan actually counted the inbox —
 // a navigation failure would otherwise reset the badge to 0 and hide unread
 // messages until the next successful run.
@@ -210,7 +212,10 @@ async function scan(page, ctx) {
     // next scan: a banner is the only lasting signal of a new message. Posted
     // before the retry skip: the unread filter never lists a read thread again,
     // so a thread we could not read would otherwise vanish with a log line.
-    if (!SCAN_ALL) notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`);
+    if (!SCAN_ALL) {
+      notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`);
+      notified.push({ id: threadId, label: name });
+    }
     if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
     if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
 
@@ -233,7 +238,9 @@ function finish({ held }) {
   if (held) { try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); } }
   if (counted) {
     try {
-      writeState(STATE_FILE, { count: unreadCount });
+      // Read at finish, not at start: a Dock click during the run cleared the
+      // threads bannered before it, and must stay cleared.
+      writeState(STATE_FILE, linkedinBadge({ prevPending: readPending(STATE_FILE), notified, unreadCount, opened: scanned }));
     } catch (e) {
       log("notify: writeState failed:", e?.message);
     }
