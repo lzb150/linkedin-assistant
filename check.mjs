@@ -41,6 +41,10 @@ const SEL = {
   conversationList: ".msg-conversations-container__conversations-list",
   // Only the real <li> rows (avoids the duplicate inner .pillar cards).
   conversationCard: "li.msg-conversation-listitem",
+  // The card's link div while its thread is the open one. Since ~2026-09-15 the
+  // card is no <a>: no href, no thread id anywhere in it (live DOM 2026-10-07),
+  // so this class is the only tie between a card and the open thread.
+  activeCardLink: ".msg-conversations-container__convo-item-link--active",
   // Rendered inside the list container when ?filter=unread has nothing to show.
   emptyUnread: "No unread messages",
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
@@ -124,10 +128,12 @@ async function scan(page, ctx) {
   const autoOpened = /\/messaging\/thread\//.test(page.url());
   const openId = autoOpened ? threadIdFrom(page.url()) : null;
   const ids = await page.$$eval(`${SEL.conversationCard} a[href*='/messaging/thread/']`, (as) => as.map((a) => a.href)).then((hrefs) => hrefs.map((h) => threadIdFrom(h)), () => []);
-  // No thread anchors at all (selector drift) while cards exist: the open thread
-  // is a card, not an extra — else the badge reads N+1 and it is scanned twice.
-  if (cards.length && !ids.length) log("⚠️  cards without a thread link — card selector may have drifted. Run with HEADFUL=1 to inspect.");
-  const openListed = autoOpened && (ids.length ? ids.includes(openId) : cards.length > 0);
+  // Cards without thread anchors (the current DOM): the open thread is listed
+  // iff a card is marked active. Should that class drift too, the open thread
+  // reads as dropped: badge N+1 and a second pass that finds it "already
+  // processed" — the cheap side; assuming "listed" drops a real unread thread
+  // unscanned and unbannered whenever 2+ were unread.
+  const openListed = autoOpened && (ids.length ? ids.includes(openId) : await page.$(`${SEL.conversationCard} ${SEL.activeCardLink}`).then(Boolean));
   const verdict = unreadVerdict({ cards: cards.length, autoOpened, openListed, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
   ({ unreadCount, counted } = verdict);
   if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);
@@ -156,17 +162,24 @@ async function scan(page, ctx) {
       try { const hrefEl = await card.$("a[href*='/messaging/thread/']"); href = await hrefEl?.getAttribute("href"); } catch {}
       const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
       const before = page.url();
+      // Already the open thread (LinkedIn auto-opened it): the url will not change.
+      const wasActive = !wantId && await card.$(SEL.activeCardLink).then(Boolean).catch(() => false);
       // 5 s, not Playwright's 30 s default: a detached handle used to stall the
       // run inside this silent catch, up to ~6 min across the cards of one pass.
       await card.click({ timeout: 5000 }).catch(() => {});
       // Wait for THIS thread's url (up to 5 s) instead of a fixed 1.5 s: on a slow
       // LinkedIn the late navigation used to land inside the next card's window.
       if (wantId) await page.waitForURL((u) => u.href.includes(wantId), { timeout: 5000 }).catch(() => {});
-      else await page.waitForTimeout(1500);
+      else if (!wasActive) {
+        // No id to wait for: wait for this card to turn active, then for the url
+        // to leave the previous thread (a fixed 1.5 s used to stand in for both).
+        await card.waitForSelector(SEL.activeCardLink, { timeout: 5000 }).catch(() => {});
+        await page.waitForURL((u) => u.href !== before && u.href.includes("/messaging/thread/"), { timeout: 5000 }).catch(() => {});
+      }
       // `i` is the index within `targets` on purpose: threadOpened's "card 0 may keep
       // its url" rule is for the auto-opened card, and with the `null` target first
       // that card is NOT listed — the first real card must change the url like any other.
-      if (!threadOpened({ wantId, url: page.url(), before, index: i })) { log(`· could not open thread, skipping: ${name}`); continue; }
+      if (!threadOpened({ wantId, url: page.url(), before, index: i, wasActive })) { log(`· could not open thread, skipping: ${name}`); continue; }
     }
     const url = page.url();
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
