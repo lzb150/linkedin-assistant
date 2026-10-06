@@ -133,7 +133,7 @@ async function scan(page, ctx) {
   // reads as dropped: badge N+1 and a second pass that finds it "already
   // processed" — the cheap side; assuming "listed" drops a real unread thread
   // unscanned and unbannered whenever 2+ were unread.
-  const openListed = autoOpened && (ids.length ? ids.includes(openId) : !!(await page.$(`${SEL.conversationCard} ${SEL.activeCardLink}`)));
+  const openListed = autoOpened && (ids.length ? ids.includes(openId) : await page.$(`${SEL.conversationCard} ${SEL.activeCardLink}`).then(Boolean));
   const verdict = unreadVerdict({ cards: cards.length, autoOpened, openListed, emptyState: settled === "empty", listFound, scanAll: SCAN_ALL });
   ({ unreadCount, counted } = verdict);
   if (!SCAN_ALL) log(`Unread threads: ${unreadCount}`);
@@ -163,7 +163,7 @@ async function scan(page, ctx) {
       const wantId = href?.match(/thread\/([^/?#]+)/)?.[1];
       const before = page.url();
       // Already the open thread (LinkedIn auto-opened it): the url will not change.
-      const wasActive = !wantId && !!(await card.$(SEL.activeCardLink).catch(() => null));
+      const wasActive = !wantId && await card.$(SEL.activeCardLink).then(Boolean).catch(() => false);
       // 5 s, not Playwright's 30 s default: a detached handle used to stall the
       // run inside this silent catch, up to ~6 min across the cards of one pass.
       await card.click({ timeout: 5000 }).catch(() => {});
