@@ -29,6 +29,7 @@ test("threadOpened: with a card href only that thread's id counts; without one a
   assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/", index: 0 }), false, "wrong thread — even for card 0");
   assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 0 }), true, "card 0: LinkedIn auto-opens it, so an unchanged url is expected");
   assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1 }), false, "card 1 with the previous thread still open");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1, wasActive: true }), true, "a card already marked active is the open thread");
 });
 
 test("unreadVerdict: cards count; an auto-opened thread the list dropped (decided by id, not count) adds one and is scanned first; empty state is an honest 0; no list or SCAN_ALL never counts", () => {

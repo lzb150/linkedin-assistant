@@ -58,7 +58,9 @@ test("check.mjs: a launch failure reports FAILED, not Done", async (t) => {
 // draft writing, badge state — had no test: check-cli only drove the two
 // failure exits, so a miswiring of check.mjs to its helpers passed every test.
 // `items` = the message list items ({ incoming, text }); by default every bubble is theirs.
-const scanningPlaywright = (bubbles, { close = "async () => {}", items = bubbles.map((text) => ({ incoming: true, text })) } = {}) => `
+// `linkless`: today's card (live DOM 2026-10-07) — no <a>, no thread id; its link
+// div only gains the --active class once the click opened its thread.
+const scanningPlaywright = (bubbles, { close = "async () => {}", items = bubbles.map((text) => ({ incoming: true, text })), linkless = false } = {}) => `
 const threadUrl = "https://www.linkedin.com/messaging/thread/2-abc/";
 let current = "https://www.linkedin.com/messaging/?filter=unread";
 const el = (text, attrs = {}) => ({
@@ -67,8 +69,14 @@ const el = (text, attrs = {}) => ({
   $: async (sel) => (sel.includes("thread") && attrs.href ? el("", attrs) : null),
   click: async () => { current = threadUrl; },
 });
+const linkless = ${linkless};
+let active = false;
 const card = el("", { href: "/messaging/thread/2-abc/" });
-card.$ = async (sel) => (sel.includes("participant-names") ? el("Jane Recruiter") : el("", { href: "/messaging/thread/2-abc/" }));
+card.$ = async (sel) => (sel.includes("participant-names") ? el("Jane Recruiter")
+  : sel.includes("--active") ? (active ? el("") : null)
+  : linkless ? null : el("", { href: "/messaging/thread/2-abc/" }));
+card.click = async () => { current = threadUrl; active = true; };
+card.waitForSelector = async () => { if (!active) throw new Error("timeout"); return el(""); };
 const page = {
   goto: async () => {},
   url: () => current,
@@ -77,7 +85,7 @@ const page = {
   waitForURL: async () => {},
   waitForTimeout: async () => {},
   $$: async (sel) => (sel.includes("msg-s-event-listitem") ? ${JSON.stringify(bubbles)}.map((t) => el(t)) : [card]),
-  $$eval: async (sel) => (sel.includes("thread") ? ["https://www.linkedin.com/messaging/thread/2-abc/"] : ${JSON.stringify(items)}),
+  $$eval: async (sel) => (sel.includes("thread") ? (linkless ? [] : ["https://www.linkedin.com/messaging/thread/2-abc/"]) : ${JSON.stringify(items)}),
   $: async () => el("Jane Recruiter"),
 };
 export const chromium = {
@@ -106,6 +114,17 @@ test("check.mjs: an unread thread is opened, scored, drafted, and the badge is w
   assert.equal(state.count, 1, "the badge counts the unread thread");
   assert.deepEqual(state.pending, [{ id: "2-abc", label: "Jane Recruiter" }], "the bannered thread is the Dock-click target");
   assert.equal(Object.keys(JSON.parse(readFileSync(p.path("seen.json"), "utf8"))).length, 2, "the drafted thread joins the pre-seeded one");
+});
+
+test("check.mjs: a card with no thread link (today's DOM) is opened by its active state and keyed by the thread url", async (t) => {
+  const p = project(t, scanningPlaywright([
+    "Hi! We have a Senior QA Automation Engineer opening — Playwright, TypeScript, CI/CD. Interested in the vacancy?",
+  ], { linkless: true }));
+  const out = await spawnScript(p, "check.mjs").done;
+  assert.doesNotMatch(out, /card selector may have drifted|could not open thread/);
+  assert.match(out, /Done\. Scanned 1 unread, wrote 1 draft\(s\)/);
+  assert.ok(Object.keys(JSON.parse(readFileSync(p.path("seen.json"), "utf8"))).some((k) => k.startsWith("2-abc#")), "seen key from the opened thread url");
+  assert.deepEqual(JSON.parse(readFileSync(p.path("notify-state.json"), "utf8")).pending, [{ id: "2-abc", label: "Jane Recruiter" }]);
 });
 
 test("check.mjs: a thread with no job content is skipped without a draft", async (t) => {
