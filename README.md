@@ -178,17 +178,18 @@ clicks Send.
 
 ### Unread badge on the Jobs app
 
-Each scan writes the number of unread LinkedIn message threads to
-`notify-state.json`. The **Jobs app** (`Jobs.app`) runs persistently
-in the Dock and reads that file every few seconds, showing the count as a red
-Dock badge. While that count is above zero (and Djinni has nothing unread),
-clicking the Dock icon or a banner opens the LinkedIn inbox filtered to unread
-and clears the LinkedIn badge on the spot — the next hourly scan brings it back
-only if something is still unread. With no unread anywhere the click opens the
-dashboard as before.
-Every new unread LinkedIn message also posts a banner (`<name>: <message start>`):
-the scan opens the thread, which marks it read, so the badge alone would drop it
-on the next run.
+Each scan writes the LinkedIn badge state to `notify-state.json`. The
+**Jobs app** (`Jobs.app`) runs persistently in the Dock and reads that file
+every few seconds, showing the count as a red Dock badge.
+Every new unread LinkedIn message posts a banner (`<name>: <message start>`) and
+**keeps the badge until you click the Jobs icon**: the scan opens the thread,
+which marks it read, so a plain unread count would drop it on the next hourly
+run — easy to miss when you are away. The bannered threads are kept in
+`notify-state.json`'s `pending` list. While the badge is up (and Djinni has
+nothing unread), clicking the Dock icon or a banner opens that thread (several:
+the inbox) and clears the LinkedIn badge on the spot — the next scan brings it
+back only for something new or still unread. With no unread anywhere the click
+opens the dashboard as before.
 All macOS banners are posted by this app too (queued as `banners/*.json` by
 `lib/notify.mjs`), so they carry its icon and clicking one opens the dashboard.
 Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).

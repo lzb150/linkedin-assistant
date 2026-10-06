@@ -102,7 +102,9 @@ test("check.mjs: an unread thread is opened, scored, drafted, and the badge is w
   assert.match(md, /^thread: Jane Recruiter$/m);
   assert.match(md, /^url: https:\/\/www\.linkedin\.com\/messaging\/thread\/2-abc\/$/m, "the draft records the thread it was opened on, not the inbox url");
 
-  assert.equal(JSON.parse(readFileSync(p.path("notify-state.json"), "utf8")).count, 1, "the badge counts the unread thread");
+  const state = JSON.parse(readFileSync(p.path("notify-state.json"), "utf8"));
+  assert.equal(state.count, 1, "the badge counts the unread thread");
+  assert.deepEqual(state.pending, [{ id: "2-abc", label: "Jane Recruiter" }], "the bannered thread is the Dock-click target");
   assert.equal(Object.keys(JSON.parse(readFileSync(p.path("seen.json"), "utf8"))).length, 2, "the drafted thread joins the pre-seeded one");
 });
 
@@ -113,6 +115,18 @@ test("check.mjs: a thread with no job content is skipped without a draft", async
   assert.match(out, /Done\. Scanned 1 unread, wrote 0 draft\(s\)/);
   assert.deepEqual(readdirSync(p.path("drafts")), [], "nothing drafted");
   assert.equal(JSON.parse(readFileSync(p.path("notify-state.json"), "utf8")).count, 1, "still one unread thread for the badge");
+});
+
+test("check.mjs: a thread bannered by an earlier run keeps the badge when the inbox reads 0 unread", async (t) => {
+  // The empty-state list: no cards, LinkedIn's "No unread messages" text.
+  const p = project(t, scanningPlaywright([]).replace("[card]", "[]").replace('"cards"', '"empty"'));
+  const prev = { count: 1, pending: [{ id: "2-old", label: "Maria" }], updatedAt: new Date().toISOString() };
+  writeFileSync(p.path("notify-state.json"), JSON.stringify(prev));
+  const out = await spawnScript(p, "check.mjs").done;
+  assert.match(out, /Unread threads: 0/);
+  const state = JSON.parse(readFileSync(p.path("notify-state.json"), "utf8"));
+  assert.equal(state.count, 1, "the badge outlives the scan that read the thread");
+  assert.deepEqual(state.pending, prev.pending);
 });
 
 test("check.mjs: a quoted weight in the hand-edited skills.json still scores as a number", async (t) => {

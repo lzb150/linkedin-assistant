@@ -100,15 +100,33 @@ func handleActivation() {
         clearBadge(djinniStatePath)
         return
     }
-    // LinkedIn unread (check.mjs writes a count only): open the inbox filtered to
-    // unread and clear at once; the hourly scan restores the count if any remain.
+    // LinkedIn: `pending` holds the threads bannered since the last click — the
+    // scan already read them, so the unread filter would show none of them. One
+    // thread opens itself, several the inbox; nothing bannered (only unopened
+    // unread over the MAX cap) the unread filter. Clear at once; the hourly scan
+    // restores the count of anything still unread.
     if unreadCountAt(statePath) > 0 {
-        dbg("activation -> LinkedIn unread inbox")
-        openURL("https://www.linkedin.com/messaging/?filter=unread")
+        let ids = pendingIds(statePath)
+        // Thread ids are url-safe base64 ("2-MDg1…XzEwMA=="); anything else in the
+        // file must not be spliced into a url.
+        let safe = ids.count == 1 && ids[0].range(of: "^[A-Za-z0-9_=-]+$", options: .regularExpression) != nil
+        let url = safe ? "https://www.linkedin.com/messaging/thread/\(ids[0])/"
+            : ids.isEmpty ? "https://www.linkedin.com/messaging/?filter=unread"
+            : "https://www.linkedin.com/messaging/"
+        dbg("activation -> LinkedIn (ids=\(ids.count)) \(url)")
+        openURL(url)
         clearBadge(statePath)
         return
     }
     openDashboard()
+}
+
+// The string `id`s of one notify-state file's `pending` list (missing/invalid -> []).
+func pendingIds(_ path: String) -> [String] {
+    guard let data = FileManager.default.contents(atPath: path),
+          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return [] }
+    return ((obj["pending"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }
 }
 
 // Read the "count" field from one notify-state JSON file (missing/invalid -> 0).
