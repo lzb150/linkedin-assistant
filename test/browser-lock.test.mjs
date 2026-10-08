@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, utimesSync } from "
 import { spawnSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import { acquireProfileLock } from "../lib/browser.mjs";
+import { pidStartMs } from "../lib/run-lock.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 import { explainLaunchError } from "../lib/browser.mjs";
 
@@ -59,6 +60,36 @@ test("acquireProfileLock never takes over a lock whose pid is alive, however anc
   // ...and beyond it too: liveness wins over mtime.
   assert.throws(() => acquireProfileLock(p, { now: Date.now() + 3 * 3600_000 }), /profile busy/);
   assert.equal(readFileSync(join(`${p}.lock`, "pid"), "utf8"), String(process.pid), "the live holder still owns it");
+});
+
+test("acquireProfileLock takes over a lock whose live pid started after the lock was written (pid reuse)", (t) => {
+  // The holder crashed and an unrelated process got its pid: alive, but younger
+  // than the pid file. That used to be "busy" on every run until it exited.
+  const p = join(tmpDir(t), "profile");
+  mkdirSync(`${p}.lock`);
+  const pid = join(`${p}.lock`, "pid");
+  writeFileSync(pid, String(process.pid));
+  const old = new Date(Date.now() - 3600_000);
+  utimesSync(pid, old, old);
+  const release = acquireProfileLock(p, { startedAt: () => Date.now() - 60_000 });
+  assert.equal(readFileSync(pid, "utf8"), String(process.pid));
+  release();
+});
+
+test("acquireProfileLock keeps a live holder that started before its lock, and one whose start is unknown", (t) => {
+  const p = join(tmpDir(t), "profile");
+  mkdirSync(`${p}.lock`);
+  const pid = join(`${p}.lock`, "pid");
+  writeFileSync(pid, String(process.pid));
+  const old = new Date(Date.now() - 3600_000);
+  utimesSync(pid, old, old);
+  assert.throws(() => acquireProfileLock(p, { startedAt: () => old.getTime() - 1000 }), /profile busy/);
+  assert.throws(() => acquireProfileLock(p, { startedAt: () => null }), /profile busy/);
+});
+
+test("pidStartMs reads this process's start time, not later than now", () => {
+  const ms = pidStartMs(process.pid);
+  assert.ok(ms !== null && ms <= Date.now() && ms > Date.now() - 24 * 3600_000, String(ms));
 });
 
 test("acquireProfileLock reclaims an ancient lock whose pid file is unparsable (no owner to protect)", (t) => {

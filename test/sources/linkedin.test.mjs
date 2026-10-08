@@ -132,6 +132,31 @@ test("fetchLinkedInJobs abandons a search at the deadline, keeps the cards gathe
   assert.equal(page.calls.filter((c) => c.startsWith("click")).length, clicksBefore, "the released loop stops instead of clicking the next card");
 });
 
+// The deadline check before the click is not enough: a loop that hangs IN the
+// click and is released once the next search has started reads its description
+// off that search's page. It must not be recorded.
+test("fetchLinkedInJobs drops a card whose hung click resolves after the deadline, during the next search", async () => {
+  let search = 0, release;
+  const page = fakePage([]);
+  page.goto = async () => {
+    search++;
+    if (search === 2 && release) { release(); for (let i = 0; i < 20; i++) await Promise.resolve(); }
+  };
+  page.$$ = async () => (search === 1
+    ? [{ title: "A", href: "/jobs/view/1/" }, { title: "B", href: "/jobs/view/2/" }]
+    : [{ title: "D", href: "/jobs/view/4/" }]
+  ).map((c) => ({
+    evaluate: async (fn) => (fn.name === "readCard" ? { company: "X", location: "Kyiv", ...c } : undefined),
+    click: async () => { if (search === 1 && c.title === "B") await new Promise((r) => { release = r; }); },
+  }));
+  page.locator = () => ({ first: () => ({ innerText: async () => `search ${search} description` }) });
+  const cfg = { maxResults: 5, searches: [{ keywords: "qa" }, { keywords: "sdet" }] };
+  const out = await fetchLinkedInJobs(page, cfg, () => {}, { sleep: async () => {}, searchTimeoutMs: 100 });
+  const titles = out.map((j) => j.title);
+  assert.ok(titles.includes("A") && titles.includes("D"), String(titles));
+  assert.ok(!titles.includes("B"), `B's description came from the next search's page: ${titles}`);
+});
+
 // Cards the caller already knows (seen store / excluded title) are returned
 // from their list fields without a click or description — 17–20 of ~30 cards
 // per production run, ~2.2 s each.

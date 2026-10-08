@@ -7,16 +7,16 @@
 //     badge (cleared when the total is 0).
 //   - On a foreground (user) launch or a Dock-icon click: if Djinni has unread
 //     messages it opens that conversation (a single unread opens the thread, a
-//     few open Djinni's unread bucket), else if LinkedIn has unread messages it
-//     opens the LinkedIn inbox filtered to unread; either way that badge is
-//     cleared at once (the next hourly scan restores it if anything is still
-//     unread); otherwise it opens the jobs dashboard
-//     (node dashboard.mjs --open), preserving the old applet's behaviour.
+//     few open Djinni's unread bucket), else if the LinkedIn badge is up it
+//     opens the bannered thread (several: the inbox; none bannered: the unread
+//     filter); either way that badge is cleared at once (the next scan restores
+//     it for anything new or still unread); otherwise it opens the jobs
+//     dashboard (node dashboard.mjs --open), preserving the old applet's behaviour.
 //   - Launched with --background (by the login LaunchAgent or check.mjs) it runs
 //     the badge daemon only and does NOT open the dashboard.
 //   - Posts macOS banners queued by lib/notify.mjs as banners/*.json
 //     ({title, message}); each file is deleted once posted. Clicking a banner
-//     behaves like a Dock-icon click (Djinni unread or the dashboard).
+//     behaves like a Dock-icon click (Djinni, the LinkedIn thread, or the dashboard).
 //
 // Build with build-jobs.sh. Set JOBS_DEBUG=1 for stderr logging.
 
@@ -64,10 +64,10 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 }
 
 // The user just opened the unread thread/bucket, so the badge would otherwise
-// sit there until the next hourly djinni-check run. Zero the state now (same
-// shape djinni-check writes, atomically); that scan restores the real count if
-// anything is still unread. Banner de-dup lives in djinni-seen.json, so this
-// never causes a repeat banner.
+// sit there until the next hourly scan. Zero the state now (same shape the
+// scripts write, atomically); that scan restores the real count if anything is
+// still unread. Used for both files. Neither causes a repeat banner: Djinni
+// de-dups in djinni-seen.json, LinkedIn in seen.json (per newest message).
 func clearBadge(_ path: String) {
     let state: [String: Any] = ["count": 0, "pending": [], "updatedAt": ISO8601DateFormatter().string(from: Date()), "clearedBy": "activation"]
     guard let data = try? JSONSerialization.data(withJSONObject: state) else { return }
@@ -85,7 +85,8 @@ func clearBadge(_ path: String) {
 // Decide what a Dock-icon activation (click or foreground launch) opens:
 //   - Djinni has unread -> open that conversation (one unread opens the thread,
 //     several open Djinni's unread bucket).
-//   - else LinkedIn has unread -> open the LinkedIn inbox filtered to unread.
+//   - else the LinkedIn badge is up -> open the bannered thread (several: the
+//     inbox; none bannered, only unread over the scan cap: the unread filter).
 //   - otherwise -> open the jobs dashboard (the original behaviour).
 func handleActivation() {
     let (count, ids) = djinniUnread()

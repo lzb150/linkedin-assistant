@@ -360,15 +360,38 @@ if (llmOn) {
     }
   });
 }
+// Guarded like the package write below: an ENOSPC/EIO here used to throw out
+// of the loop (with LLM workers still running) and take run stats, source
+// health, the dashboard refresh and the banner with it. A failed save only
+// costs repeated verdicts next run; the final call retries it.
+function saveSeen() {
+  try { seen.save(); } catch (e) { log(`  · jobs-seen.json save failed: ${e.message}`); }
+}
 for (const m of toScore) {
   const { id, job, scored } = m;
   const lbl = label(job);
   let llm = null;
+  let suspect = null;
   if (llmOn) {
     const res = await verdict.get(m);
     // Normalize the score once at the trust boundary; downstream (log,
     // package frontmatter, writtenList) can rely on a rounded number.
     const n = res ? numericScore(res.score) : null;
+    // A posting that talks to the screener may well have talked it into this
+    // score — or into no usable answer at all, which falls back to a
+    // keyword-only package. Either way the warning goes with the package.
+    // Scan the SANITIZED text: it is what the model actually saw, and
+    // composeText builds job.text as "<title> at <company>. <location>. <desc>",
+    // so every field buildJobPrompt puts in the prompt is already in here.
+    // Scanning the raw field let a posting split a payload with "<vacancy>"
+    // tokens and slip past the markers while the model read the reassembled
+    // sentence. (Reviewed 2026-09-17: passing the fields in separately as well
+    // only double-counts the markers and inflates the suspect line.)
+    const marks = injectionMarkers(sanitizeVacancyText(job.text));
+    if (marks.length) {
+      suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`;
+      log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`);
+    }
     if (n !== null) {
       // `score` was the only model-controlled field bounded here; `why` and
       // `red_flags` went into the package verbatim, so a posting could steer
@@ -377,8 +400,8 @@ for (const m of toScore) {
       // Built as an explicit allow-list, NOT `{...res}`: the spread carried
       // every other key of the model's JSON through verbatim, so a posting
       // could have the model emit its own `suspect` ("verified clean") and
-      // forge the very field that exists to warn about it. These six are the
-      // only keys anything downstream reads.
+      // forge the very field that exists to warn about it. These five are the
+      // only verdict keys anything downstream reads; `suspect` is ours alone.
       llm = {
         score: Math.min(100, Math.max(0, Math.round(n))),
         why: String(res.why ?? "").slice(0, 300),
@@ -386,18 +409,6 @@ for (const m of toScore) {
         cover: typeof res.cover === "string" ? res.cover : "",
         model: LLM.model || "sonnet",
       };
-      // A posting that talks to the screener may well have talked it into this
-      // score. Record that alongside the number instead of letting an inflated
-      // score look like an ordinary good match. Scan the SANITIZED text: it is
-      // what the model actually saw, and composeText builds job.text as
-      // "<title> at <company>. <location>. <desc>", so every field
-      // buildJobPrompt puts in the prompt is already in here. Scanning the raw
-      // field let a posting split a payload with "<vacancy>" tokens and slip
-      // past the markers while the model read the reassembled sentence.
-      // (Reviewed 2026-09-17: passing the fields in separately as well only
-      // double-counts the markers and inflates the suspect line.)
-      const marks = injectionMarkers(sanitizeVacancyText(job.text));
-      if (marks.length) { llm.suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`; log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`); }
     }
     else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
   }
@@ -417,7 +428,7 @@ for (const m of toScore) {
   // unexpected shape) had the whole blast radius this try exists to prevent.
   let filename, markdown;
   try {
-    ({ filename, markdown } = buildApplication(job, scored, llm));
+    ({ filename, markdown } = buildApplication(job, scored, llm, { suspect }));
     writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
   } catch (e) {
     log(`  · package build/write failed (${filename || lbl}): ${e.message}`);
@@ -432,12 +443,12 @@ for (const m of toScore) {
   // (the next run would re-score and re-pay the LLM for it). Each save
   // rewrites and fsyncs the whole store, so the drop path above does not
   // pay for it — a dropped id lost to a crash costs one repeated verdict.
-  seen.save();
+  saveSeen();
   written++;
 }
 await scoring;   // every worker has finished (all verdicts were consumed above; this just joins the pool)
 
-seen.save();
+saveSeen();
 
 // The weekly digest used to reconstruct these four numbers by regex-matching the
 // log lines above — anchored to their exact wording and leading-space count, so

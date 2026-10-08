@@ -68,9 +68,12 @@ const html = `<!doctype html>
   :root[data-theme="light"] { color-scheme: light; }
   :root[data-theme="dark"] { color-scheme: dark; }
   html { scroll-padding-top: 140px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it; the header is 132 px at 641–730 px */
-  @media (max-width: 640px) { html { scroll-padding-top: 230px; } }   /* the header wraps to 170 px at 400 px and 223 px at 320 px */
   body { margin: 0; background: var(--bg); color: var(--text); }
   header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
+  /* Narrow or short viewports (incl. 400% zoom, 320x256 CSS px): the header wraps
+     to 170-223 px, and sticky it left ~33 px of page under it (WCAG 1.4.10).
+     It scrolls away there instead (after the rule above, so it wins), so no scroll padding is needed either. */
+  @media (max-width: 640px), (max-height: 500px) { html { scroll-padding-top: 0; } header { position: static; } }
   header h1 { margin: 0; font-size: 18px; }
   header .meta { font-size: 13px; color: var(--header-muted); margin-top: 2px; }   /* a colour, not opacity: the offline/flash badges are appended inside this line */
   main { max-width: 920px; margin: 18px auto; padding: 0 14px; }

@@ -233,6 +233,12 @@ test("a flagged posting carries llm_suspect into the package frontmatter", () =>
   assert.doesNotMatch(clean.markdown, /llm_suspect/, "no key at all when the posting reads normally");
 });
 
+test("llm_suspect is written without a verdict too (the LLM failed on a flagged posting)", () => {
+  const { markdown } = buildApplication(job, scored, null, { suspect: "injection (1 marker)" });
+  assert.match(markdown, /^llm_suspect: injection \(1 marker\)$/m);
+  assert.doesNotMatch(markdown, /^llm_score:/m);
+});
+
 test("appendAltLink refuses a source that could forge a frontmatter key", () => {
   // `url` was guarded from the start; `source` was interpolated raw. The only
   // caller passes a literal today, but the function is exported and the

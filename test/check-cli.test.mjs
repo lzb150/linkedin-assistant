@@ -225,3 +225,26 @@ test("check.mjs: under SCAN_ALL your own newest reply does not re-draft, and a l
   seedSeen(legacy, ["2-abc"]);
   assert.match(await spawnScript(legacy, "check.mjs", { SCAN_ALL: "1" }).done, /already processed/);
 });
+
+test("check.mjs: the badge state names the thread before its banner is posted", async (t) => {
+  // Jobs.app shows a banner within ~3 s; the state used to land only at the end
+  // of the run, so a click on the banner opened the previous run's target.
+  const snap = "#!/bin/sh\n{ printf 'state:'; cat notify-state.json 2>/dev/null || printf none; echo; } >> notify.log\n";
+  const p = project(t, scanningPlaywright([JOB]), { bins: { osascript: snap, "notify-send": snap } });
+  await spawnScript(p, "check.mjs").done;
+  assert.match(await waitFor(p.path("notify.log"), /state:/), /state:\{.*"id":"2-abc"/);
+});
+
+test("check.mjs: an unread thread with nothing new (marked unread by hand) stays on the badge, without a banner", async (t) => {
+  // Opening it marks it read again and `opened` subtracts it: it used to drop
+  // off the badge while the README promised the scan restores what is unread.
+  const p = project(t, scanningPlaywright([JOB]), { bins: {} });
+  seedSeen(p, [messageKey("2-abc", `1\n${JOB}`)]);
+  const out = await spawnScript(p, "check.mjs").done;
+  assert.match(out, /already processed: Jane Recruiter/);
+  const state = JSON.parse(readFileSync(p.path("notify-state.json"), "utf8"));
+  assert.equal(state.count, 1);
+  assert.deepEqual(state.pending, [{ id: "2-abc", label: "Jane Recruiter" }]);
+  await new Promise((r) => setTimeout(r, 500));   // notify children are fire-and-forget
+  assert.throws(() => readFileSync(p.path("notify.log"), "utf8"), /ENOENT/, "nothing new to banner");
+});

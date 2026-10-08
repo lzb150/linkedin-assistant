@@ -65,7 +65,8 @@ const seen = loadSeenStore(SEEN_FILE);
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
-// Threads bannered this run ({ id, label }): they keep the Dock badge until clicked.
+// Threads ({ id, label }) remember() could not write to notify-state.json yet;
+// finish() retries them. Pending threads keep the Dock badge until clicked.
 const notified = [];
 // Only overwrite the badge state when the scan actually counted the inbox —
 // a navigation failure would otherwise reset the badge to 0 and hide unread
@@ -220,14 +221,22 @@ async function scan(page, ctx) {
     const alreadySeen = seen.has(seenKey) || (SCAN_ALL && seen.has(threadId));
     const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen, isJob: looksLikeJobMessage(fullText) });
     if (markSeen) seen.add(seenKey);   // "already" re-stamps so the TTL is "last seen"
-    if (action === "already") { log(`· already processed: ${name}`); continue; }
+    if (action === "already") {
+      // On the unread filter with nothing new since we last saw it: the owner
+      // marked it unread in LinkedIn. Opening it just marked it read again, and
+      // `opened` subtracts it from the count — so keep it on the badge until a
+      // Dock click. No banner: there is nothing new to announce.
+      if (!SCAN_ALL) remember({ id: threadId, label: name });
+      log(`· already processed: ${name}`);
+      continue;
+    }
     // Opening the thread just marked it read, so the Dock badge drops it on the
     // next scan: a banner is the only lasting signal of a new message. Posted
     // before the retry skip: the unread filter never lists a read thread again,
     // so a thread we could not read would otherwise vanish with a log line.
     if (!SCAN_ALL) {
+      remember({ id: threadId, label: name });   // before the banner: a click on it reads this state
       notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`);
-      notified.push({ id: threadId, label: name });
     }
     if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
     if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
@@ -244,6 +253,20 @@ async function scan(page, ctx) {
   }
 }
 
+// Each thread lands in notify-state.json as soon as it is bannered. Jobs.app
+// posts a banner within ~3 s, and the state used to be written only at
+// finish(), minutes later: a click on the banner read the previous run's
+// state (opening the wrong place), cleared it, and finish() then re-added the
+// clicked thread. Only a write that failed (or ran before a count) is left in
+// `notified` for finish() to retry.
+function remember(entry) {
+  if (counted) {
+    try { writeState(STATE_FILE, linkedinBadge({ prevPending: readPending(STATE_FILE), notified: [entry], unreadCount, opened: scanned })); return; }
+    catch (e) { log("notify: writeState failed:", e?.message); }
+  }
+  notified.push(entry);
+}
+
 function finish({ held }) {
   // Only a run that actually held the profile may write seen.json back: on the
   // "profile busy" path this process loaded its snapshot before the lock holder
@@ -252,7 +275,8 @@ function finish({ held }) {
   if (counted) {
     try {
       // Read at finish, not at start: a Dock click during the run cleared the
-      // threads bannered before it, and must stay cleared.
+      // threads bannered before it, and must stay cleared. `notified` holds
+      // only what remember() could not write itself.
       writeState(STATE_FILE, linkedinBadge({ prevPending: readPending(STATE_FILE), notified, unreadCount, opened: scanned }));
     } catch (e) {
       log("notify: writeState failed:", e?.message);

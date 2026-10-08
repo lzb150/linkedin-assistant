@@ -175,3 +175,11 @@ test("GET / forbids framing (the page auto-POSTs lastVisit; a framing site would
   assert.equal(res.headers.get("x-frame-options"), "DENY");
   assert.equal(res.headers.get("content-security-policy"), "frame-ancestors 'none'");
 });
+
+test("GET / refuses a navigation started by another site (popup clearing NEW ribbons)", async (t) => {
+  const { port } = await startStateServer(t);
+  const cross = await fetch(`http://127.0.0.1:${port}/`, { headers: { "sec-fetch-site": "cross-site" } });
+  assert.equal(cross.status, 403);
+  const own = await fetch(`http://127.0.0.1:${port}/`, { headers: { "sec-fetch-site": "none" } });
+  assert.equal(own.status, 200);
+});
