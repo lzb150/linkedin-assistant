@@ -5,7 +5,7 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readStore, writeStore, mergeEntry, validatePatch, normalizeMeta } from "./lib/job-state.mjs";
+import { readStore, writeStore, mergeEntry, validatePatch, normalizeMeta, MAX_URL_LENGTH } from "./lib/job-state.mjs";
 
 const PORT = 7777;
 const HOST = "127.0.0.1";
@@ -71,7 +71,7 @@ export function createServer({ statePath, indexPath }) {
         const meta = normalizeMeta(body._meta);
         if (!meta) return send(res, 400, { error: "invalid _meta" });
         map = { ...map, _meta: { ...map._meta, ...meta } };
-      } else if (typeof body.url === "string" && body.url.length <= 2048 && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
+      } else if (typeof body.url === "string" && body.url.length <= MAX_URL_LENGTH && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
         map = mergeEntry(map, body.url, body.patch);
       } else {
         return send(res, 400, { error: "invalid patch" });
@@ -80,6 +80,13 @@ export function createServer({ statePath, indexPath }) {
     }
 
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
+      // Framing is forbidden above, but any site could still open the page in
+      // a popup on one click, and its lastVisit POST 4 s later clears every NEW
+      // ribbon. The Dock, a bookmark or a typed address send "none"; only a
+      // navigation started by another site sends "cross-site".
+      if (req.headers["sec-fetch-site"] === "cross-site") {
+        return send(res, 403, "Open the dashboard from the Dock or the address bar.", "text/plain");
+      }
       try { return send(res, 200, readFileSync(indexPath, "utf8"), "text/html; charset=utf-8"); }
       catch { return send(res, 404, "Dashboard not generated yet. Run: node dashboard.mjs", "text/plain"); }
     }

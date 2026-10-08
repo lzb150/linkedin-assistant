@@ -280,3 +280,22 @@ test("Copy letter strips the zero-width space the package uses to neutralise hea
   assert.doesNotMatch(copied[0], /​/);
   assert.equal(c.ctx.btn.nextElementSibling.textContent, "Copied");
 });
+
+test("a note still being typed is staged offline and sent with keepalive on pagehide", async (t) => {
+  // Saved only on blur, a note was lost to Cmd-W or a reload mid-typing.
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/9/";
+  const sent = [];
+  const store = new Map();
+  const c = await bootClient({ fetch: (p, o) => { if (o?.keepalive) sent.push(JSON.parse(o.body)); return fetch(`http://127.0.0.1:${port}${p}`, o); }, store });
+  c.ctx.card = fakeCard(U);
+  c.ctx.ta = { value: "  call back Friday  " };
+  c.run("noteInput(card, ta); flushNotes()");
+  assert.deepEqual(sent, [{ url: U, patch: { note: "call back Friday" } }]);
+  assert.ok(JSON.parse(store.get("jobStatusDirty")).includes(U), "staged for the next load in case the request never lands");
+  assert.equal(JSON.parse(store.get("jobStatus"))[U].note, "call back Friday");
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(JSON.parse(readFileSync(statePath, "utf8"))[U].note, "call back Friday");
+  // Nothing pending afterwards: the debounce timer was cancelled with it.
+  assert.equal(c.run("pendingNotes.size"), 0);
+});

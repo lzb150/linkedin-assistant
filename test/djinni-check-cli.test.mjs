@@ -16,6 +16,7 @@ const page = {
   url: () => "https://djinni.co/my/inbox?bucket=unread",
   goto: async () => {},
   waitForTimeout: async () => {},
+  waitForSelector: async () => ({}),
   $: async (sel) => (sel === "a[href='/logout']"${emptyBlock ? ' || sel === ".threads-empty"' : ""} ? {} : null),
   $$: async () => [],
   evaluate: async () => ${JSON.stringify(threads)},
@@ -39,6 +40,8 @@ test("djinni-check.mjs: an empty scrape never wipes the seen store", async (t) =
   const p = project(t, playwrightWith([]));
   await spawnScript(p, "djinni-check.mjs").done;
   assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-seen.json"), "utf8")), SEEN);
+  // Nor zeroes the badge: the last known state stays untouched.
+  assert.ok(!existsSync(p.path("djinni-notify-state.json")), "no badge write from an unexplained zero");
 });
 
 test("djinni-check.mjs: Djinni's own empty state clears the seen store", async (t) => {
@@ -47,6 +50,7 @@ test("djinni-check.mjs: Djinni's own empty state clears the seen store", async (
   const p = project(t, playwrightWith([], { emptyBlock: true }));
   await spawnScript(p, "djinni-check.mjs").done;
   assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-seen.json"), "utf8")), []);
+  assert.equal(JSON.parse(readFileSync(p.path("djinni-notify-state.json"), "utf8")).count, 0, "an explained zero clears the badge");
 });
 
 test("djinni-check.mjs: a real scrape does rewrite the seen store", async (t) => {

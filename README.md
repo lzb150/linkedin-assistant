@@ -188,10 +188,12 @@ run — easy to miss when you are away. The bannered threads are kept in
 `notify-state.json`'s `pending` list. While the badge is up (and Djinni has
 nothing unread), clicking the Dock icon or a banner opens that thread (several:
 the inbox) and clears the LinkedIn badge on the spot — the next scan brings it
-back only for something new or still unread. With no unread anywhere the click
+back only for something new or still unread (a thread you marked unread in
+LinkedIn stays on the badge, without a new banner). With no unread anywhere the click
 opens the dashboard as before.
 All macOS banners are posted by this app too (queued as `banners/*.json` by
-`lib/notify.mjs`), so they carry its icon and clicking one opens the dashboard.
+`lib/notify.mjs`), so they carry its icon, and clicking one acts like a Dock-icon
+click (above): the Djinni conversation, the LinkedIn thread, or the dashboard.
 Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
 
 Build it with `./build-jobs.sh`, then start it at login by installing

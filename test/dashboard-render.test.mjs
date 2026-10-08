@@ -51,6 +51,21 @@ test("renderCard: injection note is visible text, not a hover title; a bad url r
   assert.match(ro, /href="#"/);
 });
 
+test("renderCard: a flagged package without an LLM score still shows the injection note", () => {
+  const fm = { source: "dou", title: "SDET", company: "Acme", url: "https://a/1", llm_suspect: "injection (1 marker)" };
+  const html = renderCard(toItem({ fm, cover: "" }), 0);
+  assert.match(html, /⚠ injection \(1 marker\) — the posting addresses the screener, and the LLM gave no usable verdict/);
+  assert.doesNotMatch(html, /🤖/);
+});
+
+test("renderCard: a url past the server's length limit renders read-only; middle-click marks Viewed", () => {
+  const long = `https://a/${"x".repeat(2100)}`;
+  const ro = renderCard(toItem({ fm: { source: "dou", title: "SDET", url: long }, cover: "" }), 0);
+  assert.doesNotMatch(ro, /data-url=|status-seg|note-wrap|autoStatus/);
+  const live = renderCard(toItem({ fm: { source: "dou", title: "SDET", url: "https://a/1" }, cover: "" }), 1);
+  assert.match(live, /onauxclick="if\(event\.button===1\) autoStatus\(/);
+});
+
 test("sourceChips lists each source on disk once, sorted, with its label", () => {
   const items = [{ source: "linkedin" }, { source: "dou" }, { source: "linkedin" }, { source: "newboard" }];
   const html = sourceChips(items);

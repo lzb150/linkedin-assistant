@@ -38,7 +38,9 @@ const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan,
 
 async function scan(page, ctx) {
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
-  await page.waitForTimeout(1500); // let the conversation list render
+  // Wait for the list or Djinni's empty-state block, not a fixed 1.5 s: a list
+  // that rendered later read as an unexplained zero (and, below, no badge write).
+  await page.waitForSelector("a[href*='/my/inbox/'], .threads-empty", { timeout: 10000 }).catch(() => {});
 
   if (!(await djinniLoggedIn(page))) {
     // Intentionally do NOT writeState here (process.exit skips finally): leave
@@ -72,8 +74,12 @@ async function scan(page, ctx) {
   // also ships in Ukrainian. Tells a truly empty bucket from a selector drift.
   const bucketEmpty = !threads.length && (await page.$(".threads-empty").then(Boolean));
   unreadThreads = threads;
-  scanned = true;
+  // An unexplained empty list (selector drift, or a list still rendering) is not
+  // a count: zeroing the badge on it hid a real unread thread for an hour. Same
+  // rule as the seen-store write below and check.mjs's drift verdict.
+  scanned = threads.length > 0 || bucketEmpty;
   log(`Djinni unread threads: ${threads.length}`);
+  if (!scanned) log("⚠️  Empty list without .threads-empty — selector may have drifted; badge left unchanged.");
 
   // Banner only for threads we have not already notified about (see freshThreads).
   // A corrupt seen file reads as "nothing known", which re-banners every open
