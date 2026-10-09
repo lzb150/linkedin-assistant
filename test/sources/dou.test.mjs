@@ -118,7 +118,8 @@ test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () =>
   try {
     assert.deepEqual(await fetchDou({ enabled: false, feeds: ["http://x/1"] }, () => {}), []);
     assert.equal(calls.length, 0, "disabled: no feed fetched");
-    await fetchDou({ feeds: ["http://x/1"] }, () => {});            // enabled absent → runs
+    // enabled absent → runs (and, its only feed failing, reports the outage)
+    await assert.rejects(fetchDou({ feeds: ["http://x/1"] }, () => {}), /all 1 DOU feed\(s\) failed/);
     assert.deepEqual(calls, ["http://x/1"]);
     assert.deepEqual(await fetchDou(undefined, () => {}), []);      // no `dou` section at all → no throw
   } finally { globalThis.fetch = realFetch; }

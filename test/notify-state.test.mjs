@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeState, readPending, linkedinBadge } from "../lib/notify-state.mjs";
+import { writeState, readPending, readBadge, linkedinBadge, keepBadgeAdding } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
@@ -52,4 +52,15 @@ test("linkedinBadge: a repeat banner for a thread counts once, with the newest l
 test("linkedinBadge: unread threads the run did not open still count", () => {
   assert.equal(linkedinBadge({ notified: [{ id: "2-a", label: "A" }], unreadCount: 15, opened: 12 }).count, 4);
   assert.equal(linkedinBadge({ unreadCount: 0, opened: 2 }).count, 0, "opened > unread never goes negative");
+});
+
+test("keepBadgeAdding: an uncounted scan keeps the old count and adds each newly bannered thread", (t) => {
+  const prev = { count: 3, pending: [{ id: "2-a", label: "Ann" }] };
+  const out = keepBadgeAdding({ prev, notified: [{ id: "2-a", label: "Ann" }, { id: "2-b", label: "Bob" }] });
+  assert.deepEqual(out.pending.map((p) => p.id), ["2-a", "2-b"]);
+  assert.equal(out.count, 4, "2-a was already counted; 2-b adds one");
+  const dir = tmpDir(t);
+  writeState(join(dir, "s.json"), out);
+  assert.deepEqual(readBadge(join(dir, "s.json")), { count: 4, pending: out.pending });
+  assert.deepEqual(readBadge(join(dir, "none.json")), { count: 0, pending: [] });
 });

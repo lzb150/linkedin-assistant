@@ -113,7 +113,9 @@ scraper-health check watches each source's found-count against its own recent
 history (last 10 runs) and alerts when a source comes in under 30% of its recent
 median (median ≥ 5, to ignore sources that are naturally low-volume) — this
 catches a slow selector decay (50 → 20 → 6), not just a source dropping to a
-clean 0.
+clean 0. A source that stops running altogether is flagged too, unless the
+config turns it off with an explicit `"enabled": false`. A run where every
+source failed (no network) exits 1, so launchd records it as failed.
 
 ## Key principles
 - 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all
@@ -433,7 +435,9 @@ LinkedIn out of health monitoring and writes a `linkedin-pending` marker.
 `com.example.linkedin-catchup.plist.example` (`LINKEDIN_CATCHUP=1 run.sh
 jobs.mjs`, every 15 min) exits at once without the marker; with it and the Mac
 fully awake it scrapes LinkedIn only and removes the marker. On AC power nothing
-is deferred.
+is deferred. A LinkedIn run that finds the browser profile or the run lock busy
+(an overlapping `check.mjs` or `jobs.mjs`) leaves the same marker, so LinkedIn
+is retried within 15 minutes instead of at the next 3-hour slot.
 
 ## When it breaks
 

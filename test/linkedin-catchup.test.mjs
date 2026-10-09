@@ -3,7 +3,7 @@
 // state; a fake `playwright` records whether the browser was ever launched.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { makeProject, runScript, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
 
@@ -91,4 +91,31 @@ test("catch-up fully awake runs LinkedIn only and clears the marker, even when L
   assert.ok(existsSync(p.path("launched.log")), "LinkedIn was tried");
   assert.doesNotMatch(out, /Gathering dou/, "the browserless sources already ran in the deferring run");
   assert.ok(!existsSync(p.path("linkedin-pending")), "a real failure goes to health monitoring, not a 15-minute retry loop");
+});
+
+// A lock held by a live process (this test runner) — "profile busy" to jobs.mjs.
+const holdLock = (p, name) => { mkdirSync(p.path(`${name}.lock`)); writeFileSync(p.path(`${name}.lock`, "pid"), String(process.pid)); };
+
+test("a busy browser profile leaves LinkedIn pending for the catch-up agent instead of 3 hours", async (t) => {
+  const p = project(t, await serveEmptyFeed(t), pmsetBin(FULL));
+  holdLock(p, ".browser-profile");
+  const { out, code } = await run(p);
+  assert.equal(code, 0);
+  assert.match(out, /browser profile busy — left pending/);
+  assert.ok(existsSync(p.path("linkedin-pending")));
+  assert.ok(!existsSync(p.path("launched.log")));
+});
+
+test("a busy run lock leaves LinkedIn pending too; a DOU-only run never does", async (t) => {
+  const p = project(t, await serveEmptyFeed(t), pmsetBin(FULL));
+  holdLock(p, "jobs-run");
+  const { out, code } = await run(p);
+  assert.equal(code, 0);
+  assert.match(out, /another jobs.mjs run is active/);
+  assert.ok(existsSync(p.path("linkedin-pending")));
+
+  const q = project(t, await serveEmptyFeed(t), pmsetBin(FULL));
+  holdLock(q, "jobs-run");
+  await run(q, { DOU_ONLY: "1" });
+  assert.ok(!existsSync(q.path("linkedin-pending")), "LinkedIn was not due");
 });

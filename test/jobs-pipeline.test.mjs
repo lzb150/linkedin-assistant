@@ -13,7 +13,11 @@ import { makeProject, runScript, waitFor, pkg, SKILLS_FIXTURE } from "./helpers/
 const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map((i) =>
   `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link><description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
 
-const AQA = "We need a test automation engineer: Playwright, TypeScript, API testing, REST, CI/CD, Jenkins, e2e regression.";
+// Over 300 characters, like a real posting: a shorter text is "no description
+// yet" to the keyword gate and stays unseen when the LLM turns it down.
+const AQA = "We need a test automation engineer: Playwright, TypeScript, API testing, REST, CI/CD, Jenkins, e2e regression." +
+  " The team ships a web platform used by thousands of customers every day, and values careful engineering and steady delivery." +
+  " You will own the regression suite and work closely with developers and product owners.";
 const FEED = rss([
   { title: "Senior SDET (Playwright) в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/1/", desc: AQA },
   { title: "SDET Automation Engineer в LowFit, Львів", link: "https://jobs.dou.ua/companies/lowfit/vacancies/2/", desc: AQA },
@@ -364,15 +368,18 @@ test("jobs.mjs: exits 1 only when every source it tried failed — a quiet run s
   assert.match(err.message, /All 1 source\(s\) failed/);
 });
 
-test("jobs.mjs: a DOU feed outage does NOT fail the run (it is swallowed per feed by design)", async (t) => {
-  // Pinning a known limitation of the exit-status rule rather than claiming
-  // more than it does: fetchDou catches each feed's error so one dead feed
-  // cannot lose the others, which means even a total DOU outage reaches
-  // jobs.mjs as "found 0", never as a throw. Scraper-health alerting is what
-  // covers that case. Change this test deliberately if fetchDou ever rethrows
-  // when EVERY feed failed.
+test("jobs.mjs: a total DOU outage fails the run (exit 1); one dead feed of two does not", async (t) => {
+  // fetchDou catches each feed's error so one dead feed cannot lose the others,
+  // but when EVERY feed failed it throws: a network outage is a failed run the
+  // scheduler must see, not a quiet "found 0".
   const p = setupProject(t, "http://127.0.0.1:1/rss");     // nothing listening
-  const out = await runScript(p, "jobs.mjs");              // resolves ⇒ exit 0
+  await assert.rejects(runScript(p, "jobs.mjs"), (e) => /exit 1/.test(e.message) && /All 1 source\(s\) failed/.test(e.message));
+
+  const q = setupProject(t, await serveFeed(t, () => FEED));
+  const cfg = q.json("jobs.config.json");
+  cfg.dou.feeds.push("http://127.0.0.1:1/rss");
+  writeFileSync(q.path("jobs.config.json"), JSON.stringify(cfg));
+  const out = await runScript(q, "jobs.mjs");              // resolves ⇒ exit 0
   assert.match(out, /DOU feed error/);
   assert.doesNotMatch(out, /All \d+ source\(s\) failed/);
 });
@@ -416,9 +423,19 @@ test("jobs.mjs: a DOU_ONLY run does not report the LinkedIn it skipped as absent
   const banner = await waitFor(p.path("notify.log"), /1 new/);
   assert.doesNotMatch(banner, /not run at all/, "a deliberate skip is not an outage");
 
-  // Same history, no DOU_ONLY: linkedin is off in the config, which is what the rule exists for.
+  // Same history, no DOU_ONLY: an explicit `enabled: false` is the owner's
+  // choice, not an outage either...
   const q = setupProject(t, await serveFeed(t, () => FEED));
   writeFileSync(q.path("source-health.json"), JSON.stringify({ linkedin: [26, 25, 28, 27, 26] }));
   await runScript(q, "jobs.mjs");
-  assert.match(await waitFor(q.path("notify.log"), /not run at all/), /linkedin: not run at all \(recent median 26\)/);
+  assert.doesNotMatch(await waitFor(q.path("notify.log"), /1 new/), /not run at all/, "an explicit disable is not an outage");
+
+  // ...but a missing (misspelt) linkedin section is what the rule exists for.
+  const r = setupProject(t, await serveFeed(t, () => FEED));
+  writeFileSync(r.path("source-health.json"), JSON.stringify({ linkedin: [26, 25, 28, 27, 26] }));
+  const cfg = r.json("jobs.config.json");
+  delete cfg.linkedin;
+  writeFileSync(r.path("jobs.config.json"), JSON.stringify(cfg));
+  await runScript(r, "jobs.mjs");
+  assert.match(await waitFor(r.path("notify.log"), /not run at all/), /linkedin: not run at all \(recent median 26\)/);
 });

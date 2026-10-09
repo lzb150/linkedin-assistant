@@ -292,10 +292,30 @@ test("a note still being typed is staged offline and sent with keepalive on page
   c.ctx.ta = { value: "  call back Friday  " };
   c.run("noteInput(card, ta); flushNotes()");
   assert.deepEqual(sent, [{ url: U, patch: { note: "call back Friday" } }]);
-  assert.ok(JSON.parse(store.get("jobStatusDirty")).includes(U), "staged for the next load in case the request never lands");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), { [U]: "call back Friday" }, "staged, note only, for the next load in case the request never lands");
+  assert.ok(!JSON.parse(store.get("jobStatusDirty")).includes(U), "not dirty: a dirty url replays the whole entry");
   assert.equal(JSON.parse(store.get("jobStatus"))[U].note, "call back Friday");
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(JSON.parse(readFileSync(statePath, "utf8"))[U].note, "call back Friday");
   // Nothing pending afterwards: the debounce timer was cancelled with it.
   assert.equal(c.run("pendingNotes.size"), 0);
+});
+
+test("a note sent at unload is re-sent note-only on the next load and cannot roll back a later status", async (t) => {
+  // The note landed, then closed-check set the job closed overnight. The old
+  // dirty-list replay pushed the mirrored { note, status: "viewed" } back.
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/11/";
+  const post = (body) => fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  await post({ url: U, patch: { status: "closed" } });
+  const store = new Map([
+    ["jobStatus", JSON.stringify({ _meta: {}, [U]: { status: "viewed", note: "call back" } })],
+    ["jobNoteOutbox", JSON.stringify({ [U]: "call back" })],
+  ]);
+  const c = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  assert.equal(c.run("online"), true);
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk[U].status, "closed", "the later status survives");
+  assert.equal(onDisk[U].note, "call back");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "outbox drained");
 });

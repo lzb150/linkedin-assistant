@@ -182,4 +182,8 @@ test("GET / refuses a navigation started by another site (popup clearing NEW rib
   assert.equal(cross.status, 403);
   const own = await fetch(`http://127.0.0.1:${port}/`, { headers: { "sec-fetch-site": "none" } });
   assert.equal(own.status, 200);
+  // Another 127.0.0.1 port is same-SITE (the port does not count): refused too.
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`, { headers: { "sec-fetch-site": "same-site" } })).status, 403);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`, { headers: { "sec-fetch-site": "same-origin" } })).status, 200, "a reload");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200, "no header: not a browser navigation");
 });

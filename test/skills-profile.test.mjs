@@ -149,3 +149,17 @@ test("maybe stays strictly looser than relevant, including at the bottom of the 
     assert.ok(th.maybe < th.relevant, `maybe(${th.maybe}) must be < relevant(${th.relevant})`);
   }
 });
+
+test("normalizeProfile reports a clamped or unusable weight to `warn` (the hand-edited skills.json case)", () => {
+  const lines = [];
+  const p = normalizeProfile({ skills: { playwright: 10, cypress: true, api: 3 }, antiKeywords: { php: -50 } }, { warn: (m) => lines.push(m) });
+  assert.equal(p.skills.playwright, 5);
+  assert.ok(!("cypress" in p.skills), "a boolean is not a weight");
+  assert.equal(p.antiKeywords.php, -10);
+  assert.deepEqual(lines, [
+    "skills.playwright is 10, outside [1, 5] — using 5",
+    "skills.cypress is true, not a weight — dropped",
+    "antiKeywords.php is -50, outside [-10, -1] — using -10",
+  ]);
+  assert.doesNotThrow(() => normalizeProfile({ skills: { a: 99 } }), "no warn given: silent, as for model output");
+});

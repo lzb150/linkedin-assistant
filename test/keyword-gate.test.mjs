@@ -61,3 +61,9 @@ test("titleExcluder matches whole words only, Cyrillic included", () => {
   assert.equal(ex("C++ tester"), "c++");
   assert.equal(ex(undefined), undefined);
 });
+
+test("keywordGate: a match on a title-only text carries retry, so an LLM drop does not bury it", () => {
+  const opts = { seen: new Set(), packageIndex: new Map(), excludedByTitle: () => undefined, minScore: 10, requireRole: false, score: () => ({ score: 50, matchedRole: "sdet" }) };
+  assert.equal(keywordGate({ source: "linkedin", title: "SDET", company: "A", url: "u1", text: "SDET at A." }, opts).retry, true);
+  assert.equal(keywordGate({ source: "linkedin", title: "SDET", company: "A", url: "u2", text: "x".repeat(400) }, opts).retry, false);
+});

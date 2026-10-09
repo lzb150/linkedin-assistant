@@ -235,3 +235,14 @@ test("canonicalKey matches company-name variants across boards (first token), id
   assert.equal(canonicalKey({ company: "", title: "SDET", url: "https://x.com/p/1" }), "x.com/p/1::sdet", "blank company still url-scoped");
   assert.equal(dedupeJobs([{ ...a, source: "dou", text: "long text here" }, { ...b, source: "djinni", text: "short" }]).mergedCount, 1);
 });
+
+test("dedupeJobs records the folded copies' own identity keys on their keeper", () => {
+  const li = { source: "linkedin", title: "Senior SDET", company: "EPAM Systems", url: "https://li/1", text: "a" };
+  const dou = { source: "dou", title: "Senior SDET", company: "EPAM", url: "https://dou/1", text: "a longer description" };
+  const { deduped } = dedupeJobs([li, dou]);
+  assert.equal(deduped.length, 1);
+  const [keeper] = deduped;
+  const other = keeper === li ? dou : li;
+  assert.notEqual(identityKey(other), identityKey(keeper), "the fixture's premise: one vacancy, two identity keys");
+  assert.deepEqual(keeper.mergedIds, [identityKey(other)]);
+});

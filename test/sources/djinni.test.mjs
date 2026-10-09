@@ -131,3 +131,10 @@ test("parseCard strips control characters and bidi overrides from title, company
   assert.equal(job.company, "Acme Corp");
   assert.equal(job.location, "Remote · Ukraine");
 });
+
+test("fetchDjinni throws when every search failed to load its first page (an outage, not a quiet run)", async (t) => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 503, text: async () => "" });
+  t.after(() => { globalThis.fetch = realFetch; });
+  await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1", "https://djinni.co/jobs/?a=2"] }, () => {}), /all 2 Djinni search\(es\) failed/);
+});
