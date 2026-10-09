@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -121,4 +121,17 @@ test("knob reports a value it had to CLAMP, not just one it could not read", () 
   const none = [];
   knob("minScore", undefined, 25, [0, 100], (s) => none.push(s));
   assert.deepEqual(none, []);
+});
+
+test("flag: booleans pass, the strings true/false are read as meant, anything else is the default — all reported", () => {
+  const lines = [];
+  const say = (l) => lines.push(l);
+  assert.equal(flag("x", false, true, say), false);
+  assert.equal(flag("x", undefined, true, say), true);
+  assert.equal(lines.length, 0, "a real boolean or an absent key is quiet");
+  assert.equal(flag("dou.enabled", "false", true, say), false, "the string \"false\" is no longer truthy");
+  assert.equal(flag("x", " TRUE ", false, say), true);
+  assert.equal(flag("x", 1, false, say), false, "a number is not a switch: default");
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /dou\.enabled is "false", not true\/false — using false/);
 });

@@ -68,8 +68,18 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 // scripts write, atomically); that scan restores the real count if anything is
 // still unread. Used for both files. Neither causes a repeat banner: Djinni
 // de-dups in djinni-seen.json, LinkedIn in seen.json (per newest message).
-func clearBadge(_ path: String) {
-    let state: [String: Any] = ["count": 0, "pending": [], "updatedAt": ISO8601DateFormatter().string(from: Date()), "clearedBy": "activation"]
+// `opened` (LinkedIn): the pending ids this click opened. The file is re-read
+// here and every OTHER pending thread is kept: check.mjs may have bannered one
+// between the click and this write, and since seen.json already has it, a
+// blanket clear dropped it from the badge for good.
+func clearBadge(_ path: String, opened: [String]? = nil) {
+    var keep: [[String: Any]] = []
+    if let opened = opened,
+       let data = FileManager.default.contents(atPath: path),
+       let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+        keep = ((obj["pending"] as? [[String: Any]]) ?? []).filter { !opened.contains(($0["id"] as? String) ?? "") }
+    }
+    let state: [String: Any] = ["count": keep.count, "pending": keep, "updatedAt": ISO8601DateFormatter().string(from: Date()), "clearedBy": "activation"]
     guard let data = try? JSONSerialization.data(withJSONObject: state) else { return }
     let tmp = path + ".tmp"
     do {
@@ -116,7 +126,7 @@ func handleActivation() {
             : "https://www.linkedin.com/messaging/"
         dbg("activation -> LinkedIn (ids=\(ids.count)) \(url)")
         openURL(url)
-        clearBadge(statePath)
+        clearBadge(statePath, opened: ids)
         return
     }
     openDashboard()

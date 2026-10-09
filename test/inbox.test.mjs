@@ -24,12 +24,13 @@ test("threadOutcome: already seen → re-stamp; bubbles without job text → not
   assert.deepEqual(threadOutcome({ bubbleCount: 2, text: "We are hiring an SDET", extractFailed: false, alreadySeen: false, isJob: true }), { action: "process", markSeen: false });
 });
 
-test("threadOpened: with a card href only that thread's id counts; without one any url change does, and card 0 may keep the auto-opened url", () => {
-  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-abc/", before: "https://l/messaging/", index: 3 }), true);
-  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/", index: 0 }), false, "wrong thread — even for card 0");
-  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 0 }), true, "card 0: LinkedIn auto-opens it, so an unchanged url is expected");
-  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1 }), false, "card 1 with the previous thread still open");
-  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1, wasActive: true }), true, "a card already marked active is the open thread");
+test("threadOpened: with a card href only that thread's id counts; without one a url change does, or a card already marked active", () => {
+  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-abc/", before: "https://l/messaging/" }), true);
+  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/" }), false, "wrong thread");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-new/", before: "https://l/messaging/" }), true, "the click navigated");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/" }), false, "the previous (or a lower auto-opened) thread is still open — even for the first card");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/?filter=unread", before: "https://l/messaging/?filter=unread" }), false, "a click that did nothing on the list page");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", wasActive: true }), true, "a card already marked active is the open thread");
 });
 
 test("unreadVerdict: cards count; an auto-opened thread the list dropped (decided by id, not count) adds one and is scanned first; empty state is an honest 0; no list or SCAN_ALL never counts", () => {

@@ -63,3 +63,10 @@ test("offlinePatches: dirty urls push full-override patches, deletions clear", (
   assert.deepEqual(core.mergeEntryLocal({ status: "from-the-future" }, { note: "x" }), { status: "from-the-future", note: "x" });
   assert.deepEqual(core.entryToPatch({ status: "from-the-future", note: "x" }), { note: "x" }, "unknown status is left out, not pushed as new");
 });
+
+test("visitedUpTo: the newest package on the page, never now, never backwards", () => {
+  const page = ["2026-10-01T10:00:00.000Z", "2026-10-03T08:00:00.000Z", "garbage"];
+  assert.equal(core.visitedUpTo(page, "2026-10-02T00:00:00.000Z"), "2026-10-03T08:00:00.000Z");
+  assert.equal(core.visitedUpTo(page, "2026-10-05T00:00:00.000Z"), "2026-10-05T00:00:00.000Z", "an older page does not move it back");
+  assert.equal(core.visitedUpTo([], ""), new Date(0).toISOString(), "an empty first visit: every later package is new");
+});

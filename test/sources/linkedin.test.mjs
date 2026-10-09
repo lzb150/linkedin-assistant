@@ -221,3 +221,20 @@ test("fetchLinkedInJobs scrubs control characters out of scraped card text and s
     assert.doesNotMatch(v, /[\u0000-\u001f\u007f\u2028\u2029]/, "no line terminator survives into the log line");
   }
 });
+
+test("fetchLinkedInJobs leaves the description empty when the url never flips to the clicked job", async () => {
+  // The panel still shows the PREVIOUS job; reading it scored and drafted that
+  // job's text under this card. Empty text takes the gate's retry path instead.
+  const page = fakePage([{ title: "SDET", href: "/jobs/view/123/", company: "Acme", location: "Kyiv" }]);
+  page.waitForURL = async () => { throw new Error("Timeout 5000ms exceeded"); };
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "SDET", location: "Ukraine" }] }, () => {}, { sleep: async () => {} });
+  assert.equal(jobs.length, 1);
+  assert.match(jobs[0].text, /^SDET at Acme\. Kyiv\.?$/);
+  assert.ok(!page.calls.some((c) => c.startsWith("desc")), "the stale panel is never read");
+});
+
+test("fetchLinkedInJobs throws when every search errored with nothing gathered", async () => {
+  const page = fakePage([]);
+  page.goto = async () => { throw new Error("net::ERR_INTERNET_DISCONNECTED"); };
+  await assert.rejects(fetchLinkedInJobs(page, { searches: [{ keywords: "a" }, { keywords: "b" }] }, () => {}, { sleep: async () => {} }), /all 2 LinkedIn search\(es\) failed/);
+});

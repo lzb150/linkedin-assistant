@@ -20,7 +20,7 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sa
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList, knob as configKnob } from "./lib/filters.mjs";
+import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
@@ -52,17 +52,6 @@ if (CATCHUP && darkWakeOnBattery()) {
   process.exit(0);
 }
 
-// Run-wide lock (jobs-run.lock/): two overlapping runs (launchd + manual) would
-// both read jobs-seen.json, both write packages for the same vacancy, and the
-// last save would drop the other's entries. Second run exits quietly — 0 so
-// launchd does not flag it as a failure. Released on process exit.
-try {
-  acquireProfileLock(join(__dir, "jobs-run"));
-} catch (e) {
-  if (!/profile busy/.test(e.message)) throw e;
-  log("another jobs.mjs run is active — exiting");
-  process.exit(0);
-}
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 // Fresh clone has no applications/ yet; readPackages/writeTextAtomic below need it.
@@ -72,6 +61,36 @@ const HEALTH_FILE = join(__dir, "source-health.json");
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
+// Every on/off switch is normalized once, here, so jobs.mjs and the sources
+// that read their own section see real booleans (see flag() in lib/filters.mjs).
+config.requireRole = flag("requireRole", config.requireRole, false, log);
+for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["linkedin", "enabled", false]]) {
+  const sec = config[section];
+  if (sec && typeof sec === "object" && key in sec) sec[key] = flag(`${section}.${key}`, sec[key], fallback, log);
+}
+
+// A run that was due to scrape LinkedIn but could not (the run lock or the
+// browser profile was busy) leaves the catch-up marker behind, so the 15-minute
+// catch-up agent retries it instead of LinkedIn waiting 3 hours for the next slot.
+const LINKEDIN_DUE = !DOU_ONLY && Boolean(config.linkedin?.enabled);
+function markLinkedInPending(why) {
+  if (!LINKEDIN_DUE) return;
+  try { writeFileSync(PENDING, `${new Date().toISOString()}\n`); log(`linkedin: ${why} — left pending for the catch-up agent`); }
+  catch (e) { log("linkedin: pending marker not written:", e.message); }
+}
+
+// Run-wide lock (jobs-run.lock/): two overlapping runs (launchd + manual) would
+// both read jobs-seen.json, both write packages for the same vacancy, and the
+// last save would drop the other's entries. Second run exits quietly — 0 so
+// launchd does not flag it as a failure. Released on process exit.
+try {
+  acquireProfileLock(join(__dir, "jobs-run"));
+} catch (e) {
+  if (!/profile busy/.test(e.message)) throw e;
+  log("another jobs.mjs run is active — exiting");
+  markLinkedInPending("another run holds the lock");
+  process.exit(0);
+}
 
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
 const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
@@ -170,7 +189,14 @@ for (const s of BROWSERLESS_SOURCES) {
   // Say it out loud: a source turned off by a typo looked exactly like a source
   // that simply found nothing, and it never reached summary.sources so health
   // monitoring could not flag it either.
-  if (!s.enabled) { log(`${s.name}: disabled in config — skipped`); continue; }
+  // An explicit `enabled: false` is the owner's choice, not an outage: left out
+  // of health monitoring. A missing or misspelt section still is not, so the
+  // "absent" alert keeps catching the typo.
+  if (!s.enabled) {
+    log(`${s.name}: disabled in config — skipped`);
+    if (config[s.name]?.enabled === false) skippedSources.push(s.name);
+    continue;
+  }
   if (CATCHUP) { skippedSources.push(s.name); continue; }   // they ran in the deferring run; the catch-up is for LinkedIn
   log(`Gathering ${s.name}...`);
   sourcesTried++;
@@ -202,14 +228,17 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
-const LINKEDIN_ON = !DOU_ONLY && Boolean(config.linkedin?.enabled);
+const LINKEDIN_ON = LINKEDIN_DUE;
 if (CATCHUP && !LINKEDIN_ON) rmSync(PENDING, { force: true });   // turned off since it was deferred: nothing to catch up
 // The feed needs more than a DarkWake's 5–10 s, so a run here only ever timed
 // out and reported LinkedIn as 0 found. Defer it and leave it out of health
 // monitoring: it was not tried, so it did not break.
 const LINKEDIN_DEFERRED = LINKEDIN_ON && darkWakeOnBattery();
 if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); }
-else if (!config.linkedin?.enabled) log("linkedin: disabled in config — skipped");
+else if (!config.linkedin?.enabled) {
+  log("linkedin: disabled in config — skipped");
+  if (config.linkedin?.enabled === false) skippedSources.push("linkedin");   // see the browserless loop above
+}
 else if (LINKEDIN_DEFERRED) {
   log("linkedin: deferred — the Mac is in a DarkWake on battery; the catch-up agent runs it after the next full wake");
   skippedSources.push("linkedin");
@@ -244,8 +273,9 @@ if (LINKEDIN_ON && !LINKEDIN_DEFERRED) {
     // dedup, scoring and every package write included, after the scraping was
     // already paid for. Closing a browser is never worth that.
     try { await ctx?.close(); } catch (e) { log("browser close failed:", e.message); }
-    // Busy = not tried: a pending catch-up stays pending for the next 15-minute tick.
-    if (!busy) rmSync(PENDING, { force: true });
+    // Busy = not tried: it stays (or becomes) pending for the next 15-minute tick.
+    if (busy) markLinkedInPending("browser profile busy");
+    else rmSync(PENDING, { force: true });
   }
 }
 
@@ -297,6 +327,8 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
 // where the LLM applies a second gate (llm.minScore).
 let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
 const matches = [];
+// Stamp a job seen together with the copies dedupeJobs folded into it.
+const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); };
 for (const job of jobs) {
   const g = keywordGate(job, {
     seen, packageIndex, excludedByTitle,
@@ -317,10 +349,10 @@ for (const job of jobs) {
     case "low":
       log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
       break;
-    case "match": matches.push({ id, job, scored: g.scored }); continue;
+    case "match": matches.push({ id, job, scored: g.scored, retry: g.retry }); continue;
   }
   recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
-  if (!g.retry) seen.add(id);   // a "low" with no description stays unseen so the next run re-reads it
+  if (!g.retry) stamp(job, id);   // a "low" with no description stays unseen so the next run re-reads it
 }
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
@@ -368,7 +400,7 @@ function saveSeen() {
   try { seen.save(); } catch (e) { log(`  · jobs-seen.json save failed: ${e.message}`); }
 }
 for (const m of toScore) {
-  const { id, job, scored } = m;
+  const { id, job, scored, retry } = m;
   const lbl = label(job);
   let llm = null;
   let suspect = null;
@@ -414,9 +446,11 @@ for (const m of toScore) {
   }
   if (llmRejects(llm, LLM_MIN_SCORE)) {
     llmDropped++;
-    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
+    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}${retry ? " (no description — will retry)" : ""}`);
     recordOutcome(summary, job.source, "low");
-    seen.add(id);   // persisted with the next written package, or at the end of the loop
+    // Judged on its title alone: the LLM's "no" is not a verdict on the job,
+    // so it stays unseen and the next run re-reads it with its description.
+    if (!retry) stamp(job, id);   // persisted with the next written package, or at the end of the loop
     continue;
   }
   // Skip the one package the way every other per-item failure in this loop
@@ -438,7 +472,7 @@ for (const m of toScore) {
   recordOutcome(summary, job.source, "written");
   recordTop(summary, scored.score, lbl);
   writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label: lbl });
-  seen.add(id);
+  stamp(job, id);
   // Persist after every WRITTEN package: a crash mid-run must not forget one
   // (the next run would re-score and re-pay the LLM for it). Each save
   // rewrites and fsyncs the whole store, so the drop path above does not

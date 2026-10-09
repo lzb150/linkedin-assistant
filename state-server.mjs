@@ -82,9 +82,12 @@ export function createServer({ statePath, indexPath }) {
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
       // Framing is forbidden above, but any site could still open the page in
       // a popup on one click, and its lastVisit POST 4 s later clears every NEW
-      // ribbon. The Dock, a bookmark or a typed address send "none"; only a
-      // navigation started by another site sends "cross-site".
-      if (req.headers["sec-fetch-site"] === "cross-site") {
+      // ribbon. The Dock, a bookmark or a typed address send "none", a reload
+      // or in-page link "same-origin". Rejecting only "cross-site" let in any
+      // page on another 127.0.0.1 port (a dev server): a site ignores the port,
+      // so it is "same-site". No header = an old browser or a non-browser client.
+      const site = req.headers["sec-fetch-site"];
+      if (site && site !== "none" && site !== "same-origin") {
         return send(res, 403, "Open the dashboard from the Dock or the address bar.", "text/plain");
       }
       try { return send(res, 200, readFileSync(indexPath, "utf8"), "text/html; charset=utf-8"); }

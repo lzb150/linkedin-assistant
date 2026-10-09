@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
-import { writeState, readPending, linkedinBadge } from "./lib/notify-state.mjs";
+import { writeState, readPending, readBadge, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
@@ -145,7 +145,7 @@ async function scan(page, ctx) {
   // card): opening it marked it read, so this run is the last chance to draft for it.
   const targets = verdict.scanOpenFirst ? [null, ...cards] : cards;
   if (verdict.scanOpenFirst) log("· auto-opened thread not in list — scanning it first");
-  for (const [i, card] of targets.entries()) {
+  for (const card of targets) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX) break;
 
@@ -177,10 +177,7 @@ async function scan(page, ctx) {
         await card.waitForSelector(SEL.activeCardLink, { timeout: 5000 }).catch(() => {});
         await page.waitForURL((u) => u.href !== before && u.href.includes("/messaging/thread/"), { timeout: 5000 }).catch(() => {});
       }
-      // `i` is the index within `targets` on purpose: threadOpened's "card 0 may keep
-      // its url" rule is for the auto-opened card, and with the `null` target first
-      // that card is NOT listed — the first real card must change the url like any other.
-      if (!threadOpened({ wantId, url: page.url(), before, index: i, wasActive })) { log(`· could not open thread, skipping: ${name}`); continue; }
+      if (!threadOpened({ wantId, url: page.url(), before, wasActive })) { log(`· could not open thread, skipping: ${name}`); continue; }
     }
     const url = page.url();
     scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
@@ -283,6 +280,10 @@ function finish({ held }) {
     }
   } else if (!SCAN_ALL) {
     log("notify: scan failed before counting — keeping previous badge state");
+    if (notified.length) {
+      try { writeState(STATE_FILE, keepBadgeAdding({ prev: readBadge(STATE_FILE), notified })); }
+      catch (e) { log("notify: writeState failed:", e?.message); }
+    }
   }
 }
 
