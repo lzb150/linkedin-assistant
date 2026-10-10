@@ -329,6 +329,9 @@ let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
 const matches = [];
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); };
+// Marks a match the LLM already turned down on its title alone: the second
+// title-only "no" stamps it seen. Its own key, so it never reads as seen.
+const titleOnlyKey = (id) => `title-only-llm:${id}`;
 for (const job of jobs) {
   const g = keywordGate(job, {
     seen, packageIndex, excludedByTitle,
@@ -449,8 +452,11 @@ for (const m of toScore) {
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}${retry ? " (no description — will retry)" : ""}`);
     recordOutcome(summary, job.source, "low");
     // Judged on its title alone: the LLM's "no" is not a verdict on the job,
-    // so it stays unseen and the next run re-reads it with its description.
-    if (!retry) stamp(job, id);   // persisted with the next written package, or at the end of the loop
+    // so it stays unseen and the next run re-reads it with its description —
+    // once. A description that never loads (a short posting, selector drift)
+    // used to cost one paid LLM call every hourly run, forever.
+    if (retry && !seen.has(titleOnlyKey(id))) seen.add(titleOnlyKey(id));
+    else stamp(job, id);   // persisted with the next written package, or at the end of the loop
     continue;
   }
   // Skip the one package the way every other per-item failure in this loop

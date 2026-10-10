@@ -163,6 +163,19 @@ test("jobs.mjs: a card without a description is retried, not buried as seen", as
   assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1);
 });
 
+test("jobs.mjs: a title-only match the LLM turns down is re-judged once, then marked seen", async (t) => {
+  // A description that never loads used to cost one paid LLM call every run.
+  const item = { title: "SDET Automation Engineer в LowFit, Львів", link: "https://jobs.dou.ua/companies/lowfit/vacancies/8/", desc: "Playwright, TypeScript, API testing, CI/CD." };
+  const p = setupProject(t, await serveFeed(t, () => rss([item])));
+  const out = await runJobs(p);
+  assert.match(out, /skip \[\d+ \/ llm 20\] dou: SDET Automation Engineer @ LowFit \(no description — will retry\)/);
+  assert.deepEqual(Object.keys(p.json("jobs-seen.json")).filter((k) => !k.startsWith("title-only-llm:")), [], "not seen after the first title-only no");
+  await runJobs(p);
+  assert.equal(claudeCalls(p), 2, "re-judged once");
+  await runJobs(p);
+  assert.equal(claudeCalls(p), 2, "the second no marked it seen");
+});
+
 test("jobs.mjs: the same vacancy from another board joins the existing package as an alt link", async (t) => {
   const existing = pkg({ source: "djinni", title: "Senior SDET (Playwright)", company: "Acme", url: "https://djinni.co/jobs/1" });
   const p = setupProject(t, await serveFeed(t, () => rss([ACME])), { packages: { "old.md": existing } });

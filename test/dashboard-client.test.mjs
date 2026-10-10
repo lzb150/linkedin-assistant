@@ -319,3 +319,19 @@ test("a note sent at unload is re-sent note-only on the next load and cannot rol
   assert.equal(onDisk[U].note, "call back");
   assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "outbox drained");
 });
+
+test("a note saved after an unload flush replaces the queued one in the outbox", async (t) => {
+  // bfcache: pagehide queued "old", the page came back and the note was edited
+  // again. Left queued, "old" was re-sent on the next load over the newer note.
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/12/";
+  const store = new Map();
+  const c = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  c.ctx.card = fakeCard(U);
+  c.ctx.ta = { value: "old" };
+  c.run("noteInput(card, ta); flushNotes()");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), { [U]: "old" });
+  await c.run("saveNote(card, 'newer')");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "the newer save dropped the queued note");
+  assert.equal(JSON.parse(readFileSync(statePath, "utf8"))[U].note, "newer");
+});
