@@ -326,11 +326,13 @@ test("a note saved after an unload flush replaces the queued one in the outbox",
   const { port, statePath } = await startStateServer(t);
   const U = "https://example.com/jobs/12/";
   const store = new Map();
-  const c = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  let keepalive;
+  const c = await bootClient({ fetch: (p, o) => { const r = fetch(`http://127.0.0.1:${port}${p}`, o); if (o?.keepalive) keepalive = r; return r; }, store });
   c.ctx.card = fakeCard(U);
   c.ctx.ta = { value: "old" };
   c.run("noteInput(card, ta); flushNotes()");
   assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), { [U]: "old" });
+  await keepalive;   // landed before the page came back, as with a real bfcache restore
   await c.run("saveNote(card, 'newer')");
   assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "the newer save dropped the queued note");
   assert.equal(JSON.parse(readFileSync(statePath, "utf8"))[U].note, "newer");
