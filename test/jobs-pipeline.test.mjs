@@ -156,11 +156,23 @@ test("jobs.mjs: a card without a description is retried, not buried as seen", as
   const out = await runJobs(p);
   assert.match(out, /· skip \[\d+\] dou: QA Engineer \(no description — will retry\)/);
   assert.match(out, /wrote 0 application package/);
-  assert.deepEqual(p.json("jobs-seen.json"), {}, "not marked seen");
+  assert.deepEqual(Object.keys(p.json("jobs-seen.json")).filter((k) => !k.startsWith("title-only-")), [], "not marked seen");
   item.desc = AQA;   // the board now serves the full description
   const out2 = await runJobs(p);
   assert.match(out2, /✓ MATCH \[\d+ \/ llm 85\] dou: QA Engineer @ Acme/);
-  assert.equal(Object.keys(p.json("jobs-seen.json")).length, 1);
+  assert.equal(Object.keys(p.json("jobs-seen.json")).filter((k) => !k.startsWith("title-only-")).length, 1);
+});
+
+test("jobs.mjs: a card whose description never loads is re-read once, then marked seen", async (t) => {
+  // On LinkedIn every re-read is a card click and up to ~10 s of waiting.
+  const item = { title: "QA Engineer в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/9/", desc: "Short." };
+  const p = setupProject(t, await serveFeed(t, () => rss([item])));
+  const real = () => Object.keys(p.json("jobs-seen.json")).filter((k) => !k.startsWith("title-only-"));
+  assert.match(await runJobs(p), /\(no description — will retry\)/);
+  assert.deepEqual(real(), [], "unseen after the first title-only low");
+  assert.match(await runJobs(p), /\(no description — will retry\)/);
+  assert.equal(real().length, 1, "the second one marks it seen");
+  assert.doesNotMatch(await runJobs(p), /QA Engineer/, "not re-read any more");
 });
 
 test("jobs.mjs: a title-only match the LLM turns down is re-judged once, then marked seen", async (t) => {
