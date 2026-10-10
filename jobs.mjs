@@ -31,7 +31,7 @@ import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { pool } from "./lib/sources/html.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
-import { launchBrowser, acquireProfileLock, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { launchBrowser, acquireProfileLock, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
 import { darkWakeOnBattery } from "./lib/wake.mjs";
@@ -272,7 +272,7 @@ if (LINKEDIN_ON && !LINKEDIN_DEFERRED) {
     // A throw here escapes the sibling catch and takes the whole run with it —
     // dedup, scoring and every package write included, after the scraping was
     // already paid for. Closing a browser is never worth that.
-    try { await ctx?.close(); } catch (e) { log("browser close failed:", e.message); }
+    await closeBounded(ctx, { log });   // bounded: a hung close held both locks forever
     // Busy = not tried: it stays (or becomes) pending for the next 15-minute tick.
     if (busy) markLinkedInPending("browser profile busy");
     else rmSync(PENDING, { force: true });
@@ -329,9 +329,16 @@ let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
 const matches = [];
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); };
-// Marks a match the LLM already turned down on its title alone: the second
-// title-only "no" stamps it seen. Its own key, so it never reads as seen.
-const titleOnlyKey = (id) => `title-only-llm:${id}`;
+// A job turned down on its title alone (no description yet) stays unseen so
+// the next run re-reads it — once. The second title-only "no" stamps it seen:
+// a description that never loads (a short posting, selector drift) used to be
+// re-scraped, and re-judged by the paid LLM, every run forever. `gate` keeps
+// the keyword and LLM markers apart; neither key reads as seen.
+function titleOnlyNo(job, id, gate) {
+  const key = `title-only-${gate}:${id}`;
+  if (!seen.has(key)) { seen.add(key); return; }
+  stamp(job, id);
+}
 for (const job of jobs) {
   const g = keywordGate(job, {
     seen, packageIndex, excludedByTitle,
@@ -355,7 +362,8 @@ for (const job of jobs) {
     case "match": matches.push({ id, job, scored: g.scored, retry: g.retry }); continue;
   }
   recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
-  if (!g.retry) stamp(job, id);   // a "low" with no description stays unseen so the next run re-reads it
+  if (g.retry) titleOnlyNo(job, id, "kw");   // a "low" with no description: re-read once with it
+  else stamp(job, id);
 }
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
@@ -451,11 +459,8 @@ for (const m of toScore) {
     llmDropped++;
     log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}${retry ? " (no description — will retry)" : ""}`);
     recordOutcome(summary, job.source, "low");
-    // Judged on its title alone: the LLM's "no" is not a verdict on the job,
-    // so it stays unseen and the next run re-reads it with its description —
-    // once. A description that never loads (a short posting, selector drift)
-    // used to cost one paid LLM call every hourly run, forever.
-    if (retry && !seen.has(titleOnlyKey(id))) seen.add(titleOnlyKey(id));
+    // Judged on its title alone: the LLM's "no" is not a verdict on the job yet.
+    if (retry) titleOnlyNo(job, id, "llm");
     else stamp(job, id);   // persisted with the next written package, or at the end of the loop
     continue;
   }
