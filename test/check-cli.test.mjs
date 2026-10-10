@@ -232,7 +232,7 @@ test("check.mjs: the badge state names the thread before its banner is posted", 
   const snap = "#!/bin/sh\n{ printf 'state:'; cat notify-state.json 2>/dev/null || printf none; echo; } >> notify.log\n";
   const p = project(t, scanningPlaywright([JOB]), { bins: { osascript: snap, "notify-send": snap } });
   await spawnScript(p, "check.mjs").done;
-  assert.match(await waitFor(p.path("notify.log"), /state:/), /state:\{.*"id":"2-abc"/);
+  assert.match(await waitFor(p.path("notify.log"), /state:.*\n/), /state:\{.*"id":"2-abc"/);   // wait for the whole line: printf and cat land separately
 });
 
 test("check.mjs: an unread thread with nothing new (marked unread by hand) stays on the badge, without a banner", async (t) => {
