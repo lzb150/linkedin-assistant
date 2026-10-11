@@ -163,3 +163,13 @@ test("normalizeProfile reports a clamped or unusable weight to `warn` (the hand-
   ]);
   assert.doesNotThrow(() => normalizeProfile({ skills: { a: 99 } }), "no warn given: silent, as for model output");
 });
+
+test("normalizeProfile reports a one-letter or overlong term to `warn` instead of dropping it silently", () => {
+  const lines = [];
+  const p = normalizeProfile({ skills: { c: 5, go: 4, ["x".repeat(45)]: 2 }, antiKeywords: { r: 3 }, roles: ["q", "sdet"] }, { warn: (m) => lines.push(m) });
+  assert.deepEqual(Object.keys(p.skills).sort(), ["go", "x".repeat(40)]);
+  assert.match(lines.join("\n"), /skills: "c" is shorter than 2 characters — dropped/);
+  assert.match(lines.join("\n"), /antiKeywords: "r" is shorter/);
+  assert.match(lines.join("\n"), /roles: "q" is shorter/);
+  assert.match(lines.join("\n"), /skills: "x{45}" is longer than 40 characters/);
+});
