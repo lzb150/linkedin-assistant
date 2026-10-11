@@ -86,9 +86,12 @@ func withStateLock(_ path: String, _ body: () -> Void) {
             try FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
             held = true
         } catch {
-            guard let attrs = try? FileManager.default.attributesOfItem(atPath: lock) else { break }   // create failed with no lock there: cannot lock at all, go ahead
+            // Only "already exists" means someone holds it; any other error
+            // means this directory cannot hold a lock at all: go ahead unlocked.
+            guard (error as NSError).code == NSFileWriteFileExistsError else { break }
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: lock) else { continue }   // released since: retry now
             if let m = attrs[.modificationDate] as? Date, Date().timeIntervalSince(m) > 10 {
-                try? FileManager.default.removeItem(atPath: lock)
+                clearStaleLock(lock, inode: attrs[.systemFileNumber] as? NSNumber)
                 continue
             }
             usleep(20_000)
@@ -96,6 +99,20 @@ func withStateLock(_ path: String, _ body: () -> Void) {
     }
     defer { if held { try? FileManager.default.removeItem(atPath: lock) } }
     body()
+}
+
+// Same takeover as lib/notify-state.mjs clearStale: move the stale lock aside
+// and delete it only if it is still the one stat-ed (same inode); a fresh lock
+// another writer took in between is put back instead of deleted.
+func clearStaleLock(_ lock: String, inode: NSNumber?) {
+    let aside = lock + ".stale-\(getpid())-\(Int(Date().timeIntervalSince1970 * 1000))"
+    guard (try? FileManager.default.moveItem(atPath: lock, toPath: aside)) != nil else { return }
+    let moved = (try? FileManager.default.attributesOfItem(atPath: aside))?[.systemFileNumber] as? NSNumber
+    if let inode = inode, moved == inode {
+        try? FileManager.default.removeItem(atPath: aside)
+    } else {
+        try? FileManager.default.moveItem(atPath: aside, toPath: lock)
+    }
 }
 
 func clearBadge(_ path: String, opened: [String]? = nil) {
