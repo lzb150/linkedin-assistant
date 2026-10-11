@@ -101,7 +101,7 @@ test("clearStale deletes only the lock it saw stale; a fresh one taken in betwee
   clearStale(lock, staleIno);
   assert.ok(!existsSync(lock), "the lock it saw is gone");
   mkdirSync(lock);   // the other writer's fresh lock
-  clearStale(lock, staleIno + 1);   // stat-ed a different inode: not this one
+  clearStale(lock, 0);   // stat-ed some other inode (0 is never a real one): not this lock
   assert.ok(existsSync(lock), "the fresh lock is put back");
   assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
 });
