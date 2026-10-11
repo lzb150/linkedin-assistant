@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync } from "node:fs";
 import { join } from "node:path";
-import { writeState, readPending, readBadge, linkedinBadge, keepBadgeAdding, updateState } from "../lib/notify-state.mjs";
+import { writeState, readBadge, linkedinBadge, keepBadgeAdding, updateState } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
@@ -26,13 +26,13 @@ test("writeState clamps negative/fractional count and defaults pending to []", (
   assert.deepEqual(read(p).pending, []);
 });
 
-test("readPending: missing, corrupt or wrong-shaped files read as []", (t) => {
+test("readBadge: missing, corrupt or wrong-shaped files read as no pending", (t) => {
   const dir = tmpDir(t);
-  assert.deepEqual(readPending(join(dir, "none.json")), []);
+  assert.deepEqual(readBadge(join(dir, "none.json")).pending, []);
   writeFileSync(join(dir, "bad.json"), "{not json");
-  assert.deepEqual(readPending(join(dir, "bad.json")), []);
+  assert.deepEqual(readBadge(join(dir, "bad.json")).pending, []);
   writeFileSync(join(dir, "odd.json"), JSON.stringify({ pending: [{ id: 1 }, null, { id: "2-x", label: "A" }] }));
-  assert.deepEqual(readPending(join(dir, "odd.json")), [{ id: "2-x", label: "A" }]);
+  assert.deepEqual(readBadge(join(dir, "odd.json")).pending, [{ id: "2-x", label: "A" }]);
 });
 
 test("linkedinBadge: a bannered thread keeps the badge after the scan that read it", () => {

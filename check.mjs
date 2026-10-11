@@ -257,11 +257,14 @@ async function scan(page, ctx) {
 // clicked thread. Only a write that failed (or ran before a count) is left in
 // `notified` for finish() to retry.
 function remember(entry) {
-  if (counted) {
-    try { updateState(STATE_FILE, (prev) => linkedinBadge({ prevPending: prev.pending, notified: [entry], unreadCount, opened: scanned })); return; }
-    catch (e) { log("notify: writeState failed:", e?.message); }
-  }
+  if (counted && saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified: [entry], unreadCount, opened: scanned }))) return;
   notified.push(entry);
+}
+
+// Locked read-modify-write of the badge state; false (logged) when it failed.
+function saveBadge(next) {
+  try { updateState(STATE_FILE, next); return true; }
+  catch (e) { log("notify: writeState failed:", e?.message); return false; }
 }
 
 function finish({ held }) {
@@ -270,20 +273,13 @@ function finish({ held }) {
   // started adding entries, so saving here rolls that holder's work back.
   if (held) { try { seen.save(); } catch (e) { log("seen.save failed:", e?.message); } }
   if (counted) {
-    try {
-      // Read at finish, not at start: a Dock click during the run cleared the
-      // threads bannered before it, and must stay cleared. `notified` holds
-      // only what remember() could not write itself.
-      updateState(STATE_FILE, (prev) => linkedinBadge({ prevPending: prev.pending, notified, unreadCount, opened: scanned }));
-    } catch (e) {
-      log("notify: writeState failed:", e?.message);
-    }
+    // Read at finish, not at start: a Dock click during the run cleared the
+    // threads bannered before it, and must stay cleared. `notified` holds
+    // only what remember() could not write itself.
+    saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified, unreadCount, opened: scanned }));
   } else if (!SCAN_ALL) {
     log("notify: scan failed before counting — keeping previous badge state");
-    if (notified.length) {
-      try { updateState(STATE_FILE, (prev) => keepBadgeAdding({ prev, notified })); }
-      catch (e) { log("notify: writeState failed:", e?.message); }
-    }
+    if (notified.length) saveBadge((prev) => keepBadgeAdding({ prev, notified }));
   }
 }
 
