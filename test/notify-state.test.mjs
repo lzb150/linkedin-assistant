@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { writeState, readBadge, linkedinBadge, keepBadgeAdding, updateState } from "../lib/notify-state.mjs";
+import { writeState, readBadge, linkedinBadge, keepBadgeAdding, updateState, clearStale } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
@@ -89,4 +89,19 @@ test("updateState waits for a live lock, then writes anyway rather than lose the
   assert.ok(Date.now() - t0 >= 1900, "waited for the holder");
   assert.equal(read(p).count, 1);
   assert.ok(existsSync(`${p}.lock`), "someone else's lock is left alone");
+});
+
+test("clearStale deletes only the lock it saw stale; a fresh one taken in between is put back", (t) => {
+  // Two writers both saw the crashed holder's lock stale. The first removed it
+  // and took a fresh one; the second must not delete that fresh lock.
+  const dir = tmpDir(t);
+  const lock = join(dir, "notify-state.json.lock");
+  mkdirSync(lock);
+  const staleIno = statSync(lock).ino;
+  clearStale(lock, staleIno);
+  assert.ok(!existsSync(lock), "the lock it saw is gone");
+  mkdirSync(lock);   // the other writer's fresh lock
+  clearStale(lock, 0);   // stat-ed some other inode (0 is never a real one): not this lock
+  assert.ok(existsSync(lock), "the fresh lock is put back");
+  assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
 });

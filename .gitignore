@@ -68,6 +68,7 @@ closed-check.lock/
 # notify-state read-modify-write lock (lib/notify-state.mjs updateState, Jobs.app clearBadge)
 notify-state.json.lock/
 djinni-notify-state.json.lock/
+*notify-state.json.lock.stale-*/
 
 # Atomic-write temp files and quarantined corrupt state files
 *.tmp
