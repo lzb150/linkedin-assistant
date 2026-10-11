@@ -138,3 +138,25 @@ test("fetchDjinni throws when every search failed to load its first page (an out
   t.after(() => { globalThis.fetch = realFetch; });
   await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1", "https://djinni.co/jobs/?a=2"] }, () => {}), /all 2 Djinni search\(es\) failed/);
 });
+
+test("fetchDjinni stops when a later page redirects to the unfiltered /jobs/ listing", async (t) => {
+  // Past a search's last page Djinni 302s to /jobs/ — every vacancy on the
+  // board — which was read as this search's page 2: recruiters, marketers…
+  const cards = splitCards(listing);
+  const page = (...blocks) => `<html>${blocks.join("")}</html>`;
+  const urls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    if (url.endsWith("page=2")) return { ok: false, status: 302, headers: { get: (h) => (h === "location" ? "/jobs/" : null) }, body: null };
+    if (url === "https://djinni.co/jobs/") return { ok: true, status: 200, text: async () => page(cards[2]) };
+    return { ok: true, status: 200, text: async () => page(cards[0], cards[1]) };
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  const jobs = await fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?all_keywords=SDET"], pages: 3, fullDescription: false }, (l) => lines.push(l));
+  assert.equal(jobs.length, 2, "page 1 only");
+  assert.ok(!urls.includes("https://djinni.co/jobs/"), "the all-jobs listing is never fetched");
+  assert.ok(!urls.some((u) => u.endsWith("page=3")), "no page after the end");
+  assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
+});

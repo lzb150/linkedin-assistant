@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync } from "node:fs";
 import { join } from "node:path";
-import { writeState, readPending, readBadge, linkedinBadge, keepBadgeAdding } from "../lib/notify-state.mjs";
+import { writeState, readPending, readBadge, linkedinBadge, keepBadgeAdding, updateState } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
@@ -63,4 +63,30 @@ test("keepBadgeAdding: an uncounted scan keeps the old count and adds each newly
   writeState(join(dir, "s.json"), out);
   assert.deepEqual(readBadge(join(dir, "s.json")), { count: 4, pending: out.pending });
   assert.deepEqual(readBadge(join(dir, "none.json")), { count: 0, pending: [] });
+});
+
+test("updateState is a locked read-modify-write: the lock is released, a stale one is taken over", (t) => {
+  const p = join(tmpDir(t), "notify-state.json");
+  writeState(p, { count: 1, pending: [{ id: "a", label: "A" }] });
+  const s = updateState(p, (prev) => linkedinBadge({ prevPending: prev.pending, notified: [{ id: "b", label: "B" }] }));
+  assert.deepEqual(read(p).pending.map((x) => x.id), ["a", "b"]);
+  assert.equal(s.count, 2);
+  assert.ok(!existsSync(`${p}.lock`), "released");
+  // A crashed holder's lock (older than 10 s) does not block the write.
+  mkdirSync(`${p}.lock`);
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(`${p}.lock`, old, old);
+  updateState(p, (prev) => ({ count: prev.count + 1, pending: prev.pending }));
+  assert.equal(read(p).count, 3);
+  assert.ok(!existsSync(`${p}.lock`), "stale lock taken over and released");
+});
+
+test("updateState waits for a live lock, then writes anyway rather than lose the update", (t) => {
+  const p = join(tmpDir(t), "notify-state.json");
+  mkdirSync(`${p}.lock`);   // fresh: a holder that never lets go
+  const t0 = Date.now();
+  updateState(p, () => ({ count: 1, pending: [] }));
+  assert.ok(Date.now() - t0 >= 1900, "waited for the holder");
+  assert.equal(read(p).count, 1);
+  assert.ok(existsSync(`${p}.lock`), "someone else's lock is left alone");
 });

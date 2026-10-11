@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
 import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
 import { buildDraft } from "./lib/draft.mjs";
-import { writeState, readPending, readBadge, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.mjs";
+import { updateState, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
@@ -258,7 +258,7 @@ async function scan(page, ctx) {
 // `notified` for finish() to retry.
 function remember(entry) {
   if (counted) {
-    try { writeState(STATE_FILE, linkedinBadge({ prevPending: readPending(STATE_FILE), notified: [entry], unreadCount, opened: scanned })); return; }
+    try { updateState(STATE_FILE, (prev) => linkedinBadge({ prevPending: prev.pending, notified: [entry], unreadCount, opened: scanned })); return; }
     catch (e) { log("notify: writeState failed:", e?.message); }
   }
   notified.push(entry);
@@ -274,14 +274,14 @@ function finish({ held }) {
       // Read at finish, not at start: a Dock click during the run cleared the
       // threads bannered before it, and must stay cleared. `notified` holds
       // only what remember() could not write itself.
-      writeState(STATE_FILE, linkedinBadge({ prevPending: readPending(STATE_FILE), notified, unreadCount, opened: scanned }));
+      updateState(STATE_FILE, (prev) => linkedinBadge({ prevPending: prev.pending, notified, unreadCount, opened: scanned }));
     } catch (e) {
       log("notify: writeState failed:", e?.message);
     }
   } else if (!SCAN_ALL) {
     log("notify: scan failed before counting — keeping previous badge state");
     if (notified.length) {
-      try { writeState(STATE_FILE, keepBadgeAdding({ prev: readBadge(STATE_FILE), notified })); }
+      try { updateState(STATE_FILE, (prev) => keepBadgeAdding({ prev, notified })); }
       catch (e) { log("notify: writeState failed:", e?.message); }
     }
   }

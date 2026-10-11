@@ -72,7 +72,37 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 // here and every OTHER pending thread is kept: check.mjs may have bannered one
 // between the click and this write, and since seen.json already has it, a
 // blanket clear dropped it from the badge for good.
+// The read-modify-write runs under `<path>.lock/`, the mkdir lock check.mjs
+// takes (lib/notify-state.mjs updateState): unlocked, a banner written between
+// the read and the replace was lost from the badge. Held for milliseconds; a
+// lock older than 10 s is a crashed holder, and after 2 s the clear goes ahead
+// unlocked rather than leave the badge up.
+func withStateLock(_ path: String, _ body: () -> Void) {
+    let lock = path + ".lock"
+    var held = false
+    let start = Date()
+    while !held && Date().timeIntervalSince(start) < 2 {
+        do {
+            try FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
+            held = true
+        } catch {
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: lock) else { break }   // create failed with no lock there: cannot lock at all, go ahead
+            if let m = attrs[.modificationDate] as? Date, Date().timeIntervalSince(m) > 10 {
+                try? FileManager.default.removeItem(atPath: lock)
+                continue
+            }
+            usleep(20_000)
+        }
+    }
+    defer { if held { try? FileManager.default.removeItem(atPath: lock) } }
+    body()
+}
+
 func clearBadge(_ path: String, opened: [String]? = nil) {
+    withStateLock(path) { clearBadgeLocked(path, opened: opened) }
+}
+
+private func clearBadgeLocked(_ path: String, opened: [String]?) {
     var keep: [[String: Any]] = []
     if let opened = opened,
        let data = FileManager.default.contents(atPath: path),
