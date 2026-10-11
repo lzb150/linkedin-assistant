@@ -30,10 +30,10 @@ test("decodeEntities drops NUL and lone surrogates, keeps valid code points", ()
 test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   const logs = [];
   const fakeFetch = async () => ({ ok: false, status: 404, text: async () => "body" });
-  assert.equal(await fetchText("https://x/1", (l) => logs.push(l), "dou", fakeFetch), "");
+  assert.equal(await fetchText("https://x/1", (l) => logs.push(l), "dou", { doFetch: fakeFetch }), "");
   assert.match(logs[0], /dou 404: https:\/\/x\/1/);
   const okFetch = async () => ({ ok: true, status: 200, text: async () => "body" });
-  assert.equal(await fetchText("https://x/1", () => {}, "dou", okFetch), "body");
+  assert.equal(await fetchText("https://x/1", () => {}, "dou", { doFetch: okFetch }), "body");
 });
 
 // Redirect hops are what `redirect: "follow"` used to hide: the allowlist only
@@ -52,7 +52,7 @@ test("fetchFollow and fetchText cancel the bodies they never read", async () => 
   let cancelled = 0;
   const body = { cancel: async () => { cancelled++; } };
   const doFetch = async (u) => (u.endsWith("/final") ? { ok: false, status: 404, body } : { ...redirectTo("/final"), body });
-  assert.equal(await fetchText("https://djinni.co/jobs/1", () => {}, "djinni", doFetch), "");
+  assert.equal(await fetchText("https://djinni.co/jobs/1", () => {}, "djinni", { doFetch }), "");
   assert.equal(cancelled, 2, "the redirect hop and the 404 body are both released");
 });
 
