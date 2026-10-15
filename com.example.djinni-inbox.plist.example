@@ -3,7 +3,7 @@
 <!--
   Djinni inbox check (run.sh djinni-check.mjs), hourly at :00. Writes djinni-notify-state.json,
   which the Jobs.app badge daemon sums with the LinkedIn count.
-  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

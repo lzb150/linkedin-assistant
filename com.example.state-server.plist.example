@@ -5,7 +5,7 @@
   it at login and restarts it if it exits. After pulling a new version, restart it with
     launchctl kickstart -k gui/$UID/com.<you>.state-server
   Replace YOUR_USERNAME and the node path (launchd needs absolute paths). Install/uninstall:
-  README → "Schedule it (launchd)".
+  docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

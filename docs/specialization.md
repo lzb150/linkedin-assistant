@@ -4,6 +4,34 @@ How to turn a job title like **Senior Fullstack Developer** into config this
 assistant can hunt with. Nothing in the code knows your profession — it lives
 in four places.
 
+## Short version
+
+Nothing in the code knows you are a QA engineer — the profession lives
+entirely in config. To hunt, say, developer jobs instead:
+
+1. **Skill profile** — put your resume in `resume.txt` and run
+   `node make-skills.mjs`: it drafts `skills.json` from it with the same local
+   `claude` CLI the screener uses, including the Ukrainian spellings a local
+   board would list. Add `--print` to preview without writing, `--force` to
+   replace a file you already have; `--resume <file>`, `--out <file>` and
+   `--model <alias>` pick another input, output or `claude` model (an unknown
+   flag is rejected). Prefer to start from a preset or edit by
+   hand? `cp skills.developer.json.example skills.json` (a ready
+   TypeScript/Node profile), then tune `roles` / `skills` / `antiKeywords` /
+   `profile`. Either way, read the result once — it is the first gate every
+   vacancy passes. The `profile` block is the specialization phrase the
+   *fallback* cover letters use (LLM letters derive from your resume instead);
+   Cyrillic values sit in genitive position ("досвід в …").
+2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
+   `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
+   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
+3. **Resume** — replace `resume.txt` (drives LLM scoring, the cover letters,
+   and `make-skills.mjs` above).
+4. **Attachment** — update `RESUME_PATH` in `run.sh`.
+
+The rest of this page is the full walkthrough.
+
 ## Where your specialization lives
 
 | File | What it holds | Committed? |

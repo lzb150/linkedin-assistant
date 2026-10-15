@@ -4,7 +4,7 @@
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
 # After building, start it once:  open -a ./Jobs.app
-# Autostart at login via com.example.jobs-badge.plist.example (see README).
+# Autostart at login via com.example.jobs-badge.plist.example (see docs/inbox.md).
 set -euo pipefail
 
 # Bundle identifier. macOS keys notification permission, the Dock tile and

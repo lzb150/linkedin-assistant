@@ -3,7 +3,7 @@
 <!--
   Closed-vacancy check (closed-check.mjs), daily at 08:30: marks New/Viewed vacancies the board
   reports inactive as "closed".
-  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
