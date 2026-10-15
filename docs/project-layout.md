@@ -1,6 +1,6 @@
 # Project layout
 
-> Part of [linkedin-assistant](../README.md). Which file does what.
+> **//** Part of [linkedin-assistant](../README.md). The HUD map of the repo: which file does what.
 >
 > 🇺🇦 [Українською](project-layout.uk.md)
 

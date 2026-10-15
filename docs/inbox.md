@@ -1,6 +1,6 @@
 # Inbox assistant
 
-> Part of [linkedin-assistant](../README.md). Reply drafts for LinkedIn recruiter messages, and one Dock badge for LinkedIn and Djinni unread.
+> **//** Part of [linkedin-assistant](../README.md). Fixers write, the netrunner answers: reply drafts for LinkedIn recruiter messages, and one Dock badge for LinkedIn and Djinni unread.
 >
 > 🇺🇦 [Українською](inbox.uk.md)
 
@@ -17,12 +17,12 @@ New drafts land in `drafts/`. Each draft is a markdown file: their message, a
 suggested reply, the relevance score, and an attach-resume checkbox. It never
 clicks Send.
 
-![A reply draft in drafts/ — their message, a suggested reply, score, and action checklist](draft.png)
+![A reply draft in drafts/, shown in a neon terminal — their message, a suggested reply, score, and action checklist](draft.png)
 
 ### Unread badge on the Jobs app
 
 Each scan writes the LinkedIn badge state to `notify-state.json`. The
-**Jobs app** (`Jobs.app`) runs persistently in the Dock and reads that file
+**Jobs app** (`Jobs.app`, the neon magnifier icon) runs persistently in the Dock and reads that file
 every few seconds, showing the count as a red Dock badge.
 Every new unread LinkedIn message posts a banner (`<name>: <message start>`) and
 **keeps the badge until you click the Jobs icon**: the scan opens the thread,
@@ -47,7 +47,7 @@ defensively on each scan.
 
 ## Djinni inbox (combined Dock badge)
 
-The Dock badge on `Jobs.app` shows the **combined** number of unread message threads from **LinkedIn** and **Djinni**.
+The Dock badge on `Jobs.app` shows the **combined** number of unread message threads from **LinkedIn** and **Djinni** — one HUD counter for every fixer who wrote.
 
 One-time login (whenever the Djinni session expires):
 

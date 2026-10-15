@@ -1,10 +1,10 @@
 # Specifying your specialization
 
+> **//** Part of [linkedin-assistant](../README.md). Swapping the chrome: how to turn a job title like **Senior Fullstack Developer** into config this assistant can hunt with.
+>
 > 🇺🇦 [Українською](specialization.uk.md)
 
-How to turn a job title like **Senior Fullstack Developer** into config this
-assistant can hunt with. Nothing in the code knows your profession — it lives
-in four places.
+Nothing in the code knows your profession — it lives in four places.
 
 ## Short version
 
@@ -70,7 +70,7 @@ A matched role adds a **+6** bonus, and with `requireRole: true` in
 
 ### 2. Skills — weighted keywords
 
-Derive these from your resume, not from job ads. Weight scale: **5** = core
+These are your chrome: derive them from your resume, not from job ads. Weight scale: **5** = core
 (you'd be hired for these), **3–4** = solid secondary, **1–2** = nice-to-have.
 Only the `maxSkills` (default 8) highest-weight matches count toward the
 score, so giving everything a 5 doesn't help — it just blurs ranking.
@@ -168,6 +168,6 @@ to your resume.
 3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
    `run.sh`.
 4. Verify: `npm test` (the suite runs on a frozen fixture profile,
-   so it stays green regardless of your `skills.json`), then one
-   `node jobs.mjs` run — the newest file in `applications/` should read
+   so it stays green regardless of your `skills.json`), then jack in
+   with one `node jobs.mjs` run — the newest file in `applications/` should read
    like your new specialization.

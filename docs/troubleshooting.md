@@ -1,6 +1,6 @@
 # When it breaks
 
-> Part of [linkedin-assistant](../README.md). Selectors, sessions, the browser build and slow runs.
+> **//** Part of [linkedin-assistant](../README.md). Glitches and how to patch them: selectors, sessions, the browser build and slow runs.
 >
 > 🇺🇦 [Українською](troubleshooting.uk.md)
 
@@ -9,7 +9,7 @@ LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read mess
 2. Open DevTools on the messaging page, find the new class names.
 3. Update the `SEL` object at the top of `check.mjs`.
 
-Session expired? Re-run `node login.mjs`.
+Session expired? Jack in again: re-run `node login.mjs`.
 
 A missing Chromium build (the Playwright package was upgraded but its browser
 was not, or `~/Library/Caches/ms-playwright` was wiped) repairs itself: the
