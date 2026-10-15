@@ -38,7 +38,7 @@ const cards = items.map(renderCard).join("\n");
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobs — ${items.length}</title>
-<script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; if (localStorage.getItem("jobGlow") === "off") document.documentElement.dataset.glow = "off"; } catch (e) {}</script>
+<script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" referrerpolicy="no-referrer" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Tektur:wght@500;700&display=swap">
 <style>
@@ -49,8 +49,8 @@ const html = `<!doctype html>
      the source badges (src colour 25% darker on light, 50% lighter on dark).
      Theme: system preference by default via color-scheme + light-dark(); the header
      toggle sets data-theme on <html> (persisted in localStorage) and pins color-scheme.
-     Glow (halos, scanlines, title glitch) is dark-only; the header Glow button turns
-     it off (data-glow="off", persisted the same way). Fonts come from Google Fonts
+     Glow (halos, scanlines) is dark-only; prefers-reduced-motion stops the title
+     glitch and the ribbon pulse. Fonts come from Google Fonts
      with system fallbacks, so an offline page only loses the lettering. */
   :root {
     font-family: "Exo 2", -apple-system, system-ui, sans-serif;
@@ -75,7 +75,7 @@ const html = `<!doctype html>
   :root[data-theme="light"] { color-scheme: light; }
   :root[data-theme="dark"] { color-scheme: dark; }
   @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --glow: 0; } }
-  :root[data-theme="light"], :root[data-glow="off"] { --glow: 0; }
+  :root[data-theme="light"] { --glow: 0; }
   html { scroll-padding-top: 190px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it; the header is 182 px at 641–730 px */
   body { margin: 0; background: var(--bg); color: var(--text); }
   /* City glow and a faint street grid behind the page; CRT scanlines over it (glow only). */
@@ -113,7 +113,6 @@ const html = `<!doctype html>
   .glitch::after { color: var(--header-accent); animation: glitch-b 900ms steps(1) 300ms 1; }
   h1:hover .glitch::before { animation: glitch-a 700ms steps(1) infinite; }
   h1:hover .glitch::after { animation: glitch-b 700ms steps(1) infinite; }
-  :root[data-glow="off"] .glitch::before, :root[data-glow="off"] .glitch::after { display: none; }
   @keyframes glitch-a {
     0% { opacity: .9; transform: translate(-3px, 0); clip-path: inset(0 0 62% 0); }
     20% { transform: translate(3px, -1px); clip-path: inset(40% 0 22% 0); }
@@ -207,9 +206,9 @@ const html = `<!doctype html>
   .filter-seg button:hover, .src-seg button:hover, .theme:hover { color: var(--header-text); background: color-mix(in srgb, var(--header-accent) 12%, transparent); }
   .filter-seg button.active, .src-seg button.active { background: var(--header-accent); color: var(--ink); box-shadow: 0 0 calc(var(--glow) * 14px) color-mix(in srgb, var(--header-accent) 50%, transparent); }
   .filter-seg .cnt { font-weight: 400; margin-left: 4px; font-variant-numeric: tabular-nums; }
-  .prefs { display: flex; gap: 8px; margin-left: auto; }
-  .theme { border: 1px solid var(--header-border); }
-  .theme[aria-pressed="true"] { color: var(--header-hot); border-color: var(--header-hot); }
+  /* The one header preference: always lit magenta, whichever theme it pins (aria-pressed carries the state). */
+  .theme { margin-left: auto; color: var(--header-hot); border: 1px solid var(--header-hot); }
+  .theme:hover { color: var(--header-hot); background: color-mix(in srgb, var(--header-hot) 14%, transparent); }
   .skills { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
   .chip { font: 12px/1.4 var(--font-mono); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); padding: 2px 8px; }
   .chip::before { content: "#"; content: "#" / ""; opacity: .6; }
@@ -261,7 +260,7 @@ const html = `<!doctype html>
   #q { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid var(--header-border); background: var(--input-bg); color: var(--header-text); font: 13px var(--font-mono); caret-color: var(--header-hot); }
   #q::placeholder { color: var(--header-muted); }
   #q:focus-visible { outline: none; border-color: var(--header-accent); box-shadow: 0 0 0 1px var(--header-accent), 0 0 calc(var(--glow) * 18px) color-mix(in srgb, var(--header-accent) 35%, transparent); }
-  @media (max-width: 640px) { .head { flex-wrap: wrap; } .titles { flex-basis: calc(100% - 58px); } .actions { width: 100%; flex-direction: row; } .apply, .status-seg { flex: 1; } .prefs { margin-left: 0; } }
+  @media (max-width: 640px) { .head { flex-wrap: wrap; } .titles { flex-basis: calc(100% - 58px); } .actions { width: 100%; flex-direction: row; } .apply, .status-seg { flex: 1; } .theme { margin-left: 0; } }
   @media (prefers-reduced-motion: reduce) { .glitch::before, .glitch::after { display: none; } .ribbon { animation: none; } summary::before { transition: none; } }
 </style></head>
 <body>
@@ -279,10 +278,7 @@ const html = `<!doctype html>
       ${sourceChips(items)}
     </div>
     <span id="shown" class="sr-only" role="status"></span>
-    <div class="prefs">
-      <button id="glow" class="theme" type="button" aria-pressed="true" aria-label="Glow effects" onclick="toggleGlow()">Glow</button>
-      <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">Dark</button>
-    </div>
+    <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">Dark</button>
   </div>
 </header>
 <main>
