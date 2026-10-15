@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, utimesSync, readdirSync } from "node:fs";
 import { spawnSync, spawn } from "node:child_process";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { acquireProfileLock } from "../lib/browser.mjs";
-import { pidStartMs } from "../lib/run-lock.mjs";
+import { pidStartMs, takeMarker } from "../lib/run-lock.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 import { explainLaunchError } from "../lib/browser.mjs";
 
@@ -157,6 +157,22 @@ test("a takeover marker held by another run blocks the takeover; a stale one is 
   assert.equal(readFileSync(pid, "utf8"), String(process.pid));
   assert.ok(!existsSync(marker), "marker removed after the takeover");
   release();
+});
+
+test("two runs that both see the takeover marker stale: only one reclaims it", (t) => {
+  // B stats the crashed run's marker stale, then A reclaims it and creates a
+  // fresh one before B acts. Unlink-then-create let B delete A's marker and
+  // take its own, so both moved pid files at once.
+  const marker = join(tmpDir(t), "takeover");
+  writeFileSync(marker, "");
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(marker, old, old);
+  let a;
+  const b = takeMarker(marker, { beforeReclaim: () => { a = takeMarker(marker); } });
+  assert.equal(a, true, "A reclaimed the stale marker");
+  assert.equal(b, false, "B backs off");
+  assert.ok(existsSync(marker), "A's marker is still in place");
+  assert.deepEqual(readdirSync(dirname(marker)), ["takeover"], "nothing left aside");
 });
 
 test("acquireProfileLock survives the lock directory vanishing between mkdir and the claim", (t) => {
