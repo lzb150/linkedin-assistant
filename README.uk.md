@@ -249,6 +249,9 @@ launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
 збігу записує **пакет для відгуку** (супровідний лист мовою вакансії + шлях до
 резюме) у `applications/`. **Сам нічого не подає.**
 
+Як вакансія отримує оцінку, фільтр за фільтром, із прикладами:
+[схема оцінювання](https://claude.ai/artifact/KTFfT228dpdKj78Ee3MERR).
+
 ```bash
 node jobs.mjs              # усі джерела (за jobs.config.json)
 DOU_ONLY=1 node jobs.mjs   # пропустити скрейпінг LinkedIn (DOU + Djinni працюють — повністю чисто щодо ToS)

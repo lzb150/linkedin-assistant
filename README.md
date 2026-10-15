@@ -239,6 +239,9 @@ Finds *new* vacancies, scores them against your resume, and writes an
 **application package** (cover letter in the job's language + resume path) for
 each strong match into `applications/`. **It never submits anything.**
 
+How a vacancy is scored, gate by gate, with worked examples:
+[scoring diagram](https://claude.ai/artifact/84SgMCMtqnJoLgvwbGFRQ2).
+
 ```bash
 node jobs.mjs              # all sources (per jobs.config.json)
 DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni still run — fully ToS-clean)
