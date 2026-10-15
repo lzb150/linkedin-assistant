@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync, statSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { writeState, readBadge, linkedinBadge, keepBadgeAdding, updateState, clearStale } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
@@ -104,6 +104,21 @@ test("clearStale deletes only the lock it saw stale; a fresh one taken in betwee
   clearStale(lock, 0);   // stat-ed some other inode (0 is never a real one): not this lock
   assert.ok(existsSync(lock), "the fresh lock is put back");
   assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
+});
+
+test("updateState releases only its own lock, not one a third writer took after it was moved aside", (t) => {
+  // Another writer's clearStale moved B's live lock aside by mistake and C
+  // took the free path. B's release by path deleted C's lock mid-write.
+  const dir = tmpDir(t);
+  const p = join(dir, "notify-state.json");
+  const lock = `${p}.lock`;
+  let cIno;
+  updateState(p, (prev) => {
+    renameSync(lock, `${lock}.aside`);            // B's lock moved by mistake
+    mkdirSync(lock); cIno = statSync(lock).ino;   // C holds the path now
+    return prev;
+  });
+  assert.equal(statSync(lock).ino, cIno, "C's lock survives B's release");
 });
 
 test("clearStale never replaces a lock a third writer took during the put-back", (t) => {

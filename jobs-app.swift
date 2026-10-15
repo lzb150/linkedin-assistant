@@ -79,12 +79,14 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 // unlocked rather than leave the badge up.
 func withStateLock(_ path: String, _ body: () -> Void) {
     let lock = path + ".lock"
-    var held = false
+    var held: NSNumber? = nil   // inode of the directory we created
+    var gaveUp = false
     let start = Date()
-    while !held && Date().timeIntervalSince(start) < 2 {
+    while held == nil && !gaveUp && Date().timeIntervalSince(start) < 2 {
         do {
             try FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
-            held = true
+            held = (try? FileManager.default.attributesOfItem(atPath: lock))?[.systemFileNumber] as? NSNumber
+            if held == nil { gaveUp = true }   // vanished at once: go ahead unlocked
         } catch {
             // Only "already exists" means someone holds it; any other error
             // means this directory cannot hold a lock at all: go ahead unlocked.
@@ -97,22 +99,31 @@ func withStateLock(_ path: String, _ body: () -> Void) {
             usleep(20_000)
         }
     }
-    defer { if held { try? FileManager.default.removeItem(atPath: lock) } }
+    // Released by identity, as in lib/notify-state.mjs updateState: if another
+    // writer's clearStaleLock moved ours aside by mistake, the directory now at
+    // `lock` belongs to a third writer still inside its read-modify-write.
+    defer {
+        if let ino = held,
+           (try? FileManager.default.attributesOfItem(atPath: lock))?[.systemFileNumber] as? NSNumber == ino {
+            try? FileManager.default.removeItem(atPath: lock)
+        }
+    }
     body()
 }
 
 // Same takeover as lib/notify-state.mjs clearStale: move the stale lock aside
-// and delete it only if it is still the one stat-ed (same inode); a fresh lock
-// another writer took in between is put back instead of deleted.
+// and delete it only if it is still the one stat-ed (same inode). A fresh lock
+// another writer took in between is put back by creating the directory again
+// (never replaces: a third writer that took the free path keeps its lock), and
+// the moved directory is always removed so no `.stale-*` litter is left.
 func clearStaleLock(_ lock: String, inode: NSNumber?) {
     let aside = lock + ".stale-\(getpid())-\(Int(Date().timeIntervalSince1970 * 1000))"
     guard (try? FileManager.default.moveItem(atPath: lock, toPath: aside)) != nil else { return }
     let moved = (try? FileManager.default.attributesOfItem(atPath: aside))?[.systemFileNumber] as? NSNumber
-    if let inode = inode, moved == inode {
-        try? FileManager.default.removeItem(atPath: aside)
-    } else {
-        try? FileManager.default.moveItem(atPath: aside, toPath: lock)
+    if inode == nil || moved != inode {
+        try? FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
     }
+    try? FileManager.default.removeItem(atPath: aside)
 }
 
 func clearBadge(_ path: String, opened: [String]? = nil) {
