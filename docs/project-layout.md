@@ -1,4 +1,4 @@
-# Project layout
+<h1><img alt="Project layout" src="headers/project-layout.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). The HUD map of the repo: which file does what.
 >
@@ -17,7 +17,7 @@
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
-├── docs/              these pages + README images (HTML sources and render.mjs in docs/src/)
+├── docs/              these pages, their headers/ bars + README images (HTML sources and render.mjs in docs/src/)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── job-state.json     per-card state (status, notes, last-visit) — gitignored

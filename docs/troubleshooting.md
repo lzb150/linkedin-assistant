@@ -1,4 +1,4 @@
-# When it breaks
+<h1><img alt="When it breaks" src="headers/troubleshooting.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). Glitches and how to patch them: selectors, sessions, the browser build and slow runs.
 >

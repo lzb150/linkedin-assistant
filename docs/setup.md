@@ -1,4 +1,4 @@
-# Setup
+<h1><img alt="Setup" src="headers/setup.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). Install and jack in once, check a run by hand, then hand the schedule to the launchd daemons.
 >

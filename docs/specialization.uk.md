@@ -1,4 +1,4 @@
-# Як задати свою спеціалізацію
+<h1><img alt="Як задати свою спеціалізацію" src="headers/specialization.uk.png" width="960"></h1>
 
 > **//** Частина [linkedin-assistant](../README.uk.md). Заміна хрому: як перетворити назву посади на зразок **Senior Fullstack Developer** на конфіг, з яким асистент шукатиме вакансії.
 >

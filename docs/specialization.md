@@ -1,4 +1,4 @@
-# Specifying your specialization
+<h1><img alt="Specifying your specialization" src="headers/specialization.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). Swapping the chrome: how to turn a job title like **Senior Fullstack Developer** into config this assistant can hunt with.
 >

@@ -1,4 +1,4 @@
-# Dashboard — `dashboard.mjs`
+<h1><img alt="Dashboard — dashboard.mjs" src="headers/dashboard.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). Your HUD for the job market: every package on one local page, plus the daily closed-vacancy check and the weekly report.
 >
