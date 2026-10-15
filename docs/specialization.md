@@ -1,5 +1,7 @@
 # Specifying your specialization
 
+> 🇺🇦 [Українською](specialization.uk.md)
+
 How to turn a job title like **Senior Fullstack Developer** into config this
 assistant can hunt with. Nothing in the code knows your profession — it lives
 in four places.

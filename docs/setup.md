@@ -1,6 +1,8 @@
 # Setup
 
 > Part of [linkedin-assistant](../README.md). Install once, check a run by hand, then put it on a schedule.
+>
+> 🇺🇦 [Українською](setup.uk.md)
 
 ## One-time setup
 

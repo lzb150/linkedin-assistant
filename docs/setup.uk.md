@@ -1,0 +1,93 @@
+# Налаштування
+
+> Частина [linkedin-assistant](../README.uk.md). Встановити один раз, перевірити запуск вручну, потім поставити на розклад.
+>
+> 🇬🇧 [English version](setup.md)
+
+## Одноразове налаштування
+
+> **Потрібен macOS** — розклад (launchd), сповіщення та Dock-застосунки
+> працюють лише на Mac. Node.js 20+.
+
+```bash
+cd ~/linkedin-assistant
+npm install                      # встановлює playwright
+npx playwright install chromium  # завантажує браузер
+
+cp ~/шлях/до/резюме.txt resume.txt   # звичайний текст; на ньому тримаються оцінка й листи
+node make-skills.mjs             # збирає skills.json — ЩО шукати
+$EDITOR jobs.config.json         # ДЕ шукати: фіди, пошуки, ваша країна
+
+node login.mjs                   # ВИ логінитесь вручну (з 2FA). Пароль ніде не зберігається.
+```
+
+**`resume.txt`** — єдиний файл, який застосунок не вигадає за вас. Вставте повний
+текст: `make-skills.mjs` читає його, щоб скласти профіль ключових слів, крізь який
+першим проходить кожна вакансія, а локальна LLM потім переоцінює за ним кожну
+знахідку. Хочете спершу подивитись — `node make-skills.mjs --print`; у будь-якому
+разі прочитайте результат один раз і підправте ваги.
+
+**`jobs.config.json`** у поставці налаштований на вакансії з автоматизації
+тестування. Це той крок, який ніхто за вас не зробить: це вибір дощок і формулювань
+запитів, а не факт, який можна витягти з резюме. Змініть фіди DOU, пошукові URL
+Djinni та запити LinkedIn на свою сферу й вкажіть `candidateCountry` — див.
+[Адаптація під іншу професію](specialization.uk.md).
+
+`login.mjs` відкриває справжній браузер. Залогіньтесь повністю (з 2FA); він сам
+помітить вхід, збереже сесію у `.browser-profile/` і закриється. Без входу протягом
+6 хвилин він завершується, нічого не зберігши — просто запустіть ще раз. Щоб увійти
+ще й на Djinni: `node login.mjs djinni`.
+
+Далі перевірте, що все працює, перш ніж ставити на розклад:
+
+```bash
+node jobs.mjs        # один прохід по всіх увімкнених джерелах
+node dashboard.mjs   # зібрати applications/index.html і подивитись, що знайшлось
+```
+
+## Розклад (launchd)
+
+Що й коли запускається:
+
+| Завдання           | Частота               |
+|--------------------|-----------------------|
+| Перевірка скриньки LinkedIn (`linkedin-assistant`)   | щогодини               |
+| Скринька Djinni + автобамп (`djinni-inbox`)           | щогодини               |
+| Пошук на DOU / Djinni (`job-discovery-dou`)           | щогодини               |
+| Повний пошук із LinkedIn (`job-discovery-linkedin`)   | кожні 3 години (о :45) |
+| Дозапуск LinkedIn після DarkWake (`linkedin-catchup`) | кожні 15 хв (нічого не робить без маркера) |
+| Перевірка закритих + архів (`closed-check`)           | щодня 08:30            |
+| Тижневий звіт (`jobs-report`)                         | понеділок 09:00        |
+| Демон бейджа в Dock (`jobs-badge`)                    | постійно (KeepAlive)   |
+| Сервер стану дашборда (`state-server`)               | постійно (KeepAlive)   |
+
+Обгортки запуску і launchd-агенти залежать від машини (абсолютні шляхи, ваше
+розташування резюме), тому постачаються як шаблони `*.example`. Скопіюйте
+кожен, заповніть свої значення — справжні копії лишаться локальними (вони у
+gitignore):
+
+```bash
+cp run.sh.example run.sh   # потім відредагуйте версію node + RESUME_PATH
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # замініть YOUR_USERNAME **і** Label всередині
+cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
+```
+
+Зупинити: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assistant.plist`.
+Пошук вакансій має власні шаблони: `com.example.job-discovery-dou.plist.example`
+і `com.example.job-discovery-linkedin.plist.example`; сервер стану дашборда —
+`com.example.state-server.plist.example` (постійно запущений, також вкажіть шлях до node).
+
+**LinkedIn і сплячий Mac.** Розклад, який Mac проспав, спрацьовує в наступному
+DarkWake — фоновому пробудженні на 5–10 с, — а на батареї `caffeinate -s` не
+тримає Mac, тож стрічка LinkedIn там ніколи не встигала завантажитись
+(`page.goto: Timeout 30000ms`, LinkedIn 0). Тепер `jobs.mjs` спершу питає
+`pmset`: у DarkWake на батареї він проганяє DOU і Djinni, пише в лог
+`linkedin: deferred`, не рахує LinkedIn у моніторингу здоров'я джерел і
+створює маркер `linkedin-pending`. `com.example.linkedin-catchup.plist.example`
+(`LINKEDIN_CATCHUP=1 run.sh jobs.mjs`, кожні 15 хв) без маркера одразу
+виходить; з маркером і повністю прокинутим Mac він збирає лише LinkedIn і
+знімає маркер. Від мережі нічого не відкладається. Запуск LinkedIn, який
+застав профіль браузера або блокування запуску зайнятими (паралельний
+`check.mjs` чи `jobs.mjs`), лишає той самий маркер, тож LinkedIn повторюється
+протягом 15 хвилин, а не в наступному 3-годинному слоті.

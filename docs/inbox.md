@@ -1,6 +1,8 @@
 # Inbox assistant
 
 > Part of [linkedin-assistant](../README.md). Reply drafts for LinkedIn recruiter messages, and one Dock badge for LinkedIn and Djinni unread.
+>
+> 🇺🇦 [Українською](inbox.uk.md)
 
 ## LinkedIn inbox — `check.mjs`
 

@@ -7,14 +7,14 @@
 
 <br>
 
-[![Джерела](https://img.shields.io/badge/%D0%B4%D0%B6%D0%B5%D1%80%D0%B5%D0%BB%D0%B0-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-1f6feb?style=flat-square&labelColor=161b22)](docs/job-discovery.md)
+[![Джерела](https://img.shields.io/badge/%D0%B4%D0%B6%D0%B5%D1%80%D0%B5%D0%BB%D0%B0-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-1f6feb?style=flat-square&labelColor=161b22)](docs/job-discovery.uk.md)
 [![Дані](https://img.shields.io/badge/%D0%B4%D0%B0%D0%BD%D1%96-%D0%BB%D0%B8%D1%88%D0%B5_%D0%BB%D0%BE%D0%BA%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE-238636?style=flat-square&labelColor=161b22)](#ключові-принципи)
 [![Автовідправка](https://img.shields.io/badge/%D0%B0%D0%B2%D1%82%D0%BE%D0%B2%D1%96%D0%B4%D0%BF%D1%80%D0%B0%D0%B2%D0%BA%D0%B0-%D0%BD%D1%96%D0%BA%D0%BE%D0%BB%D0%B8-9e6a03?style=flat-square&labelColor=161b22)](#ключові-принципи)
-[![macOS](https://img.shields.io/badge/macOS-launchd-8957e5?style=flat-square&labelColor=161b22)](docs/setup.md#schedule-it-launchd)
+[![macOS](https://img.shields.io/badge/macOS-launchd-8957e5?style=flat-square&labelColor=161b22)](docs/setup.uk.md#розклад-launchd)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-30363d?style=flat-square&labelColor=161b22)](#швидкий-старт)
 [![Ліцензія](https://img.shields.io/badge/%D0%BB%D1%96%D1%86%D0%B5%D0%BD%D0%B7%D1%96%D1%8F-MIT-0969da?style=flat-square&labelColor=161b22)](LICENSE)
 
-[Що вміє](#що-вміє) · [Швидкий старт](#швидкий-старт) · [Документація](#документація) · [Пошук](docs/job-discovery.md) · [Дашборд](docs/dashboard.md) · [Інша професія](docs/specialization.md)
+[Що вміє](#що-вміє) · [Швидкий старт](#швидкий-старт) · [Документація](#документація) · [Пошук](docs/job-discovery.uk.md) · [Дашборд](docs/dashboard.uk.md) · [Інша професія](docs/specialization.uk.md)
 
 </div>
 
@@ -85,21 +85,19 @@ node login.mjs                            # логінитесь самі оди
 node jobs.mjs && node dashboard.mjs --open
 ```
 
-Далі — розклад: [docs/setup.md](docs/setup.md).
+Далі — розклад: [docs/setup.uk.md](docs/setup.uk.md).
 
 ## Документація
 
-Детальна документація англійською.
-
 | Сторінка | Що там |
 |----------|--------|
-| [Setup](docs/setup.md) | Встановлення, перший запуск, агенти launchd, LinkedIn на сплячому Mac |
-| [Inbox assistant](docs/inbox.md) | `check.mjs`, чернетки відповідей, бейдж у Dock, скринька Djinni й автопідняття профілю |
-| [Job discovery](docs/job-discovery.md) | Джерела, фільтри, обидва фільтри оцінки, захист LLM, здоров'я джерел, `skills.json` |
-| [Dashboard](docs/dashboard.md) | Сервер стану, статуси, фільтри, перевірка закритих вакансій, тижневий звіт |
-| [Your specialization](docs/specialization.md) | Як перевести з QA на будь-яку професію |
-| [When it breaks](docs/troubleshooting.md) | Селектори, сесія, відсутній Chromium, повільні прогони |
-| [Project layout](docs/project-layout.md) | Який файл за що відповідає |
+| [Налаштування](docs/setup.uk.md) | Встановлення, перший запуск, агенти launchd, LinkedIn на сплячому Mac |
+| [Асистент скриньки](docs/inbox.uk.md) | `check.mjs`, чернетки відповідей, бейдж у Dock, скринька Djinni й автопідняття профілю |
+| [Пошук вакансій](docs/job-discovery.uk.md) | Джерела, фільтри, обидва фільтри оцінки, захист LLM, здоров'я джерел, `skills.json` |
+| [Дашборд](docs/dashboard.uk.md) | Сервер стану, статуси, фільтри, перевірка закритих вакансій, тижневий звіт |
+| [Ваша спеціалізація](docs/specialization.uk.md) | Як перевести з QA на будь-яку професію |
+| [Коли щось ламається](docs/troubleshooting.uk.md) | Селектори, сесія, відсутній Chromium, повільні прогони |
+| [Структура проєкту](docs/project-layout.uk.md) | Який файл за що відповідає |
 
 ## Внесок у проєкт
 Issues та pull requests вітаються. Гілка `main` захищена: зміни потрапляють

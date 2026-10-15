@@ -1,6 +1,8 @@
 # Project layout
 
 > Part of [linkedin-assistant](../README.md). Which file does what.
+>
+> 🇺🇦 [Українською](project-layout.uk.md)
 
 ```
 ~/linkedin-assistant/
