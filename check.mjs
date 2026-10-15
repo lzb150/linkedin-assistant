@@ -206,9 +206,6 @@ async function scan(page, ctx, signal) {
         if (t) bubbles.push(t);
       }
     } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
-    // The last await of this thread: past the run deadline seen.json is already
-    // saved, so a draft or banner from here on would repeat on the next run.
-    if (signal?.aborted) { log(`· run deadline passed — leaving ${name} for the next run`); break; }
     const fullText = bubbles.join("\n");
     // No list items (item selector drift): the bubbles stand in, direction unknown.
     const { state, snippet: newest } = threadState(items.length ? items : bubbles.map((text) => ({ incoming: false, text })));
@@ -238,6 +235,12 @@ async function scan(page, ctx, signal) {
       remember({ id: threadId, label: name });   // before the banner: a click on it reads this state
       notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`);
     }
+    // Past the run deadline finish() has already saved seen.json: stop before a
+    // draft this run could not record (a SCAN_ALL rerun would draft it again
+    // under a new minute stamp). Not any earlier — the thread is open, so read
+    // in LinkedIn, and the unread filter never lists it again: the banner and
+    // badge entry just above (both written synchronously) are all that is left.
+    if (signal?.aborted) { log(`· run deadline passed — ${name} ${SCAN_ALL ? "left undrafted" : "bannered, not drafted"}`); break; }
     if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); continue; }
     if (action === "not-job") { log(`· not a job message, skipping: ${name}`); continue; }
 
