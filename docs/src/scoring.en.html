@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a vacancy gets scored · linkedin-assistant</title>
+<!-- Source of docs/scoring-{light,dark}.png, rendered by render.mjs.
+     The Ukrainian twin is scoring.uk.html: change both. -->
+<link rel="stylesheet" href="night-city.css">
+<link rel="stylesheet" href="scoring.css">
+</head>
+<body>
+<div class="page city">
+<i class="scan"></i>
+<header class="bar-top">
+  <div class="wrap">
+    <span class="eyebrow"><b>//</b> linkedin-assistant · jobs.mjs</span>
+    <h1 class="split">How a vacancy gets scored</h1>
+    <p>Every vacancy passes two gates. First a free local keyword score built from <code>skills.json</code>, then Claude rates the fit against your resume from 0 to 100. An application package is written only when both gates pass.</p>
+    <div class="legend">
+      <span><i class="dot" style="color:var(--magenta);background:var(--magenta)"></i>dropped</span>
+      <span><i class="dot" style="color:var(--cyan);background:var(--cyan)"></i>deferred, comes back later</span>
+      <span><i class="dot" style="color:#05ffa1;background:#05ffa1"></i>package written</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="pipe" aria-label="Order of checks">
+    <div class="stage hud">
+      <div class="num cut">0</div>
+      <div class="body">
+        <h3>Collect and filter by location</h3>
+        <p class="sub">DOU, Djinni and LinkedIn. Vacancies abroad are cut before any scoring.</p>
+        <div class="rule" data-label="// rule">location contains <b>excludeLocation</b><br>("за кордоном", Poland, Кіпр, Germany, Georgia…)</div>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">location</span>Office or location abroad</div>
+        <div class="exit"><span class="tag">djinni</span>The country list names neither Ukraine / Україна nor the whole world</div>
+      </div>
+    </div>
+    <div class="arrow"><span>new vacancies</span></div>
+
+    <div class="stage hud">
+      <div class="num cut">1</div>
+      <div class="body">
+        <h3>Keyword gate: duplicates and title</h3>
+        <p class="sub"><code>lib/keyword-gate.mjs</code>. Checks run top to bottom; the first one that fires decides.</p>
+        <div class="rule" data-label="// rule">seen? → package already written? → duplicate from another board?<br>→ title contains <b>junior · intern · internship · trainee · manual</b></div>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">seen / packaged / dup</span>Already seen or already packaged</div>
+        <div class="exit"><span class="tag">excluded</span>Stop word in the title (the description is not checked)</div>
+      </div>
+    </div>
+    <div class="arrow"><span>scoring</span></div>
+
+    <div class="stage hud">
+      <div class="num cut">2</div>
+      <div class="body">
+        <h3>Keyword gate: points</h3>
+        <p class="sub"><code>lib/relevance.mjs</code> → <code>scoreMessage()</code>. Text: title, company, location, description.</p>
+        <div class="rule" data-label="// rule">points = <b>+6</b> for a role (the first of 32 found)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ sum of the <b>8 heaviest</b> skills found<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ anti-keyword penalties (negative)<br><br>pass: points <b>≥ 18</b> (minScore) <b>and</b> a role found (requireRole)</div>
+        <p class="sub">A skill counts once, even when both it and its synonyms match. Cyrillic words are matched by stem: «автоматизації» matches «автоматизація».</p>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">low</span>Fewer than 18 points</div>
+        <div class="exit"><span class="tag">low · no-role</span>No role from the list, however many points</div>
+      </div>
+    </div>
+    <div class="arrow"><span>match</span></div>
+
+    <div class="stage hud">
+      <div class="num cut">3</div>
+      <div class="body">
+        <h3>LLM gate: Claude against the resume</h3>
+        <p class="sub"><code>claude -p</code>, model sonnet. The prompt holds <code>resume.txt</code> and the vacancy text. The answer is JSON <span class="mono">{score 0–100, why, red_flags, cover}</span>.</p>
+        <div class="rule" data-label="// rule">at most <b>15</b> calls per run, <b>3</b> in parallel<br>hard rule: not open to Ukraine / relocation / office abroad → <b>score ≤ 10</b><br><br>pass: llm.score <b>≥ 70</b> (llm.minScore)</div>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">low · llm</span>Claude scored it below 70</div>
+        <div class="exit soft"><span class="tag">deferred</span>The 15-call cap is used up; the vacancy waits for the next run</div>
+        <div class="exit soft"><span class="tag">suspect</span>Signs of prompt injection in the text: the package is written with a flag</div>
+      </div>
+    </div>
+    <div class="arrow"><span>passed</span></div>
+
+    <div class="final hud">
+      <h3>✓ Match: package in applications/</h3>
+      <p>Cover letter from Claude in the vacancy's language. The log shows both scores: <span class="mono">✓ MATCH [32 / llm 82] djinni: …</span></p>
+    </div>
+  </section>
+
+  <section class="cols" aria-label="Weights">
+    <div class="card hud">
+      <h2>Skills</h2>
+      <p class="sub">41 skills in <code>skills.json</code>. Only the 8 heaviest matches count, so a posting stuffed with keywords cannot outscore a real match.</p>
+      <div class="bars" id="skills"></div>
+      <p class="more">Also 2 each: soap, c#, python, testng, junit, gitlab, postman, wiremock, rabbitmq, mongodb, sql, regression, test strategy. 1 each: jira, kibana, newrelic, report portal, ms sql, oracle, sdlc.</p>
+    </div>
+    <div class="card hud" style="--band: var(--hot)">
+      <h2>Penalties</h2>
+      <p class="sub">Anti-keywords are searched in the whole text and subtracted from the sum.</p>
+      <div class="bars" id="anti"></div>
+      <h3>Roles (+6, one)</h3>
+      <div class="chips"><span class="chip plain">qa automation</span><span class="chip plain">automation qa</span><span class="chip plain">sdet</span><span class="chip plain">test automation engineer</span><span class="chip plain">automation engineer</span><span class="chip plain">qa engineer</span><span class="chip plain">test engineer</span><span class="chip plain">senior qa</span><span class="chip plain">aqa</span><span class="chip plain">…23 more</span></div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:16px" aria-label="Examples">
+    <h2>Worked examples</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Vacancy</th><th>Keyword points</th><th>LLM</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="title">Senior QA Automation Engineer<br><span class="calc">Playwright, TypeScript, API testing, e2e, CI/CD, Jira</span></td>
+            <td class="n">32<br><span class="calc">6 role + 5+5+4+4+4+3+1</span></td>
+            <td class="n">82</td>
+            <td><span class="pill ok cut-br">package</span></td>
+          </tr>
+          <tr>
+            <td class="title">SDET (Java)<br><span class="calc">Selenium, TestNG, REST, Jenkins · US-based only</span></td>
+            <td class="n">27<br><span class="calc">6 + 5+4+4+3+3+2</span></td>
+            <td class="n">≤ 10</td>
+            <td><span class="pill no cut-br">low · llm</span></td>
+          </tr>
+          <tr>
+            <td class="title">QA Engineer<br><span class="calc">Selenium, manual testing only</span></td>
+            <td class="n">6<br><span class="calc">6 + 4 − 4</span></td>
+            <td class="n">—</td>
+            <td><span class="pill no cut-br">low</span></td>
+          </tr>
+          <tr>
+            <td class="title">Frontend Developer<br><span class="calc">TypeScript, Playwright, Cypress, Jenkins, CI/CD</span></td>
+            <td class="n">19<br><span class="calc">no role: 5+5+3+3+3</span></td>
+            <td class="n">—</td>
+            <td><span class="pill no cut-br">low · no-role</span></td>
+          </tr>
+          <tr>
+            <td class="title">Manual QA (Middle)</td>
+            <td class="n">—</td>
+            <td class="n">—</td>
+            <td><span class="pill no cut-br">excluded</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="more">The examples are made up for illustration. Points come from the current weights; the LLM scores are indicative.</p>
+  </section>
+
+  <section style="display:grid;gap:16px" aria-label="Special cases">
+    <h2>Special cases</h2>
+    <div class="notes">
+      <div class="note"><h3>No description</h3><p>Under 300 characters of text, the vacancy is scored on its title. The first rejection does not mark it seen, so the next run re-reads it with the description. The second rejection is final.</p></div>
+      <div class="note"><h3>Claude did not answer</h3><p>The call is retried once. If it fails again, the package is written on keyword points alone so the match is not lost.</p></div>
+      <div class="note"><h3>Per-board threshold</h3><p><code>dou.minScore</code>, <code>djinni.minScore</code> and <code>linkedin.minScore</code> override the global one. None is set today, so all use 18.</p></div>
+      <div class="note"><h3>LinkedIn messages</h3><p>Same points, different thresholds: ≥ 8 is relevant, ≥ 4 is maybe. They decide whether a reply draft is written.</p></div>
+    </div>
+  </section>
+
+  <footer>Values from <code>jobs.config.json</code> and <code>skills.json</code> as of 15 October 2026. Code: <code>lib/keyword-gate.mjs</code>, <code>lib/relevance.mjs</code>, <code>lib/llm.mjs</code>, <code>jobs.mjs</code>.</footer>
+</div>
+</div>
+
+<script>
+const skills = [["typescript",5],["playwright",5],["sdet",5],["test automation",5],["automation",4],["api testing",4],["api automation",4],["webdriverio",4],["selenium",4],["java",4],["e2e",4],["end-to-end",4],["rest",3],["testcafe",3],["cypress",3],["cucumber",3],["bdd",3],["jenkins",3],["ci/cd",3],["microservices",3],["test framework",3]];
+const anti = [["manual qa",-6],["unpaid",-6],["no automation",-5],["manual testing only",-4],["internship",-3],["junior",-2],["relocation required",-1],["on-site only",-1],["php",-1],["ruby on rails",-1]];
+function render(id, rows, neg) {
+  document.getElementById(id).innerHTML = rows.map(([n, v]) =>
+    `<div class="bar${neg ? " neg" : ""}"><span class="name">${n}</span><span class="track"><span class="fill" style="width:${Math.abs(v) / 6 * 100}%"></span></span><span class="v">${v > 0 ? "+" : ""}${v}</span></div>`
+  ).join("");
+}
+render("skills", skills, false);
+render("anti", anti, true);
+</script>
+</body>
+</html>
