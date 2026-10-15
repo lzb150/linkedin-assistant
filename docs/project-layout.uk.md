@@ -1,6 +1,6 @@
 # Структура проєкту
 
-> Частина [linkedin-assistant](../README.uk.md). Який файл за що відповідає.
+> **//** Частина [linkedin-assistant](../README.uk.md). Мапа репозиторію на HUD: який файл за що відповідає.
 >
 > 🇬🇧 [English version](project-layout.md)
 

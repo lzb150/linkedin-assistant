@@ -1,12 +1,12 @@
 # Setup
 
-> Part of [linkedin-assistant](../README.md). Install once, check a run by hand, then put it on a schedule.
+> **//** Part of [linkedin-assistant](../README.md). Install and jack in once, check a run by hand, then hand the schedule to the launchd daemons.
 >
 > 🇺🇦 [Українською](setup.uk.md)
 
 ## One-time setup
 
-> **Requires macOS** — scheduling (launchd), notifications, and the Dock apps
+> **`// HEADS-UP` · Requires macOS** — scheduling (launchd), notifications, and the Dock apps
 > are Mac-only. Node.js 20+.
 
 ```bash
@@ -33,7 +33,7 @@ fact to extract from a resume. Change the DOU feeds, the Djinni search URLs and
 the LinkedIn queries to your own field, and set `candidateCountry` to where you
 live — see [Specifying your specialization](specialization.md).
 
-`login.mjs` opens a real browser. Log in fully (2FA included); it detects the
+`login.mjs` opens a real browser, and you jack in yourself. Log in fully (2FA included); it detects the
 login by itself, saves the session into `.browser-profile/` and closes. It gives
 up after 6 minutes without saving anything — just re-run it. Pass `djinni` to
 log in there too: `node login.mjs djinni`.
@@ -47,7 +47,7 @@ node dashboard.mjs   # build applications/index.html and look at what it found
 
 ## Schedule it (launchd)
 
-What runs and when:
+What the daemons run, and when:
 
 | Job (plist example)                              | Frequency              |
 |--------------------------------------------------|------------------------|

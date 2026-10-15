@@ -1,10 +1,11 @@
 # Job discovery — `jobs.mjs`
 
-> Part of [linkedin-assistant](../README.md). How vacancies are found, scored and packaged.
+> **//** Part of [linkedin-assistant](../README.md). The radar's scanner: how vacancies are found, scored and packaged.
 >
 > 🇺🇦 [Українською](job-discovery.uk.md)
 
-Finds *new* vacancies, scores them against your resume, and writes an
+Sweeps the boards for *new* vacancies (gigs, in Night City terms), scores them
+against your resume, and writes an
 **application package** (cover letter in the job's language + resume path) for
 each strong match into `applications/`. **It never submits anything.**
 
@@ -58,7 +59,7 @@ Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
 the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
 script must have the `claude` binary on `PATH` (`~/.local/bin`, see
 `run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show an **AI** badge on the dashboard. The `claude`
-child process runs hardened — tools disallowed, cwd off the repo — since job
+child process runs hardened, behind its own ICE — tools disallowed, cwd off the repo — since job
 descriptions are untrusted input and must not be able to read local files.
 The tool blocklist in `lib/llm.mjs` must track the installed CLI: after every
 `claude` upgrade run the canary below from a temp dir; it must answer that it
@@ -92,14 +93,14 @@ dashboard timestamp and the weekly report tell you the scheduler is alive. The
 scraper-health check watches each source's found-count against its own recent
 history (last 10 runs) and alerts when a source comes in under 30% of its recent
 median (median ≥ 5, to ignore sources that are naturally low-volume) — this
-catches a slow selector decay (50 → 20 → 6), not just a source dropping to a
-clean 0. A source that stops running altogether is flagged too, unless the
+catches a slow glitch, selector decay (50 → 20 → 6), not just a source dropping
+to a clean 0. A source that stops running altogether is flagged too, unless the
 config turns it off with an explicit `"enabled": false`. A run where every
 source failed (no network) exits 1, so launchd records it as failed.
 
 ## Tuning relevance — `skills.json`
 
-- `skills` — keyword → weight. Higher weight = stronger match.
+- `skills` — keyword → weight (your chrome, as the scanner sees it). Higher weight = stronger match.
 - `roles` — titles you'd accept (strong signal).
 - `antiKeywords` — phrases that *lower* the score (e.g. "manual testing only").
 - `maxSkills` — only the N highest-weight matched skills count toward the score

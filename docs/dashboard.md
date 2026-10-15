@@ -1,6 +1,6 @@
 # Dashboard — `dashboard.mjs`
 
-> Part of [linkedin-assistant](../README.md). Every package on one local page, plus the daily closed-vacancy check and the weekly report.
+> **//** Part of [linkedin-assistant](../README.md). Your HUD for the job market: every package on one local page, plus the daily closed-vacancy check and the weekly report.
 >
 > 🇺🇦 [Українською](dashboard.uk.md)
 
@@ -48,7 +48,7 @@ in your mailbox, not here). You can attach private notes to any card; they are
 saved to disk via the state server. The header shows New / Viewed with live
 counts, both selected by default.
 
-![Card expanded — cover letter, private note](card.png)
+![Card expanded in the Night City skin — cover letter, private note](card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
 keywords; the source chips (All, plus one per board that has packages on disk)
@@ -65,7 +65,7 @@ browser). Every text/background pair is ≥ 4.5:1 in both modes. Neon halos and
 scanlines are dark-mode only; `prefers-reduced-motion` stops the title glitch
 and the NEW-ribbon pulse.
 
-![Light theme](dashboard-light.png)
+![Light theme — the same neon hues, deepened for daylight](dashboard-light.png)
 
 **Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
 (`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU,
@@ -81,7 +81,7 @@ deletes archived packages older than 180 days. It never posts a banner — closu
 "· closed" cue on the dashboard. Install like the weekly report below, with
 `com.example.closed-check.plist.example`.
 
-**Weekly report (`report.mjs`)** — one command that sums up the last 7 days:
+**Weekly report (`report.mjs`)** — the weekly debrief, one command that sums up the last 7 days:
 runs and new vacancies considered, packages written per source, LLM verdicts
 (dropped / failed / scored, plus the top match) and the
 median per-run yield of every source. `node report.mjs` prints it;
