@@ -60,7 +60,8 @@ test("check.mjs: a launch failure reports FAILED, not Done", async (t) => {
 // `items` = the message list items ({ incoming, text }); by default every bubble is theirs.
 // `linkless`: today's card (live DOM 2026-10-07) — no <a>, no thread id; its link
 // div only gains the --active class once the click opened its thread.
-const scanningPlaywright = (bubbles, { close = "async () => {}", items = bubbles.map((text) => ({ incoming: true, text })), linkless = false } = {}) => `
+// `stallItemsMs`: the message-list read hangs that long (a stuck renderer).
+const scanningPlaywright = (bubbles, { close = "async () => {}", items = bubbles.map((text) => ({ incoming: true, text })), linkless = false, stallItemsMs = 0 } = {}) => `
 const threadUrl = "https://www.linkedin.com/messaging/thread/2-abc/";
 let current = "https://www.linkedin.com/messaging/?filter=unread";
 const el = (text, attrs = {}) => ({
@@ -85,7 +86,11 @@ const page = {
   waitForURL: async () => {},
   waitForTimeout: async () => {},
   $$: async (sel) => (sel.includes("msg-s-event-listitem") ? ${JSON.stringify(bubbles)}.map((t) => el(t)) : [card]),
-  $$eval: async (sel) => (sel.includes("thread") ? (linkless ? [] : ["https://www.linkedin.com/messaging/thread/2-abc/"]) : ${JSON.stringify(items)}),
+  $$eval: async (sel) => {
+    if (sel.includes("thread")) return linkless ? [] : ["https://www.linkedin.com/messaging/thread/2-abc/"];
+    await new Promise((r) => setTimeout(r, ${stallItemsMs}));
+    return ${JSON.stringify(items)};
+  },
   $: async () => el("Jane Recruiter"),
 };
 export const chromium = {
@@ -188,6 +193,26 @@ test("check.mjs: a thread that could not be read still posts a banner — the un
   const out = await spawnScript(p, "check.mjs").done;
   assert.match(out, /skipping without marking seen: Jane Recruiter/);
   assert.match(await waitFor(p.path("notify.log"), /Jane Recruiter/), /Jane Recruiter: new message \(could not read it/);
+});
+
+test("check.mjs: a thread opened before the run deadline is still bannered and kept on the badge, not drafted", async (t) => {
+  // The deadline fires while the opened thread's messages are read; finish()
+  // saves seen.json and the close starts. The read then comes back: breaking
+  // there lost the thread — read in LinkedIn by the open, never listed again.
+  const JOB = "Hi! We have a Senior QA Automation Engineer opening — Playwright, TypeScript, CI/CD. Interested in the vacancy?";
+  const p = project(t, scanningPlaywright([JOB], {
+    stallItemsMs: 400,
+    close: "async () => { await new Promise((r) => setTimeout(r, 1000)); }",   // the scan resumes inside the bounded close
+  }), { bins: {} });
+  const run = spawnScript(p, "check.mjs", { SCAN_DEADLINE_MS: "150" });
+  const err = await run.done.then(() => null, (e) => e);
+  assert.match(err?.message || "", /check\.mjs exit 1/, "a run past its deadline failed");
+  assert.match(err.message, /run deadline passed — Jane Recruiter bannered, not drafted/);
+  assert.match(await waitFor(p.path("notify.log"), /Jane Recruiter: Hi!/), /Jane Recruiter: Hi! We have a Senior QA/);
+  const state = JSON.parse(readFileSync(p.path("notify-state.json"), "utf8"));
+  assert.deepEqual(state.pending, [{ id: "2-abc", label: "Jane Recruiter" }], "the Dock click still opens it");
+  assert.deepEqual(readdirSync(p.path("drafts")).filter((f) => f.endsWith(".md")), [], "no draft seen.json cannot record");
+  assert.deepEqual(JSON.parse(readFileSync(p.path("seen.json"), "utf8")), SEEN, "seen.json as finish() left it");
 });
 
 test("check.mjs: SCAN_ALL posts no banner", async (t) => {
