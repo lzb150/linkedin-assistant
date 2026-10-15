@@ -61,9 +61,9 @@ daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 **Theme** — a cyberpunk "Night City" skin: neon cyan, magenta and signal yellow
 on near-black in dark mode, the same hues deepened in light mode. It follows the
 system light/dark preference; the **Dark** button pins one or the other (per
-browser). Every text/background pair is ≥ 4.5:1 in both modes. The **Glow**
-button turns off the dark mode's neon halos, scanlines and title glitch (per
-browser); `prefers-reduced-motion` stops the animations by itself.
+browser). Every text/background pair is ≥ 4.5:1 in both modes. Neon halos and
+scanlines are dark-mode only; `prefers-reduced-motion` stops the title glitch
+and the NEW-ribbon pulse.
 
 ![Light theme](dashboard-light.png)
 

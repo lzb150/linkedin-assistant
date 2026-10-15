@@ -76,16 +76,16 @@ test("dashboard.mjs: an alt_links pair with no '|' is dropped instead of rendere
   assert.doesNotMatch(html, /brokenpairnopip/, "no truncated label, and no link built from the whole string");
 });
 
-test("dashboard.mjs: the Glow toggle is in the header and its choice is re-applied before paint", async (t) => {
-  // Like the theme: the <head> script must restore data-glow before the body
-  // paints, or a reload with glow off flashes the scanlines and the glitch first.
+test("dashboard.mjs: one header preference (Dark), re-applied before paint; fonts sent no referrer", async (t) => {
+  // The theme pin must be restored in <head>, before the body paints, or a
+  // reload with a pinned theme flashes the system one first.
   const p = makeProject(t, { scripts: ["dashboard.mjs"], packages: {} });
   await runScript(p, "dashboard.mjs");
   const html = p.read("applications", "index.html");
   const head = html.slice(0, html.indexOf("<style>"));
-  assert.match(head, /localStorage\.getItem\("jobGlow"\) === "off"\) document\.documentElement\.dataset\.glow = "off"/);
-  assert.match(html, /<button id="glow" class="theme" type="button" aria-pressed="true" aria-label="Glow effects" onclick="toggleGlow\(\)">Glow<\/button>/);
-  assert.match(html, /function toggleGlow\(\)/, "the client script defines the handler");
+  assert.match(head, /localStorage\.getItem\("jobTheme"\); if \(t\) document\.documentElement\.dataset\.theme = t;/);
+  assert.equal((html.match(/class="theme"/g) || []).length, 1, "Dark is the only header toggle");
+  assert.doesNotMatch(html, /jobGlow|toggleGlow|id="glow"/);
   // Fonts are third-party: no referrer, so Google never sees the local dashboard url.
   assert.match(head, /<link rel="stylesheet" referrerpolicy="no-referrer" href="https:\/\/fonts\.googleapis\.com\//);
 });
