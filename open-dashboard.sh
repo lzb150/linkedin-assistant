@@ -4,11 +4,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# launchd/Finder give us a bare PATH: prefer node on PATH, else the newest nvm one.
-if ! NODE="$(command -v node)"; then
-  NODE="$(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin/node | sort -V | tail -1)"
-fi
-[[ -x "${NODE:-}" ]] || { echo "open-dashboard.sh: node not found (PATH or ~/.nvm)" >&2; exit 1; }
+# launchd/Finder give us a bare PATH: prefer node on PATH, then Homebrew's
+# (Apple silicon, then Intel), else the newest nvm one.
+NODE="$(command -v node || true)"
+newest_nvm="$(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin/node | sort -V | tail -1)"
+for candidate in /opt/homebrew/bin/node /usr/local/bin/node "$newest_nvm"; do
+  if [[ -z "$NODE" && -x "$candidate" ]]; then NODE="$candidate"; fi
+done
+[[ -x "${NODE:-}" ]] || { echo "open-dashboard.sh: node not found (PATH, /opt/homebrew/bin, /usr/local/bin or ~/.nvm)" >&2; exit 1; }
 
 # One corrupt package must not block opening the previous build.
 "$NODE" dashboard.mjs || echo "dashboard rebuild failed; opening previous build" >&2

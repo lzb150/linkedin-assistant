@@ -97,11 +97,25 @@ test("clearStale deletes only the lock it saw stale; a fresh one taken in betwee
   const dir = tmpDir(t);
   const lock = join(dir, "notify-state.json.lock");
   mkdirSync(lock);
-  const staleIno = statSync(lock).ino;
-  clearStale(lock, staleIno);
+  clearStale(lock, statSync(lock));
   assert.ok(!existsSync(lock), "the lock it saw is gone");
   mkdirSync(lock);   // the other writer's fresh lock
-  clearStale(lock, 0);   // stat-ed some other inode (0 is never a real one): not this lock
+  clearStale(lock, { ino: 0, mtimeMs: 0 });   // stat-ed some other inode (0 is never a real one): not this lock
+  assert.ok(existsSync(lock), "the fresh lock is put back");
+  assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
+});
+
+test("clearStale puts back a fresh lock that reused the stale one's inode", (t) => {
+  // Linux hands a freed inode straight to the next mkdir: the other writer's
+  // fresh lock can carry the inode stat-ed as stale. Only its mtime differs.
+  const dir = tmpDir(t);
+  const lock = join(dir, "notify-state.json.lock");
+  mkdirSync(lock);
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(lock, old, old);
+  const stale = statSync(lock);
+  utimesSync(lock, new Date(), new Date());   // same inode, fresh mtime: a live lock
+  clearStale(lock, stale);
   assert.ok(existsSync(lock), "the fresh lock is put back");
   assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
 });
@@ -119,6 +133,19 @@ test("updateState releases only its own lock, not one a third writer took after 
     return prev;
   });
   assert.equal(statSync(lock).ino, cIno, "C's lock survives B's release");
+});
+
+test("updateState leaves a lock that reused its inode: the mtime tells them apart", (t) => {
+  // B's lock was cleared by mistake and C's mkdir got the freed inode back
+  // (Linux does this at once). An inode-only release deleted C's lock.
+  const p = join(tmpDir(t), "notify-state.json");
+  const lock = `${p}.lock`;
+  updateState(p, (prev) => {
+    const later = new Date(Date.now() + 5_000);
+    utimesSync(lock, later, later);   // same inode, new mtime: C's lock now
+    return prev;
+  });
+  assert.ok(existsSync(lock), "C's lock survives B's release");
 });
 
 test("clearStale never replaces a lock a third writer took during the put-back", (t) => {

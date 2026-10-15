@@ -20,7 +20,7 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sa
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag } from "./lib/filters.mjs";
+import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag, sourceList, isHttpUrl, isLinkedInSearch } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
@@ -60,13 +60,31 @@ const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
-const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
+// Hand-edited like skills.json, and parsed just as early: one trailing comma
+// killed both launchd agents at import with a raw SyntaxError that never named
+// the file, before the run lock or a banner — noticed only by reading logs/.
+// Nothing sensible runs without it, so the run stops, but says why. The banner
+// is the 3-hourly run's alone: the catch-up agent would repeat it every 15 min.
+let config;
+try {
+  config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("not a JSON object");
+} catch (e) {
+  log(`⚠ jobs.config.json unusable (${e.message}) — fix the JSON; nothing was scanned`);
+  if (!CATCHUP) banner("Job assistant", "jobs.config.json is broken — fix the JSON (details in logs/)");
+  process.exit(1);
+}
 // Every on/off switch is normalized once, here, so jobs.mjs and the sources
 // that read their own section see real booleans (see flag() in lib/filters.mjs).
 config.requireRole = flag("requireRole", config.requireRole, false, log);
 for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["linkedin", "enabled", false]]) {
   const sec = config[section];
   if (sec && typeof sec === "object" && key in sec) sec[key] = flag(`${section}.${key}`, sec[key], fallback, log);
+}
+// And every source's list, so a source iterates only entries it can search.
+for (const [section, key, valid, want] of [["dou", "feeds", isHttpUrl, "a feed URL"], ["djinni", "searches", isHttpUrl, "a search URL"], ["linkedin", "searches", isLinkedInSearch, '{ "keywords": "…" }']]) {
+  const sec = config[section];
+  if (sec && typeof sec === "object" && key in sec) sec[key] = sourceList(`${section}.${key}`, sec[key], valid, want, log);
 }
 
 // A run that was due to scrape LinkedIn but could not (the run lock or the

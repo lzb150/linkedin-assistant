@@ -342,6 +342,33 @@ test("jobs.mjs: a corrupt skills.json degrades to an empty profile instead of ki
     "an empty profile matches nothing — visibly quiet, not silently wrong");
 });
 
+test("jobs.mjs: a corrupt jobs.config.json stops the run with the file named, not a raw SyntaxError", async (t) => {
+  // Same hand-edited trailing comma as skills.json above, but nothing can run
+  // without the config: both launchd agents died at import, the error naming
+  // no file and no banner posted.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  writeFileSync(p.path("jobs.config.json"), '{"minScore": 25,}');
+  const err = await runScript(p, "jobs.mjs").then(() => null, (e) => e);
+  assert.ok(err, "the run fails");
+  assert.match(err.message, /jobs\.mjs exit 1/);
+  assert.match(err.message, /jobs\.config\.json unusable \(.+\) — fix the JSON/, "the file and the fix are named");
+});
+
+test("jobs.mjs: a source list entry that cannot be searched is reported and skipped, the rest still run", async (t) => {
+  // A LinkedIn item without keywords scraped LinkedIn's unfiltered newest feed;
+  // a bare string where a list belongs walked its characters.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.dou.feeds.push("SDET", 42);
+  cfg.djinni.searches = "https://djinni.co/jobs/?all_keywords=SDET";
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+  const out = await runJobs(p);
+  assert.match(out, /⚠ jobs.config.json: dou.feeds item "SDET" is not a feed URL — skipped/);
+  assert.match(out, /⚠ jobs.config.json: dou.feeds item 42 is not a feed URL — skipped/);
+  assert.match(out, /⚠ jobs.config.json: djinni.searches is "https:\/\/djinni.co\/jobs\/\?all_keywords=SDET", not a list — ignored/);
+  assert.match(out, /Considered 3 new, wrote \d+ application package/, "the valid feed still runs");
+});
+
 test("jobs.mjs: a typo'd numeric knob is reported and replaced by its default, not read as \"gate off\"", async (t) => {
   // `score < "abc"` is false for every score, so a misspelt minScore used to
   // pass everything through that gate with a clean log. The run still ends the

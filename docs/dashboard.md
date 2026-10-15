@@ -25,7 +25,9 @@ generated one. You see each vacancy once even when older packages linger on disk
 persistence layer. The dashboard is served by a tiny local HTTP server at
 `http://127.0.0.1:7777/` (localhost only, never exposed), kept running by the
 `state-server` launchd agent. Clicking the Jobs.app Dock icon runs
-`open-dashboard.sh`, which regenerates the dashboard and opens the browser. Job state (status,
+`open-dashboard.sh`, which regenerates the dashboard and opens the browser (it
+finds `node` on `PATH`, in `/opt/homebrew/bin` or `/usr/local/bin`, or under
+`~/.nvm`; launchd starts it with a bare `PATH`). Job state (status,
 per-card notes, last-visit timestamp) is written to `job-state.json` on disk, so
 it survives a browser reset or a full OS restart. If the server is unreachable
 the dashboard falls back to `localStorage` and shows an **"offline — not saved

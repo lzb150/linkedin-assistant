@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isLinkedInSearch, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -134,4 +134,22 @@ test("flag: booleans pass, the strings true/false are read as meant, anything el
   assert.equal(flag("x", 1, false, say), false, "a number is not a switch: default");
   assert.equal(lines.length, 3);
   assert.match(lines[0], /dou\.enabled is "false", not true\/false — using false/);
+});
+
+test("sourceList: a LinkedIn search needs keywords; a non-list is no list; each drop is logged", () => {
+  // ["SDET"] (the Djinni/DOU shape) built a filterless LinkedIn search that
+  // scraped the whole newest-jobs feed; a bare string walked its characters.
+  const lines = [];
+  const log = (m) => lines.push(m);
+  const ok = { keywords: "SDET", location: "Ukraine", remote: true };
+  assert.deepEqual(sourceList("linkedin.searches", [ok, "SDET", { keywords: " " }, { location: "Ukraine" }, null, []], isLinkedInSearch, "{ keywords }", log), [ok]);
+  assert.equal(lines.length, 5, "every dropped item is reported");
+  assert.match(lines[0], /linkedin\.searches item "SDET" is not \{ keywords \} — skipped/);
+  lines.length = 0;
+  assert.deepEqual(sourceList("dou.feeds", "https://jobs.dou.ua/vacancies/feeds/", isHttpUrl, "a feed URL", log), []);
+  assert.match(lines[0], /dou\.feeds is ".+", not a list — ignored/);
+  lines.length = 0;
+  assert.deepEqual(sourceList("djinni.searches", undefined, isHttpUrl, "a search URL", log), [], "absent is empty, quietly");
+  assert.deepEqual(sourceList("djinni.searches", ["https://djinni.co/jobs/?all_keywords=AQA", "djinni.co/jobs"], isHttpUrl, "a search URL", log), ["https://djinni.co/jobs/?all_keywords=AQA"]);
+  assert.equal(lines.length, 1);
 });
