@@ -249,8 +249,15 @@ launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
 збігу записує **пакет для відгуку** (супровідний лист мовою вакансії + шлях до
 резюме) у `applications/`. **Сам нічого не подає.**
 
-Як вакансія отримує оцінку, фільтр за фільтром, із прикладами:
-[схема оцінювання](https://claude.ai/artifact/KTFfT228dpdKj78Ee3MERR).
+<details>
+<summary>Як вакансія отримує оцінку, фільтр за фільтром, із прикладами</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/scoring-dark.uk.png">
+  <img alt="Схема оцінювання: фільтр локації, keyword gate (minScore 18 + роль), LLM gate (llm.minScore 70), приклади" src="docs/scoring-light.uk.png" width="800">
+</picture>
+
+</details>
 
 ```bash
 node jobs.mjs              # усі джерела (за jobs.config.json)

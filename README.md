@@ -239,8 +239,15 @@ Finds *new* vacancies, scores them against your resume, and writes an
 **application package** (cover letter in the job's language + resume path) for
 each strong match into `applications/`. **It never submits anything.**
 
-How a vacancy is scored, gate by gate, with worked examples:
-[scoring diagram](https://claude.ai/artifact/84SgMCMtqnJoLgvwbGFRQ2).
+<details>
+<summary>How a vacancy is scored, gate by gate, with worked examples</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/scoring-dark.png">
+  <img alt="Scoring pipeline: location filter, keyword gate (minScore 18 + role), LLM gate (llm.minScore 70), worked examples" src="docs/scoring-light.png" width="800">
+</picture>
+
+</details>
 
 ```bash
 node jobs.mjs              # all sources (per jobs.config.json)
