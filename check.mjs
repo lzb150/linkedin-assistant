@@ -77,7 +77,7 @@ let counted = false;
 // to one 3-state outcome (ok | busy | failed).
 const outcome = await runScan({ profile: PROFILE, app: "LinkedIn assistant", scan, finish });
 
-async function scan(page, ctx) {
+async function scan(page, ctx, signal) {
   // /messaging/ auto-opens the newest thread on load, and an opened thread is
   // read: every hourly check was silently reading the newest message before
   // the unread scan ran (2026-09-14: a 14:50 message, 0 unread at 14:53; only
@@ -147,7 +147,7 @@ async function scan(page, ctx) {
   if (verdict.scanOpenFirst) log("· auto-opened thread not in list — scanning it first");
   for (const card of targets) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
-    if (scanned >= MAX) break;
+    if (scanned >= MAX || signal?.aborted) break;
 
     let name = "Recruiter";
     try {
@@ -206,6 +206,9 @@ async function scan(page, ctx) {
         if (t) bubbles.push(t);
       }
     } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
+    // The last await of this thread: past the run deadline seen.json is already
+    // saved, so a draft or banner from here on would repeat on the next run.
+    if (signal?.aborted) { log(`· run deadline passed — leaving ${name} for the next run`); break; }
     const fullText = bubbles.join("\n");
     // No list items (item selector drift): the bubbles stand in, direction unknown.
     const { state, snippet: newest } = threadState(items.length ? items : bubbles.map((text) => ({ incoming: false, text })));
