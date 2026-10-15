@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>linkedin-assistant page header</title>
+<!-- Source of docs/headers/<page>(.uk).png, the HUD bar on top of every docs page:
+     ?page=setup&lang=uk. Rendered by render.mjs. The page list below is also the
+     order of the docs table in the READMEs. -->
+<link rel="stylesheet" href="night-city.css">
+<style>
+  :root { color-scheme: dark; }
+  body { background: transparent; }
+  .head {
+    position: relative; width: 960px; height: 150px; overflow: hidden; --city-base: var(--hud-bg); --accent: var(--cyan); --hot: var(--magenta);
+    border: 1px solid var(--hud-border); display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 24px;
+    padding: 0 40px 0 44px; --band: var(--cyan);
+  }
+  .head::before, .head::after { z-index: 6; }
+  .rail {
+    position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; z-index: 6;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta) 55%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--magenta) 60%, transparent);
+  }
+  .eyebrow { font: 600 12px/1 var(--font-mono); letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
+  .eyebrow b { color: var(--yellow); font-weight: 600; }
+  h1 { margin: 12px 0 0; display: flex; align-items: center; gap: 16px; font: 700 40px/1 var(--font-display); letter-spacing: .05em; text-transform: uppercase; color: var(--hud-text); white-space: nowrap; }
+  h1 code {
+    font: 600 13px/1 var(--font-mono); letter-spacing: .1em; text-transform: none; text-shadow: none; color: var(--yellow);
+    border: 1px solid var(--yellow); background: color-mix(in srgb, var(--yellow) 10%, transparent); padding: 6px 9px;
+  }
+  .tag { margin: 12px 0 0; font: 400 17px/1.3 "Exo 2", sans-serif; color: var(--hud-muted); }
+  .num {
+    font: 700 104px/1 var(--font-display); color: transparent; -webkit-text-stroke: 2px var(--cyan); letter-spacing: .02em;
+    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--cyan) 55%, transparent));
+  }
+</style>
+</head>
+<body>
+<div class="head city hud">
+  <i class="scan"></i>
+  <div>
+    <div class="eyebrow"><b>//</b> linkedin-assistant · <span data-t="docs"></span> · <span data-t="n"></span>/07</div>
+    <h1 class="split"><span data-t="title"></span></h1>
+    <p class="tag" data-t="tag"></p>
+  </div>
+  <div class="num" aria-hidden="true" data-t="n"></div>
+  <i class="rail"></i>
+</div>
+<script>
+  // [page, en title, uk title, command, en tagline, uk tagline]
+  const PAGES = [
+    ["setup", "Setup", "Налаштування", "", "Install and jack in once — then the daemons take over.", "Встановити й підключитись один раз — далі працюють демони."],
+    ["inbox", "Inbox assistant", "Асистент скриньки", "check.mjs", "Fixers write, the netrunner answers.", "Фіксери пишуть, нетраннер відповідає."],
+    ["job-discovery", "Job discovery", "Пошук вакансій", "jobs.mjs", "The radar's scanner: find, score, package.", "Сканер радара: знайти, оцінити, запакувати."],
+    ["dashboard", "Dashboard", "Дашборд", "dashboard.mjs", "Your HUD for the job market.", "Ваш HUD на ринку праці."],
+    ["specialization", "Your specialization", "Ваша спеціалізація", "", "Swapping the chrome: from QA to any profession.", "Заміна хрому: з QA на будь-яку професію."],
+    ["troubleshooting", "When it breaks", "Коли щось ламається", "", "Glitches and how to patch them.", "Глюки і як їх латати."],
+    ["project-layout", "Project layout", "Структура проєкту", "", "The HUD map of the repo.", "Мапа репозиторію на HUD."],
+  ];
+  const q = new URLSearchParams(location.search);
+  const uk = q.get("lang") === "uk";
+  const i = Math.max(0, PAGES.findIndex(p => p[0] === q.get("page")));
+  const [, en, ua, cmd, tagEn, tagUa] = PAGES[i];
+  document.documentElement.lang = uk ? "uk" : "en";
+  const T = { docs: uk ? "документація" : "docs", n: String(i + 1).padStart(2, "0"), title: uk ? ua : en, tag: uk ? tagUa : tagEn };
+  for (const el of document.querySelectorAll("[data-t]")) el.textContent = T[el.dataset.t];
+  if (cmd) { const c = document.createElement("code"); c.textContent = cmd; document.querySelector("h1").append(c); }
+</script>
+</body>
+</html>

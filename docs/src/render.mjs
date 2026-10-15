@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Renders the README images in docs/ from the HTML sources next to this file:
 //   node docs/src/render.mjs            all of them
-//   node docs/src/render.mjs scoring    only names containing "scoring"
+//   node docs/src/render.mjs scoring    only names containing "scoring" (headers/ = the docs page bars)
 // Needs the Playwright Chromium (npx playwright install chromium) and the
 // network for Google Fonts; every image is shot at 2x.
 import { chromium } from "playwright";
@@ -20,6 +20,11 @@ const SHOTS = [
   ["scoring-dark.uk.png", "scoring.uk.html", "", "dark", 1000],
   ["scoring-light.uk.png", "scoring.uk.html", "", "light", 1000],
   ["draft.png", "draft.html", "", "dark", 1000, ".window"],
+  // The HUD bar on top of each docs page, in the order of the docs table.
+  ...["setup", "inbox", "job-discovery", "dashboard", "specialization", "troubleshooting", "project-layout"].flatMap((page) => [
+    [`headers/${page}.png`, "page-header.html", `?page=${page}`, "dark", 960, ".head"],
+    [`headers/${page}.uk.png`, "page-header.html", `?page=${page}&lang=uk`, "dark", 960, ".head"],
+  ]),
 ];
 
 const only = process.argv[2];

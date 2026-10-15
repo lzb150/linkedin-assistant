@@ -1,4 +1,4 @@
-# Пошук вакансій — `jobs.mjs`
+<h1><img alt="Пошук вакансій — jobs.mjs" src="headers/job-discovery.uk.png" width="960"></h1>
 
 > **//** Частина [linkedin-assistant](../README.uk.md). Сканер радара: як вакансії знаходяться, оцінюються й пакуються.
 >

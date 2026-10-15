@@ -1,4 +1,4 @@
-# Дашборд — `dashboard.mjs`
+<h1><img alt="Дашборд — dashboard.mjs" src="headers/dashboard.uk.png" width="960"></h1>
 
 > **//** Частина [linkedin-assistant](../README.uk.md). Ваш HUD на ринку праці: усі пакети на одній локальній сторінці, плюс щоденна перевірка закритих вакансій і тижневий звіт.
 >

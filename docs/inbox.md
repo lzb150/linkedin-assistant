@@ -1,4 +1,4 @@
-# Inbox assistant
+<h1><img alt="Inbox assistant" src="headers/inbox.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). Fixers write, the netrunner answers: reply drafts for LinkedIn recruiter messages, and one Dock badge for LinkedIn and Djinni unread.
 >

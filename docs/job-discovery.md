@@ -1,4 +1,4 @@
-# Job discovery — `jobs.mjs`
+<h1><img alt="Job discovery — jobs.mjs" src="headers/job-discovery.png" width="960"></h1>
 
 > **//** Part of [linkedin-assistant](../README.md). The radar's scanner: how vacancies are found, scored and packaged.
 >
