@@ -38,119 +38,235 @@ const cards = items.map(renderCard).join("\n");
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobs — ${items.length}</title>
-<script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; if (localStorage.getItem("jobGlow") === "off") document.documentElement.dataset.glow = "off"; } catch (e) {}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" referrerpolicy="no-referrer" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Tektur:wght@500;700&display=swap">
 <style>
-  /* Palette = GitHub Primer: light values are the ones this page always used, the
-     dark block is Primer's "dark default" (canvas #0d1117 / #161b22, border
-     #30363d, fg #e6edf3 / #8b949e, *-emphasis fills for buttons). Every text /
-     background pair was checked ≥ 4.5:1; white on each emphasis fill is 4.5+.
+  /* Skin: "Night City" cyberpunk. Neon cyan / magenta / signal yellow on a
+     violet-black void in dark mode; the same hues deepened for light mode, where
+     neon on white would fail contrast. Every text / background pair was checked
+     ≥ 4.5:1 in both modes, including text on the neon fills (always --ink) and
+     the source badges (src colour 25% darker on light, 50% lighter on dark).
      Theme: system preference by default via color-scheme + light-dark(); the header
-     toggle sets data-theme on <html> (persisted in localStorage) and pins color-scheme. */
+     toggle sets data-theme on <html> (persisted in localStorage) and pins color-scheme.
+     Glow (halos, scanlines, title glitch) is dark-only; the header Glow button turns
+     it off (data-glow="off", persisted the same way). Fonts come from Google Fonts
+     with system fallbacks, so an offline page only loses the lettering. */
   :root {
-    font-family: -apple-system, system-ui, sans-serif;
+    font-family: "Exo 2", -apple-system, system-ui, sans-serif;
     color-scheme: light dark;   /* light-dark() follows the OS; the data-theme pins below win in both directions */
-    --bg: light-dark(#f6f8fa, #0d1117); --card: light-dark(#fff, #161b22); --card-muted: light-dark(#f6f8fa, #0d1117); --border: light-dark(#d0d7de, #30363d);
-    --text: light-dark(#1f2328, #e6edf3); --muted: light-dark(#57606a, #8b949e);
-    /* Injection badge. One colour cannot serve both themes here: the usual
-       amber #9a6700 measures 3.55:1 on the dark card and 3.89:1 on the muted
-       one. These two are 6.66-7.09:1 light and 6.85-7.50:1 dark. */
-    --warn-text: light-dark(#7d4e00, #d29922);
-    --header-bg: light-dark(#24292f, #010409); --header-text: light-dark(#fff, #e6edf3); --header-muted: light-dark(#cdd9e5, #c9d1d9); --header-border: light-dark(#57606a, #30363d); --header-hover: light-dark(#32383f, #21262d);
-    --input-bg: light-dark(#32383f, #0d1117); --placeholder: light-dark(#9aa5b1, #8b949e);
-    --btn-bg: light-dark(#fff, #21262d); --btn-text: light-dark(#57606a, #c9d1d9); --btn-hover: light-dark(#f3f4f6, #30363d);
-    --accent: light-dark(#0969da, #58a6ff); --accent-fill: light-dark(#0969da, #1f6feb); --focus: light-dark(#0969da, #58a6ff);
-    --success-fill: light-dark(#1f883d, #238636); --success-fill-hover: light-dark(#1a7f37, #1a7f37); --success-text: light-dark(#1a7f37, #3fb950);
-    --attention-fill: light-dark(#9a6700, #9e6a03); --attention-text: light-dark(#9a6700, #d29922);
-    --done-fill: light-dark(#8250df, #8957e5); --neutral-fill: light-dark(#6e7781, #6e7681); --closed-border: light-dark(#8c959f, #6e7681);
-    --chip-bg: light-dark(#eaf2ff, #0d2440); --chip-text: light-dark(#0a66c2, #79c0ff);
-    --score-hi: light-dark(#1a7f37, #238636); --score-mid: light-dark(#9a6700, #9e6a03); --score-lo: light-dark(#6e7781, #6e7681);
+    --font-display: "Tektur", "Exo 2", "Arial Narrow", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --bg: light-dark(#eeecf5, #07060d); --card: light-dark(#fff, #0f0d1c); --card-muted: light-dark(#f4f3f9, #0a0914);
+    --border: light-dark(#d6d2e6, #2a2742); --border-hi: light-dark(#b3add0, #45406b);
+    --text: light-dark(#15121f, #ece9ff); --muted: light-dark(#4f4a66, #a6a2c8);
+    --ink: #07060d;   /* text on every neon fill, both modes */
+    --accent: light-dark(#00707f, #00f0ff); --accent-ink: light-dark(#fff, #07060d); --focus: var(--accent);
+    --hot: light-dark(#c8004d, #ff2a6d); --hot-ink: light-dark(#fff, #07060d);
+    --warn-text: light-dark(#7d4e00, #fcee0a); --success-text: light-dark(#007a4a, #05ffa1);
+    --cta-bg: light-dark(#15121f, #fcee0a); --cta-text: light-dark(#fcee0a, #07060d); --cta-hover: light-dark(#2e2940, #fdf36c);
+    --score-hi: light-dark(#00d68a, #05ffa1); --score-mid: light-dark(#ff9500, #ff9e00); --score-lo: light-dark(#9a96b6, #8a86a8);
+    --attention-fill: light-dark(#ff9500, #ff9e00);
+    /* The header is a dark HUD bar in both modes. */
+    --header-bg: #0b0a16; --header-text: #ece9ff; --header-muted: #a6a2c8; --header-border: #45406b;
+    --header-accent: #00f0ff; --header-hot: #ff2a6d; --header-signal: #fcee0a; --input-bg: #07060d;
+    --glow: 1; --cut: 8px;
   }
   :root[data-theme="light"] { color-scheme: light; }
   :root[data-theme="dark"] { color-scheme: dark; }
-  html { scroll-padding-top: 140px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it; the header is 132 px at 641–730 px */
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --glow: 0; } }
+  :root[data-theme="light"], :root[data-glow="off"] { --glow: 0; }
+  html { scroll-padding-top: 190px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it; the header is 182 px at 641–730 px */
   body { margin: 0; background: var(--bg); color: var(--text); }
-  header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
+  /* City glow and a faint street grid behind the page; CRT scanlines over it (glow only). */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: calc(.4 + .6 * var(--glow));
+    background:
+      radial-gradient(60rem 30rem at 100% 0%, color-mix(in srgb, var(--hot) 14%, transparent), transparent 70%),
+      radial-gradient(50rem 30rem at 0% 100%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+      linear-gradient(color-mix(in srgb, var(--accent) 5%, transparent) 1px, transparent 1px) 0 0 / 44px 44px,
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 5%, transparent) 1px, transparent 1px) 0 0 / 44px 44px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: var(--glow);
+    background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(0 0 0 / .16) 2px 3px);
+  }
+  header { position: sticky; top: 0; z-index: 10; background: var(--header-bg); color: var(--header-text); padding: 16px 20px 14px; border-bottom: 1px solid var(--header-border); }
+  header::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, var(--header-accent), var(--header-hot) 55%, transparent);
+    box-shadow: 0 0 calc(var(--glow) * 12px) color-mix(in srgb, var(--header-hot) 60%, transparent);
+  }
   /* Narrow or short viewports (incl. 400% zoom, 320x256 CSS px): the header wraps
-     to 170-223 px, and sticky it left ~33 px of page under it (WCAG 1.4.10).
-     It scrolls away there instead (after the rule above, so it wins), so no scroll padding is needed either. */
-  @media (max-width: 640px), (max-height: 500px) { html { scroll-padding-top: 0; } header { position: static; } }
-  header h1 { margin: 0; font-size: 18px; }
-  header .meta { font-size: 13px; color: var(--header-muted); margin-top: 2px; }   /* a colour, not opacity: the offline/flash badges are appended inside this line */
-  main { max-width: 920px; margin: 18px auto; padding: 0 14px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-  .head { display: flex; align-items: flex-start; gap: 12px; }
-  .score { color: #fff; font-weight: 700; font-size: 15px; min-width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+     to 190-260 px, and sticky it left ~33 px of page under it (WCAG 1.4.10).
+     It scrolls away there instead (after the rule above, so it wins), so no scroll padding is needed either.
+     relative, not static: the gradient rule under it is positioned against the header. */
+  @media (max-width: 640px), (max-height: 500px) { html { scroll-padding-top: 0; } header { position: relative; } }
+  header h1 { margin: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; font: 700 21px/1.15 var(--font-display); letter-spacing: .07em; text-transform: uppercase; }
+  header .count { font: 600 17px/1 var(--font-mono); letter-spacing: 0; color: var(--header-signal); text-shadow: 0 0 calc(var(--glow) * 12px) color-mix(in srgb, var(--header-signal) 60%, transparent); }
+  /* Title glitch: two offset copies flash once on load and while hovered. The
+     copies are generated content with empty alt text, so a screen reader still
+     reads the title once. */
+  .glitch { position: relative; display: inline-block; }
+  .glitch::before, .glitch::after { content: attr(data-text); content: attr(data-text) / ""; position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+  .glitch::before { color: var(--header-hot); animation: glitch-a 900ms steps(1) 300ms 1; }
+  .glitch::after { color: var(--header-accent); animation: glitch-b 900ms steps(1) 300ms 1; }
+  h1:hover .glitch::before { animation: glitch-a 700ms steps(1) infinite; }
+  h1:hover .glitch::after { animation: glitch-b 700ms steps(1) infinite; }
+  :root[data-glow="off"] .glitch::before, :root[data-glow="off"] .glitch::after { display: none; }
+  @keyframes glitch-a {
+    0% { opacity: .9; transform: translate(-3px, 0); clip-path: inset(0 0 62% 0); }
+    20% { transform: translate(3px, -1px); clip-path: inset(40% 0 22% 0); }
+    40% { transform: translate(-2px, 1px); clip-path: inset(72% 0 0 0); }
+    60% { transform: translate(2px, 0); clip-path: inset(8% 0 70% 0); }
+    80% { transform: translate(-1px, 0); clip-path: inset(50% 0 30% 0); }
+    100% { opacity: 0; }
+  }
+  @keyframes glitch-b {
+    0% { opacity: .9; transform: translate(3px, 0); clip-path: inset(55% 0 0 0); }
+    20% { transform: translate(-3px, 1px); clip-path: inset(0 0 70% 0); }
+    40% { transform: translate(2px, 0); clip-path: inset(30% 0 40% 0); }
+    60% { transform: translate(-2px, -1px); clip-path: inset(80% 0 4% 0); }
+    80% { transform: translate(1px, 0); clip-path: inset(12% 0 60% 0); }
+    100% { opacity: 0; }
+  }
+  header .meta { font: 12px/1.5 var(--font-mono); color: var(--header-muted); margin-top: 6px; }   /* a colour, not opacity: the offline/flash badges are appended inside this line */
+  main { max-width: 920px; margin: 22px auto; padding: 0 14px; }
+  .card {
+    --band: var(--score-lo);
+    position: relative; padding: 16px 18px; margin-bottom: 14px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--band) 7%, var(--card)), var(--card) 120px);
+    border: 1px solid var(--border);
+  }
+  .card:has(.score.hi) { --band: var(--score-hi); }
+  .card:has(.score.mid) { --band: var(--score-mid); }
+  /* HUD corner brackets in the card's keyword-score colour. */
+  .card::before, .card::after {
+    content: ""; position: absolute; width: 18px; height: 18px; pointer-events: none;
+    border: 2px solid var(--band); filter: drop-shadow(0 0 calc(var(--glow) * 5px) var(--band));
+  }
+  .card::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .card::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+  .head { display: flex; align-items: flex-start; gap: 14px; }
+  .score {
+    flex: none; width: 44px; height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--ink); font: 700 18px/1 var(--font-display); font-variant-numeric: tabular-nums;
+    clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  }
+  .score::after { content: "KW"; content: "KW" / ""; margin-top: 4px; font: 600 8px/1 var(--font-mono); letter-spacing: .16em; }   /* the sr-only "keyword score" already names it */
   .score.hi { background: var(--score-hi); } .score.mid { background: var(--score-mid); } .score.lo { background: var(--score-lo); }
   /* The LLM score of a posting that talked to the screener. Not an error state:
-     the package is still shown, the badge just says not to trust the number. */
-  .suspect { color: var(--warn-text); font-weight: 600; font-size: 12px; }
-  .titles { flex: 1; }
-  .titles h2 { margin: 0; font-size: 16px; }
-  .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
-  .llm-row { margin-top: 4px; font-size: 12px; }
-  .llm { background: var(--done-fill); color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
-  .llm-why { color: var(--muted); font-style: italic; }
-  .src { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
-  .lang { text-transform: uppercase; font-size: 11px; color: var(--muted); }
-  .salary { color: var(--success-text); font-size: .8rem; white-space: nowrap; }
-  .actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
-  .apply { white-space: nowrap; text-align: center; background: var(--success-fill); color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
-  .apply:hover { background: var(--success-fill-hover); }
-  .status-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-  .status-seg button { flex: 1; background: var(--btn-bg); color: var(--btn-text); border: 0; border-left: 1px solid var(--border); padding: 6px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+     the package is still shown, the hazard tape just says not to trust the number. */
+  .suspect {
+    color: var(--warn-text); font: 600 12px/1.8 var(--font-mono); padding: 2px 6px;
+    background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--warn-text) 16%, transparent) 0 6px, transparent 6px 12px);
+    box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  }
+  .titles { flex: 1; min-width: 0; }
+  .titles h2 { margin: 0; font: 500 17px/1.25 var(--font-display); letter-spacing: .02em; }
+  .sub { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+  .sub strong { color: var(--text); }
+  .llm-row { margin-top: 8px; font-size: 13px; line-height: 1.55; }
+  .llm {
+    display: inline-flex; gap: 6px; align-items: center; margin-right: 4px; padding: 3px 9px 3px 7px; vertical-align: 1px;
+    background: var(--hot); color: var(--hot-ink); font: 700 12px/1 var(--font-mono); font-variant-numeric: tabular-nums;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  }
+  .llm-why { color: var(--muted); }
+  .src {
+    --src-text: light-dark(color-mix(in srgb, var(--src) 75%, black), color-mix(in srgb, var(--src) 50%, white));
+    display: inline-block; padding: 3px 7px; vertical-align: 1px;
+    color: var(--src-text); border: 1px solid var(--src-text); background: color-mix(in srgb, var(--src) 10%, transparent);
+    font: 600 10.5px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
+    text-shadow: 0 0 calc(var(--glow) * 8px) var(--src-text);
+  }
+  .lang { text-transform: uppercase; font: 11px var(--font-mono); color: var(--muted); }
+  .salary { color: var(--success-text); font: 600 12.5px var(--font-mono); white-space: nowrap; }
+  .actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 132px; }
+  .apply {
+    white-space: nowrap; text-align: center; text-decoration: none; padding: 10px 14px;
+    background: var(--cta-bg); color: var(--cta-text); font: 700 13px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%);
+  }
+  .apply:hover { background: var(--cta-hover); }
+  .status-seg { display: flex; border: 1px solid var(--border-hi); }
+  .status-seg button { flex: 1; background: transparent; color: var(--muted); border: 0; border-left: 1px solid var(--border-hi); padding: 7px 8px; font: 600 11px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
   .status-seg button:first-child { border-left: 0; }
-  .status-seg button:hover { background: var(--btn-hover); }
-  .status-seg button.active[data-status="new"] { background: var(--neutral-fill); color: #fff; }
-  .status-seg button.active[data-status="viewed"] { background: var(--attention-fill); color: #fff; }
+  .status-seg button:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .status-seg button.active[data-status="new"] { background: var(--border-hi); color: var(--text); }
+  .status-seg button.active[data-status="viewed"] { background: var(--attention-fill); color: var(--ink); }
   /* Muted background + heading (not whole-card opacity, which drops text
      contrast below WCAG 4.5:1). */
   .card.viewed { background: var(--card-muted); }
   .card.viewed .titles h2 { color: var(--muted); }
-  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
-  .filter-seg, .src-seg { display: inline-flex; border: 1px solid var(--header-border); border-radius: 7px; overflow: hidden; }
-  .filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  .card.viewed::before, .card.viewed::after { opacity: .45; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+  .filter-seg, .src-seg { display: inline-flex; border: 1px solid var(--header-border); }
+  .filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 7px 12px; font: 600 11.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; }
   .filter-seg button:first-child, .src-seg button:first-child { border-left: 0; }
-  .filter-seg button:hover, .src-seg button:hover, .theme:hover { background: var(--header-hover); }
-  .filter-seg button.active, .src-seg button.active { background: var(--accent-fill); color: #fff; }
-  .filter-seg .cnt { font-size: 11px; font-weight: 400; }   /* no opacity: 70% white on the active blue was 3.34:1 */
-  .theme { border: 1px solid var(--header-border); border-radius: 7px; margin-left: auto; }
-  .skills { margin: 10px 0 4px; }
-  .chip { display: inline-block; background: var(--chip-bg); color: var(--chip-text); font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
-  details { margin-top: 6px; }
-  summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; }
-  pre { white-space: pre-wrap; background: var(--card-muted); border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
-  .copy { background: var(--accent-fill); color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-  .resume { font-size: 12px; color: var(--muted); margin-left: 10px; overflow-wrap: anywhere; }   /* one unbreakable path token overran 320 px */
-  .alt-row { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
-  .alt { color: var(--accent); margin-right: 8px; }   /* underlined: colour alone (1.2:1 vs the muted row) is not a link cue */
-  .empty { text-align: center; color: var(--muted); padding: 40px; }
+  .filter-seg button:hover, .src-seg button:hover, .theme:hover { color: var(--header-text); background: color-mix(in srgb, var(--header-accent) 12%, transparent); }
+  .filter-seg button.active, .src-seg button.active { background: var(--header-accent); color: var(--ink); box-shadow: 0 0 calc(var(--glow) * 14px) color-mix(in srgb, var(--header-accent) 50%, transparent); }
+  .filter-seg .cnt { font-weight: 400; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .prefs { display: flex; gap: 8px; margin-left: auto; }
+  .theme { border: 1px solid var(--header-border); }
+  .theme[aria-pressed="true"] { color: var(--header-hot); border-color: var(--header-hot); }
+  .skills { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+  .chip { font: 12px/1.4 var(--font-mono); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); padding: 2px 8px; }
+  .chip::before { content: "#"; content: "#" / ""; opacity: .6; }
+  details { margin-top: 8px; }
+  summary { display: inline-flex; gap: 8px; align-items: center; padding: 5px 0; cursor: pointer; list-style: none; font: 600 12px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸"; content: "▸" / ""; transition: transform .15s; }
+  details[open] > summary::before { transform: rotate(90deg); }
+  /* The ::before label is generated content: innerText (copyCover) and a mouse selection both skip it. */
+  pre { white-space: pre-wrap; background: var(--card-muted); border: 1px solid var(--border); border-left: 2px solid var(--accent); padding: 12px 16px; font-size: 14px; line-height: 1.6; font-family: inherit; color: var(--text); }
+  pre::before { content: "// cover_note." attr(lang); content: "// cover_note." attr(lang) / ""; display: block; margin-bottom: 8px; font: 11px var(--font-mono); letter-spacing: .08em; color: var(--muted); }
+  .copy { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 7px 12px; font: 600 11.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; }
+  .copy:hover { background: var(--accent); color: var(--accent-ink); }
+  .resume { font: 12px var(--font-mono); color: var(--muted); margin-left: 12px; overflow-wrap: anywhere; }   /* one unbreakable path token overran 320 px */
+  .alt-row { font: 12px var(--font-mono); color: var(--muted); margin: 6px 0 4px; }
+  .alt { color: var(--accent); margin-left: 6px; }   /* underlined: colour alone (1.2:1 vs the muted row) is not a link cue */
+  .empty { text-align: center; color: var(--muted); padding: 40px; font-family: var(--font-mono); border: 1px dashed var(--border-hi); }
   /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed,
-     with a text cue. The cue below is CSS ::after, which never reaches the
-     accessibility tree — .card-status carries the same word in real DOM text so
-     a screen-reader user is not left with colour and a border as the only
-     signal. Both are kept: the ::after keeps the visual layout unchanged. */
-  .card.closed { background: var(--card-muted); border-left: 4px solid var(--closed-border); }
+     with a text cue. The cue below is CSS ::after with empty alt text, so it
+     stays out of the accessibility tree — .card-status carries the same word in
+     real DOM text so a screen-reader user is not left with colour and a border as
+     the only signal. Both are kept: the ::after keeps the visual layout unchanged. */
+  .card.closed { background: var(--card-muted); border-left: 3px solid var(--hot); }
+  .card.closed::before, .card.closed::after { display: none; }
   .card.closed .titles h2 { color: var(--muted); }
-  .card.closed .titles h2::after { content: " · closed"; color: var(--muted); font-weight: 400; font-size: 13px; }
-  .status-seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }   /* blue on white: 5.9:1 */
-  /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
-     inset one extra px so it sits inside the fill rather than on the border. */
-  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .theme:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  .card.closed .titles h2::after { content: " // closed"; content: " // closed" / ""; font: 600 12px var(--font-mono); letter-spacing: .1em; color: var(--hot); }
+  /* Focus: accent ring on the card and header surfaces (≥ 5.7:1 light, ≥ 13:1
+     dark); on a fill the ring takes that fill's own text colour so it never
+     disappears into it. */
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .apply:focus-visible { clip-path: none; }
+  .status-seg button:focus-visible { outline-offset: -3px; }
+  .status-seg button.active[data-status="new"]:focus-visible { outline-color: var(--text); }
+  .status-seg button.active[data-status="viewed"]:focus-visible { outline-color: var(--ink); }
+  .filter-seg button:focus-visible, .src-seg button:focus-visible, .theme:focus-visible { outline: 2px solid var(--header-accent); outline-offset: -3px; }
+  .filter-seg button.active:focus-visible, .src-seg button.active:focus-visible { outline-color: var(--ink); }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .note-wrap summary { color: var(--muted); }
-  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--muted); border-radius: 7px; resize: vertical; background: var(--card); color: var(--text); }
+  .note { width: 100%; box-sizing: border-box; margin-top: 6px; font: 13px/1.5 var(--font-mono); padding: 10px; border: 1px solid var(--muted); resize: vertical; background: var(--card); color: var(--text); }
   .note::placeholder { color: var(--muted); }   /* UA default #757575 is 3.8:1 on the dark card */
-  .note-has { color: var(--attention-text); }
-  .offline, .flash { background: var(--attention-fill); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
-  .card.fresh { box-shadow: inset 3px 0 0 var(--accent-fill); }
-  .ribbon { background: var(--accent-fill); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
-  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--header-muted); background: var(--input-bg); color: var(--header-text); font-size: 13px; }
-  #q::placeholder { color: var(--placeholder); }
-  @media (max-width: 640px) { .head { flex-wrap: wrap; } .actions { width: 100%; } }
+  .note:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 calc(var(--glow) * 16px) color-mix(in srgb, var(--accent) 30%, transparent); }
+  .note-has { color: var(--warn-text); }
+  .offline, .flash { color: var(--ink); font: 600 11px/1.5 var(--font-mono); padding: 1px 7px; margin-left: 8px; }
+  .offline { background: var(--attention-fill); }
+  .flash { background: var(--header-hot); }
+  .card.fresh { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 calc(var(--glow) * 28px) color-mix(in srgb, var(--accent) 16%, transparent); }
+  .ribbon { background: var(--accent); color: var(--accent-ink); font: 700 10px/1.4 var(--font-mono); letter-spacing: .14em; padding: 2px 6px; margin-left: 8px; vertical-align: 3px; animation: pulse 1.6s ease-in-out 3; }   /* 3 pulses, under the 5 s WCAG 2.2.2 limit */
+  @keyframes pulse { 50% { box-shadow: 0 0 calc(var(--glow) * 14px) var(--accent); } }
+  #q { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid var(--header-border); background: var(--input-bg); color: var(--header-text); font: 13px var(--font-mono); caret-color: var(--header-hot); }
+  #q::placeholder { color: var(--header-muted); }
+  #q:focus-visible { outline: none; border-color: var(--header-accent); box-shadow: 0 0 0 1px var(--header-accent), 0 0 calc(var(--glow) * 18px) color-mix(in srgb, var(--header-accent) 35%, transparent); }
+  @media (max-width: 640px) { .head { flex-wrap: wrap; } .titles { flex-basis: calc(100% - 58px); } .actions { width: 100%; flex-direction: row; } .apply, .status-seg { flex: 1; } .prefs { margin-left: 0; } }
+  @media (prefers-reduced-motion: reduce) { .glitch::before, .glitch::after { display: none; } .ribbon { animation: none; } summary::before { transition: none; } }
 </style></head>
 <body>
 <header>
-  <h1><span aria-hidden="true">🎯</span> Matching jobs: ${items.length}</h1>
+  <h1><span class="glitch" data-text="Matching jobs">Matching jobs</span> <span class="count"><span aria-hidden="true">// </span>${items.length}</span></h1>
   <div class="meta" aria-live="polite">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
@@ -163,7 +279,10 @@ const html = `<!doctype html>
       ${sourceChips(items)}
     </div>
     <span id="shown" class="sr-only" role="status"></span>
-    <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">🌙 Dark</button>
+    <div class="prefs">
+      <button id="glow" class="theme" type="button" aria-pressed="true" aria-label="Glow effects" onclick="toggleGlow()">Glow</button>
+      <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">Dark</button>
+    </div>
   </div>
 </header>
 <main>

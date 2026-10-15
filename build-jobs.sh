@@ -50,7 +50,10 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Icon: jobs.icns.
+# Icon: jobs.icns, rendered from jobs-icon.svg (steps in its header comment).
+# After replacing it the Dock can keep drawing the old picture from its own
+# cache even though Finder shows the new one; clear that cache once:
+#   rm "$(getconf DARWIN_USER_CACHE_DIR)com.apple.dock.iconcache" && killall Dock
 if [[ -f "$DIR/jobs.icns" ]]; then
   cp "$DIR/jobs.icns" "$NEW/Contents/Resources/AppIcon.icns"
   echo "  icon: copied jobs.icns"
