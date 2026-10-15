@@ -4,7 +4,7 @@
   Full job discovery incl. LinkedIn scraping (run.sh jobs.mjs), every 3 hours at :45 (offset from
   the DOU agent). Frequent scraping is more detectable than a daily cadence — drop to one
   Hour+Minute entry below if you prefer the safer default.
-  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

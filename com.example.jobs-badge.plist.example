@@ -4,7 +4,7 @@
   Jobs.app badge daemon, started at login. `--background` = show the unread Dock badge only,
   do not open the dashboard. `open -W` gives launchd a live pid; it exits 0 however the app
   ended, so KeepAlive is unconditional — with a WRONG path launchd respawns `open` every 10 s
-  forever, so replace YOUR_USERNAME (launchd needs absolute paths) before loading. Install/uninstall: README → "Schedule it (launchd)".
+  forever, so replace YOUR_USERNAME (launchd needs absolute paths) before loading. Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

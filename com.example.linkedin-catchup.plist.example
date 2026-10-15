@@ -5,7 +5,7 @@
   run that lands in a DarkWake on battery skips LinkedIn and leaves a linkedin-pending marker; this
   agent scrapes LinkedIn once the Mac is fully awake and removes it. Without the marker run.sh exits
   at once, so the other 95 ticks a day cost nothing and write no log.
-  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
