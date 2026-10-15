@@ -1,6 +1,8 @@
 # Dashboard — `dashboard.mjs`
 
 > Part of [linkedin-assistant](../README.md). Every package on one local page, plus the daily closed-vacancy check and the weekly report.
+>
+> 🇺🇦 [Українською](dashboard.uk.md)
 
 ```bash
 node dashboard.mjs          # rebuild applications/index.html

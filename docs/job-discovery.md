@@ -1,6 +1,8 @@
 # Job discovery — `jobs.mjs`
 
 > Part of [linkedin-assistant](../README.md). How vacancies are found, scored and packaged.
+>
+> 🇺🇦 [Українською](job-discovery.uk.md)
 
 Finds *new* vacancies, scores them against your resume, and writes an
 **application package** (cover letter in the job's language + resume path) for

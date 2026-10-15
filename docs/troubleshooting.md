@@ -1,6 +1,8 @@
 # When it breaks
 
 > Part of [linkedin-assistant](../README.md). Selectors, sessions, the browser build and slow runs.
+>
+> 🇺🇦 [Українською](troubleshooting.uk.md)
 
 LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read messages:
 1. Run `HEADFUL=1 node check.mjs` and watch.
