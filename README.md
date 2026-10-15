@@ -1,48 +1,46 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-  <img alt="linkedin-assistant — a local job radar that finds, scores and drafts, but never sends" src="docs/banner-light.svg" width="960">
-</picture>
+<img alt="linkedin-assistant — a local job radar that finds, scores and drafts, but never sends" src="docs/banner.png" width="960">
 
 <br>
 
-[![Sources](https://img.shields.io/badge/sources-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-1f6feb?style=flat-square&labelColor=161b22)](docs/job-discovery.md)
-[![Data](https://img.shields.io/badge/data-100%25_local-238636?style=flat-square&labelColor=161b22)](#key-principles)
-[![Auto-send](https://img.shields.io/badge/auto--send-never-9e6a03?style=flat-square&labelColor=161b22)](#key-principles)
-[![macOS](https://img.shields.io/badge/macOS-launchd-8957e5?style=flat-square&labelColor=161b22)](docs/setup.md#schedule-it-launchd)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-30363d?style=flat-square&labelColor=161b22)](#quick-start)
-[![License](https://img.shields.io/badge/license-MIT-0969da?style=flat-square&labelColor=161b22)](LICENSE)
+[![Sources](https://img.shields.io/badge/sources-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-00f0ff?style=for-the-badge&labelColor=0b0a16)](docs/job-discovery.md)
+[![Data](https://img.shields.io/badge/data-100%25_local-05ffa1?style=for-the-badge&labelColor=0b0a16)](#key-principles)
+[![Auto-send](https://img.shields.io/badge/auto--send-never-ff2a6d?style=for-the-badge&labelColor=0b0a16)](#key-principles)
+[![macOS](https://img.shields.io/badge/macOS-launchd-fcee0a?style=for-the-badge&labelColor=0b0a16)](docs/setup.md#schedule-it-launchd)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-ff9e00?style=for-the-badge&labelColor=0b0a16)](#quick-start)
+[![License](https://img.shields.io/badge/license-MIT-45406b?style=for-the-badge&labelColor=0b0a16)](LICENSE)
 
-[What it does](#what-it-does) · [Quick start](#quick-start) · [Docs](#documentation) · [Discovery](docs/job-discovery.md) · [Dashboard](docs/dashboard.md) · [Adapt it](docs/specialization.md)
+`//` [What it does](#what-it-does) · [Quick start](#quick-start) · [Docs](#documentation) · [Discovery](docs/job-discovery.md) · [Dashboard](docs/dashboard.md) · [Adapt it](docs/specialization.md) `//`
 
 </div>
 
 > 🇺🇦 [Українською](README.uk.md)
 
-A local job-search helper: it watches recruiter messages in your LinkedIn inbox,
-finds vacancies on DOU, Djinni and LinkedIn, scores them against your resume, and prepares
-ready-to-review reply/application drafts. **It never sends anything** — the final
-click is always yours.
+Your netrunner on the job market. It runs quietly on your Mac: watches recruiter
+messages in your LinkedIn inbox, sweeps DOU, Djinni and LinkedIn for vacancies,
+measures each one against your resume, and prepares ready-to-review
+reply/application drafts. **It never sends anything** — the final click is
+always yours.
 
-![Dashboard — matched jobs sorted by relevance, with status counts and filters](docs/dashboard.png)
+![The dashboard in its Night City skin — matched jobs sorted by relevance, with status counts and filters](docs/dashboard.png)
 
-> ⚠️ LinkedIn's User Agreement restricts automated access. This tool only *reads*
-> your own inbox and *drafts* replies for you — it does not auto-message or scrape
-> others. Run it modestly. Use at your own discretion; LinkedIn can still flag
-> automation.
+> ⚠️ **Corpo rules.** LinkedIn's User Agreement restricts automated access. This
+> tool only *reads* your own inbox and *drafts* replies for you — it does not
+> auto-message or scrape others. Run it modestly. Use at your own discretion;
+> LinkedIn can still flag automation.
 
 ## What it does
 
-**Inbox** — reads unread LinkedIn messages, scores each against your skill
+**`01` Inbox** — reads unread LinkedIn messages, scores each against your skill
 profile and drafts a reply in the sender's language (🇺🇦/🇷🇺/🇬🇧), flagging when
-to attach your resume. Unread Djinni threads join the same Dock badge.
+to attach your resume. Unread Djinni threads light up the same Dock badge.
 
-**Job discovery** — pulls new vacancies from DOU (RSS), Djinni (public board) and
-LinkedIn Jobs (search, can be turned off), collapses the same vacancy posted on
-several boards, and drops jobs located abroad. Each vacancy passes two gates:
-a keyword score from your profile (≥ 18 and a matching role), then a local
-`claude -p` fit score against your resume (≥ 70). A match becomes an
+**`02` Job discovery** — pulls new vacancies from DOU (RSS), Djinni (public
+board) and LinkedIn Jobs (search, can be turned off), collapses the same vacancy
+posted on several boards, and drops jobs located abroad. Each vacancy passes two
+gates: a keyword score from your profile (≥ 18 and a matching role), then a
+local `claude -p` fit score against your resume (≥ 70). A match becomes an
 application package: tailored cover letter, link and resume path.
 
 <details>
@@ -55,13 +53,14 @@ application package: tailored cover letter, link and resume path.
 
 </details>
 
-**Dashboard** — every package on one local page, sorted by relevance, with
-New/Viewed tabs, private notes, search and a source filter. Vacancies the board
-closes are marked Closed by a daily check.
+**`03` Dashboard** — every package on one local page in a neon Night City skin
+(light and dark themes), sorted by relevance, with New/Viewed tabs, private
+notes, search and a source filter. Vacancies the board closes are marked Closed
+by a daily check.
 
-**Runs on its own** — launchd agents check the inboxes and DOU/Djinni hourly and
-LinkedIn every 3 hours. A run posts one macOS banner, and only when it found
-something or something broke.
+**`04` Runs on its own** — launchd agents check the inboxes and DOU/Djinni
+hourly and LinkedIn every 3 hours. A run posts one macOS banner, and only when
+it found something or something broke.
 
 ## Key principles
 - 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all
@@ -70,7 +69,7 @@ something or something broke.
 
 ## Quick start
 
-macOS and Node.js 20+.
+macOS and Node.js 20+. Jacking in takes eight lines:
 
 ```bash
 git clone https://github.com/lzb150/linkedin-assistant.git ~/linkedin-assistant
@@ -103,8 +102,9 @@ through a PR with an approving review from the repository owner — fork, open a
 PR, and it will be reviewed.
 
 ## Technologies
-JavaScript (Node.js) · Playwright · DOU RSS · launchd · Swift/AppKit (icon) ·
-no external dependencies beyond Playwright.
+JavaScript (Node.js) · Playwright · DOU RSS · launchd · Swift/AppKit (neon Dock
+icon) · no external dependencies beyond Playwright. The images in this README
+are drawn from HTML in [docs/src](docs/src/render.mjs).
 
 ## License
 [MIT](LICENSE)
