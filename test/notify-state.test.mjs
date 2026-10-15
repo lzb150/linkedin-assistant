@@ -105,3 +105,15 @@ test("clearStale deletes only the lock it saw stale; a fresh one taken in betwee
   assert.ok(existsSync(lock), "the fresh lock is put back");
   assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
 });
+
+test("clearStale never replaces a lock a third writer took during the put-back", (t) => {
+  // A moved B's live lock aside by mistake; C took the free path before A put
+  // it back. A rename put-back would silently replace C's empty directory.
+  const dir = tmpDir(t);
+  const lock = join(dir, "notify-state.json.lock");
+  mkdirSync(lock);   // B's live lock
+  let cIno;
+  clearStale(lock, 0, { beforePutBack: () => { mkdirSync(lock); cIno = statSync(lock).ino; } });
+  assert.equal(statSync(lock).ino, cIno, "C keeps its lock");
+  assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
+});

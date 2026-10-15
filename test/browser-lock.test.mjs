@@ -125,7 +125,8 @@ test("a second run cannot take over a lock that was stale but has since been cla
 
 test("a racer that judged the lock dead BEFORE another run took it over does not evict that run", (t) => {
   // B snapshots the dead pid, then A takes over and claims before B renames.
-  // B's rename then moves A's LIVE lock aside; it must notice and put it back.
+  // B re-reads the holder under the takeover marker, sees A's live lock and
+  // leaves it in place.
   const p = join(tmpDir(t), "profile");
   const dead = spawnSync("true").pid;
   mkdirSync(`${p}.lock`);
@@ -136,6 +137,26 @@ test("a racer that judged the lock dead BEFORE another run took it over does not
   assert.equal(readFileSync(pid, "utf8"), String(process.pid), "A's lock is back in place");
   releaseA();
   assert.ok(!existsSync(`${p}.lock`), "A could still release it");
+});
+
+test("a takeover marker held by another run blocks the takeover; a stale one is reclaimed", (t) => {
+  // Takeovers are serialised: with three racers, an unserialised put-back could
+  // drop a live lock (a third run claimed between rename and link).
+  const p = join(tmpDir(t), "profile");
+  const dead = spawnSync("true").pid;
+  mkdirSync(`${p}.lock`);
+  const pid = join(`${p}.lock`, "pid");
+  const marker = join(`${p}.lock`, "takeover");
+  writeFileSync(pid, String(dead));
+  writeFileSync(marker, "");                       // another run is mid-takeover
+  assert.throws(() => acquireProfileLock(p), /profile busy/);
+  assert.equal(readFileSync(pid, "utf8"), String(dead), "pid file not moved");
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(marker, old, old);                    // that run crashed mid-takeover
+  const release = acquireProfileLock(p);
+  assert.equal(readFileSync(pid, "utf8"), String(process.pid));
+  assert.ok(!existsSync(marker), "marker removed after the takeover");
+  release();
 });
 
 test("acquireProfileLock survives the lock directory vanishing between mkdir and the claim", (t) => {
