@@ -17,6 +17,7 @@
 ├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → відкрити браузер
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/LinkedIn)
+├── docs/              ці сторінки + картинки README (HTML-джерела і render.mjs у docs/src/)
 ├── skills.json        профіль навичок + ваги
 ├── jobs.config.json   що і де шукати
 ├── job-state.json     стан карток (статус, нотатки, останній візит) — у gitignore

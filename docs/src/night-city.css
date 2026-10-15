@@ -1,0 +1,60 @@
+/* "Night City" tokens for the README images, copied from the dashboard skin in
+   dashboard.mjs so the pictures match the app. Light or dark follows the
+   colour scheme (render.mjs emulates each one). The HUD bar stays dark in
+   both modes, as the dashboard header does. */
+@import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Tektur:wght@500;700&display=block");
+
+:root {
+  color-scheme: light dark;
+  font-family: "Exo 2", -apple-system, system-ui, sans-serif;
+  --font-display: "Tektur", "Exo 2", "Arial Narrow", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --bg: light-dark(#eeecf5, #07060d); --card: light-dark(#fff, #0f0d1c); --card-muted: light-dark(#f4f3f9, #0a0914);
+  --border: light-dark(#d6d2e6, #2a2742); --border-hi: light-dark(#b3add0, #45406b);
+  --text: light-dark(#15121f, #ece9ff); --muted: light-dark(#4f4a66, #a6a2c8);
+  --ink: #07060d;
+  --accent: light-dark(#00707f, #00f0ff); --hot: light-dark(#c8004d, #ff2a6d);
+  --signal: light-dark(#7d4e00, #fcee0a); --success: light-dark(#007a4a, #05ffa1);
+  --fill-cyan: light-dark(#00c2d4, #00f0ff); --fill-hot: light-dark(#e0005a, #ff2a6d);
+  --fill-signal: #fcee0a; --fill-success: light-dark(#00d68a, #05ffa1);
+  --hud-bg: #0b0a16; --hud-text: #ece9ff; --hud-muted: #a6a2c8; --hud-border: #45406b;
+  --cyan: #00f0ff; --magenta: #ff2a6d; --yellow: #fcee0a;
+  --glow: 1;   /* halos and scanlines; 0 in light mode below (light-dark() takes colours only) */
+  --cut: 8px;
+}
+
+@media (prefers-color-scheme: light) { :root { --glow: 0; } }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+
+/* City glow and a street grid behind a surface, CRT scanlines over it (dark only).
+   .scan is an empty child element, so the ::before/::after pair stays free for .hud. */
+.city {
+  background:
+    radial-gradient(60rem 30rem at 100% 0%, color-mix(in srgb, var(--hot) 14%, transparent), transparent 70%),
+    radial-gradient(50rem 30rem at 0% 100%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    linear-gradient(color-mix(in srgb, var(--accent) 5%, transparent) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 5%, transparent) 1px, transparent 1px) 0 0 / 44px 44px,
+    var(--city-base, var(--bg));
+}
+.scan {
+  position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: var(--glow);
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(0 0 0 / .16) 2px 3px);
+}
+
+/* Static chromatic split: the dashboard title glitch, frozen mid-flash. */
+.split { text-shadow: -2px 0 color-mix(in srgb, var(--magenta) 80%, transparent), 2px 0 color-mix(in srgb, var(--cyan) 80%, transparent); }
+
+.cut { clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut))); }
+.cut-br { clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%); }
+
+/* HUD corner brackets: top-left and bottom-right, like the dashboard cards. */
+.hud { position: relative; }
+.hud::before, .hud::after {
+  content: ""; position: absolute; width: 18px; height: 18px; pointer-events: none;
+  border: 2px solid var(--band, var(--accent));
+  filter: drop-shadow(0 0 calc(var(--glow) * 5px) var(--band, var(--accent)));
+}
+.hud::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.hud::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Як вакансія отримує оцінку · linkedin-assistant</title>
+<!-- Source of docs/scoring-{light,dark}.uk.png, rendered by render.mjs.
+     The English twin is scoring.en.html: change both. -->
+<link rel="stylesheet" href="night-city.css">
+<link rel="stylesheet" href="scoring.css">
+</head>
+<body>
+<div class="page city">
+<i class="scan"></i>
+<header class="bar-top">
+  <div class="wrap">
+    <span class="eyebrow"><b>//</b> linkedin-assistant · jobs.mjs</span>
+    <h1 class="split">Як вакансія отримує оцінку</h1>
+    <p>Кожна вакансія проходить два фільтри. Спершу безплатний локальний підрахунок за ключовими словами з <code>skills.json</code>, потім Claude оцінює збіг із резюме від 0 до 100. Пакет для відгуку записується, лише коли пройдено обидва.</p>
+    <div class="legend">
+      <span><i class="dot" style="color:var(--magenta);background:var(--magenta)"></i>вакансію відкинуто</span>
+      <span><i class="dot" style="color:var(--cyan);background:var(--cyan)"></i>відкладено, повернеться пізніше</span>
+      <span><i class="dot" style="color:#05ffa1;background:#05ffa1"></i>пакет записано</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="pipe" aria-label="Порядок перевірок">
+    <div class="stage hud">
+      <div class="num cut">0</div>
+      <div class="body">
+        <h3>Збір і фільтр за локацією</h3>
+        <p class="sub">DOU, Djinni та LinkedIn. Вакансії за кордоном відсікаються до будь-якої оцінки.</p>
+        <div class="rule" data-label="// правило">location містить <b>excludeLocation</b><br>(«за кордоном», Poland, Кіпр, Germany, Georgia…)</div>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">location</span>Офіс або локація за кордоном</div>
+        <div class="exit"><span class="tag">djinni</span>У списку країн немає Ukraine / Україна і це не весь світ</div>
+      </div>
+    </div>
+    <div class="arrow"><span>нові вакансії</span></div>
+
+    <div class="stage hud">
+      <div class="num cut">1</div>
+      <div class="body">
+        <h3>Keyword gate: дублі та заголовок</h3>
+        <p class="sub"><code>lib/keyword-gate.mjs</code>. Перевірки йдуть згори вниз, вирішує перша, що спрацювала.</p>
+        <div class="rule" data-label="// правило">seen? → пакет уже є? → дубль з іншого майданчика?<br>→ заголовок містить <b>junior · intern · internship · trainee · manual</b></div>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">seen / packaged / dup</span>Уже бачили або пакет уже є</div>
+        <div class="exit"><span class="tag">excluded</span>Стоп-слово в заголовку (в описі не перевіряється)</div>
+      </div>
+    </div>
+    <div class="arrow"><span>підрахунок балів</span></div>
+
+    <div class="stage hud">
+      <div class="num cut">2</div>
+      <div class="body">
+        <h3>Keyword gate: бали</h3>
+        <p class="sub"><code>lib/relevance.mjs</code> → <code>scoreMessage()</code>. Текст: заголовок, компанія, локація, опис.</p>
+        <div class="rule" data-label="// правило">бали = <b>+6</b> за роль (перша знайдена з 32)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ сума <b>8 найважчих</b> знайдених навичок<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ штрафи анти-слів (від'ємні)<br><br>прохід: бали <b>≥ 18</b> (minScore) <b>і</b> роль знайдено (requireRole)</div>
+        <p class="sub">Навичка зараховується один раз, навіть якщо збіглися і вона, і її синоніми. Для кирилиці закінчення відкидаються: «автоматизації» збігається з «автоматизація».</p>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">low</span>Менше 18 балів</div>
+        <div class="exit"><span class="tag">low · no-role</span>Жодної ролі зі списку, скільки б не було балів</div>
+      </div>
+    </div>
+    <div class="arrow"><span>match</span></div>
+
+    <div class="stage hud">
+      <div class="num cut">3</div>
+      <div class="body">
+        <h3>LLM gate: Claude за резюме</h3>
+        <p class="sub"><code>claude -p</code>, модель sonnet. У промпті <code>resume.txt</code> і текст вакансії. Відповідь — JSON <span class="mono">{score 0–100, why, red_flags, cover}</span>.</p>
+        <div class="rule" data-label="// правило">не більше <b>15</b> викликів за прогін, <b>3</b> паралельно<br>жорстке правило: не для України / релокейт / офіс за кордоном → <b>score ≤ 10</b><br><br>прохід: llm.score <b>≥ 70</b> (llm.minScore)</div>
+      </div>
+      <div class="exits">
+        <div class="exit"><span class="tag">low · llm</span>Claude поставив менше 70</div>
+        <div class="exit soft"><span class="tag">deferred</span>Ліміт 15 вичерпано, вакансія чекає наступного прогону</div>
+        <div class="exit soft"><span class="tag">suspect</span>У тексті ознаки prompt injection: пакет пишеться з позначкою</div>
+      </div>
+    </div>
+    <div class="arrow"><span>пройдено</span></div>
+
+    <div class="final hud">
+      <h3>✓ Match: пакет в applications/</h3>
+      <p>Супровідний лист від Claude мовою вакансії. У лозі обидві оцінки: <span class="mono">✓ MATCH [32 / llm 82] djinni: …</span></p>
+    </div>
+  </section>
+
+  <section class="cols" aria-label="Ваги">
+    <div class="card hud">
+      <h2>Навички</h2>
+      <p class="sub">41 навичка в <code>skills.json</code>. До суми йдуть лише 8 найважчих знайдених, тож вакансія, набита ключовими словами, не обжене справжній збіг.</p>
+      <div class="bars" id="skills"></div>
+      <p class="more">Ще по 2: soap, c#, python, testng, junit, gitlab, postman, wiremock, rabbitmq, mongodb, sql, regression, test strategy. По 1: jira, kibana, newrelic, report portal, ms sql, oracle, sdlc.</p>
+    </div>
+    <div class="card hud" style="--band: var(--hot)">
+      <h2>Штрафи</h2>
+      <p class="sub">Анти-слова шукаються в усьому тексті й віднімаються від суми.</p>
+      <div class="bars" id="anti"></div>
+      <h3>Ролі (+6, одна)</h3>
+      <div class="chips"><span class="chip plain">qa automation</span><span class="chip plain">automation qa</span><span class="chip plain">sdet</span><span class="chip plain">test automation engineer</span><span class="chip plain">automation engineer</span><span class="chip plain">qa engineer</span><span class="chip plain">test engineer</span><span class="chip plain">senior qa</span><span class="chip plain">aqa</span><span class="chip plain">…ще 23</span></div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:16px" aria-label="Приклади">
+    <h2>Приклади підрахунку</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Вакансія</th><th>Keyword-бали</th><th>LLM</th><th>Підсумок</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="title">Senior QA Automation Engineer<br><span class="calc">Playwright, TypeScript, API testing, e2e, CI/CD, Jira</span></td>
+            <td class="n">32<br><span class="calc">6 роль + 5+5+4+4+4+3+1</span></td>
+            <td class="n">82</td>
+            <td><span class="pill ok cut-br">пакет</span></td>
+          </tr>
+          <tr>
+            <td class="title">SDET (Java)<br><span class="calc">Selenium, TestNG, REST, Jenkins · US-based only</span></td>
+            <td class="n">27<br><span class="calc">6 + 5+4+4+3+3+2</span></td>
+            <td class="n">≤ 10</td>
+            <td><span class="pill no cut-br">low · llm</span></td>
+          </tr>
+          <tr>
+            <td class="title">QA Engineer<br><span class="calc">Selenium, manual testing only</span></td>
+            <td class="n">6<br><span class="calc">6 + 4 − 4</span></td>
+            <td class="n">—</td>
+            <td><span class="pill no cut-br">low</span></td>
+          </tr>
+          <tr>
+            <td class="title">Frontend Developer<br><span class="calc">TypeScript, Playwright, Cypress, Jenkins, CI/CD</span></td>
+            <td class="n">19<br><span class="calc">ролі немає: 5+5+3+3+3</span></td>
+            <td class="n">—</td>
+            <td><span class="pill no cut-br">low · no-role</span></td>
+          </tr>
+          <tr>
+            <td class="title">Manual QA (Middle)</td>
+            <td class="n">—</td>
+            <td class="n">—</td>
+            <td><span class="pill no cut-br">excluded</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="more">Приклади вигадані для ілюстрації. Бали пораховано за поточними вагами, оцінки LLM умовні.</p>
+  </section>
+
+  <section style="display:grid;gap:16px" aria-label="Особливі випадки">
+    <h2>Особливі випадки</h2>
+    <div class="notes">
+      <div class="note"><h3>Немає опису</h3><p>Якщо тексту менше 300 символів, оцінка йде за заголовком. Перша відмова не позначає вакансію як seen, наступний прогін перечитає її з описом. Друга відмова вже остаточна.</p></div>
+      <div class="note"><h3>Claude не відповів</h3><p>Виклик повторюється один раз. Якщо знову помилка, пакет пишеться лише за keyword-балами, щоб збіг не загубився.</p></div>
+      <div class="note"><h3>Свій поріг у майданчика</h3><p><code>dou.minScore</code>, <code>djinni.minScore</code>, <code>linkedin.minScore</code> перекривають загальний. Зараз жоден не задано, у всіх 18.</p></div>
+      <div class="note"><h3>Повідомлення в LinkedIn</h3><p>Ті самі бали, але інші пороги: ≥ 8 — relevant, ≥ 4 — maybe. Вони вирішують, чи писати чернетку відповіді.</p></div>
+    </div>
+  </section>
+
+  <footer>Значення з <code>jobs.config.json</code> і <code>skills.json</code> станом на 15 жовтня 2026. Код: <code>lib/keyword-gate.mjs</code>, <code>lib/relevance.mjs</code>, <code>lib/llm.mjs</code>, <code>jobs.mjs</code>.</footer>
+</div>
+</div>
+
+<script>
+const skills = [["typescript",5],["playwright",5],["sdet",5],["test automation",5],["automation",4],["api testing",4],["api automation",4],["webdriverio",4],["selenium",4],["java",4],["e2e",4],["end-to-end",4],["rest",3],["testcafe",3],["cypress",3],["cucumber",3],["bdd",3],["jenkins",3],["ci/cd",3],["microservices",3],["test framework",3]];
+const anti = [["manual qa",-6],["unpaid",-6],["no automation",-5],["manual testing only",-4],["internship",-3],["junior",-2],["relocation required",-1],["on-site only",-1],["php",-1],["ruby on rails",-1]];
+function render(id, rows, neg) {
+  document.getElementById(id).innerHTML = rows.map(([n, v]) =>
+    `<div class="bar${neg ? " neg" : ""}"><span class="name">${n}</span><span class="track"><span class="fill" style="width:${Math.abs(v) / 6 * 100}%"></span></span><span class="v">${v > 0 ? "+" : ""}${v}</span></div>`
+  ).join("");
+}
+render("skills", skills, false);
+render("anti", anti, true);
+</script>
+</body>
+</html>
