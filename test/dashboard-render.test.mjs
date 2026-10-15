@@ -35,7 +35,7 @@ test("scoreBand, langAttr and badge's unknown-source fallback", () => {
   assert.deepEqual([40, 39, 30, 29].map(scoreBand), ["hi", "mid", "mid", "lo"]);
   assert.equal(langAttr("Senior SDET"), "");
   assert.equal(langAttr("Тестувальник автоматизації"), ' lang="uk"');
-  assert.match(badge("dou"), /#c93c33/);
+  assert.match(badge("dou"), /--src:#c93c33/);
   assert.match(badge("constructor"), /#6e7781">constructor</, "unknown source: gray, raw name, no prototype lookup");
   assert.match(badge("<b>"), />&lt;b&gt;</);
 });
@@ -55,7 +55,7 @@ test("renderCard: a flagged package without an LLM score still shows the injecti
   const fm = { source: "dou", title: "SDET", company: "Acme", url: "https://a/1", llm_suspect: "injection (1 marker)" };
   const html = renderCard(toItem({ fm, cover: "" }), 0);
   assert.match(html, /⚠ injection \(1 marker\) — the posting addresses the screener, and the LLM gave no usable verdict/);
-  assert.doesNotMatch(html, /🤖/);
+  assert.doesNotMatch(html, /class="llm"/);
 });
 
 test("renderCard: a url past the server's length limit renders read-only; middle-click marks Viewed", () => {

@@ -75,3 +75,17 @@ test("dashboard.mjs: an alt_links pair with no '|' is dropped instead of rendere
   // first to be a pair of its own — which is exactly when indexOf returns -1.
   assert.doesNotMatch(html, /brokenpairnopip/, "no truncated label, and no link built from the whole string");
 });
+
+test("dashboard.mjs: the Glow toggle is in the header and its choice is re-applied before paint", async (t) => {
+  // Like the theme: the <head> script must restore data-glow before the body
+  // paints, or a reload with glow off flashes the scanlines and the glitch first.
+  const p = makeProject(t, { scripts: ["dashboard.mjs"], packages: {} });
+  await runScript(p, "dashboard.mjs");
+  const html = p.read("applications", "index.html");
+  const head = html.slice(0, html.indexOf("<style>"));
+  assert.match(head, /localStorage\.getItem\("jobGlow"\) === "off"\) document\.documentElement\.dataset\.glow = "off"/);
+  assert.match(html, /<button id="glow" class="theme" type="button" aria-pressed="true" aria-label="Glow effects" onclick="toggleGlow\(\)">Glow<\/button>/);
+  assert.match(html, /function toggleGlow\(\)/, "the client script defines the handler");
+  // Fonts are third-party: no referrer, so Google never sees the local dashboard url.
+  assert.match(head, /<link rel="stylesheet" referrerpolicy="no-referrer" href="https:\/\/fonts\.googleapis\.com\//);
+});

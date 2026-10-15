@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Source of jobs.icns (the Jobs.app Dock icon), "Night City" like the dashboard skin.
+       Drawn on the standard macOS squircle grid (824 px tile, 100 px margin) so macOS 26
+       shows it as is instead of placing it on its grey tile. JOB is set in Tektur from
+       Google Fonts, so render it in a browser that can load the font: screenshot it at
+       1024x1024 with a transparent background, then sips -z each iconset size and
+       iconutil -c icns. -->
+  <style>@import url("https://fonts.googleapis.com/css2?family=Tektur:wght@700&amp;display=block");</style>
+  <defs>
+    <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <clipPath id="lens"><circle cx="460" cy="460" r="212"/></clipPath>
+    <clipPath id="slice"><rect x="0" y="448" width="1024" height="16"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c1438"/><stop offset="1" stop-color="#07060d"/></linearGradient>
+    <radialGradient id="glow-hot" cx=".88" cy=".08" r=".75"><stop offset="0" stop-color="#ff2a6d" stop-opacity=".5"/><stop offset="1" stop-color="#ff2a6d" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glow-cyan" cx=".05" cy="1" r=".6"><stop offset="0" stop-color="#00f0ff" stop-opacity=".28"/><stop offset="1" stop-color="#00f0ff" stop-opacity="0"/></radialGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#00f0ff" stroke-opacity=".1" stroke-width="2"/></pattern>
+    <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="3" fill="#00f0ff" fill-opacity=".12"/></pattern>
+    <filter id="neon" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="neon-s" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#grid)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#glow-hot)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#glow-cyan)"/>
+  </g>
+  <rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="#00f0ff" stroke-opacity=".35" stroke-width="4"/>
+  <g fill="none" stroke="#00f0ff" stroke-opacity=".7" stroke-width="8">
+    <path d="M180 240V180H240"/><path d="M784 180H844V240"/><path d="M180 784V844H240"/>
+  </g>
+  <circle cx="460" cy="460" r="212" fill="#00f0ff" fill-opacity=".07"/>
+  <rect x="240" y="240" width="440" height="440" fill="url(#scan)" clip-path="url(#lens)"/>
+  <g filter="url(#neon)" stroke="#00f0ff" fill="none">
+    <circle cx="460" cy="460" r="230" stroke-width="36"/>
+    <path d="M624 624L690 690" stroke-width="40" stroke-linecap="round"/>
+  </g>
+  <g transform="rotate(45 762 762)" filter="url(#neon-s)">
+    <rect x="672" y="724" width="180" height="76" rx="38" fill="#ff2a6d"/>
+    <rect x="716" y="724" width="12" height="76" fill="#07060d" fill-opacity=".55"/>
+    <rect x="744" y="724" width="12" height="76" fill="#07060d" fill-opacity=".55"/>
+  </g>
+  <g fill="none" stroke="#ff2a6d" stroke-width="22" stroke-linecap="round" filter="url(#neon-s)">
+    <path d="M348 352Q460 290 572 352"/><path d="M348 582Q460 644 572 582"/>
+  </g>
+  <g font-family="Tektur, 'Arial Narrow', sans-serif" font-weight="700" font-size="142" text-anchor="middle" letter-spacing="4">
+    <text x="451" y="510" fill="#ff2a6d" fill-opacity=".9">JOB</text>
+    <text x="469" y="510" fill="#00f0ff" fill-opacity=".9">JOB</text>
+    <text x="460" y="510" fill="#fcee0a">JOB</text>
+    <text x="476" y="510" fill="#fcee0a" clip-path="url(#slice)">JOB</text>
+  </g>
+</svg>

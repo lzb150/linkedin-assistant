@@ -57,7 +57,7 @@ Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
 `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only, which is also what a missing key means). Matches past
 the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
 script must have the `claude` binary on `PATH` (`~/.local/bin`, see
-`run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show a 🤖 badge on the dashboard. The `claude`
+`run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show an **AI** badge on the dashboard. The `claude`
 child process runs hardened — tools disallowed, cwd off the repo — since job
 descriptions are untrusted input and must not be able to read local files.
 The tool blocklist in `lib/llm.mjs` must track the installed CLI: after every
