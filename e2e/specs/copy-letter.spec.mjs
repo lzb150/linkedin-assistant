@@ -2,7 +2,7 @@
 // zero-width spaces buildApplication adds after heading-like #s stripped) and
 // announces the outcome in the card's live region.
 import { test, expect } from "../fixtures/dashboard.mjs";
-import { JOBS } from "../support/jobs.mjs";
+import { JOBS, ZWSP } from "../support/jobs.mjs";
 
 test.describe("Copy letter", () => {
   // One at a time: headed (--headed, --ui) Chromium writes the real system
@@ -11,13 +11,15 @@ test.describe("Copy letter", () => {
   test.use({ permissions: ["clipboard-read", "clipboard-write"] });
 
   test("copies the letter without zero-width spaces and says so", async ({ dashboard }) => {
+    // The fixture must carry one, or the strip below is never exercised.
+    expect(JOBS.acme.cover).toContain(ZWSP);
     const acme = dashboard.card(JOBS.acme.title);
     await acme.openCoverLetter();
 
     await acme.copyLetter();
 
     await expect(acme.copyStatus).toHaveText("Copied");
-    expect(await dashboard.clipboardText()).toBe(JOBS.acme.cover.replace(/​/g, ""));
+    expect(await dashboard.clipboardText()).toBe(JOBS.acme.cover.replaceAll(ZWSP, ""));
     // The announcement clears itself, so the next copy is announced again.
     await expect(acme.copyStatus).toHaveText("");
   });

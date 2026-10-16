@@ -64,10 +64,11 @@ npm run test:e2e                  # dashboard end-to-end tests (Playwright, Chro
 ```
 
 `e2e/` drives the dashboard in a real browser: the New / Viewed tabs, source
-chips, status buttons, notes, Copy letter, the Dark toggle, the offline badge
-and the empty / no-match states. Its global setup builds the page with the real
+chips, status buttons, notes, Copy letter, the Dark toggle, the offline badge,
+the NEW ribbon and the empty / no-match states. Its global setup builds the page with the real
 `dashboard.mjs` from fixture packages (`e2e/support/jobs.mjs`) in a temp dir,
 and every test gets its own `createServer` instance on a random loopback port
-with a fresh `job-state.json`. The suite never talks to the live `:7777` server
+with a fresh `job-state.json`; the browser can reach only that server. The
+suite never talks to the live `:7777` server
 and never reads or writes your `job-state.json` or `applications/`. It lives
 outside `test/` because bare `node --test` runs every file there.

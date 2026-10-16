@@ -26,10 +26,12 @@ export const test = base.extend({
     await server.remove();
   },
 
-  // Loopback only. Google Fonts and the fixture job hosts are external: fonts
-  // are aborted (the page falls back to system fonts), job pages get the stub.
-  context: async ({ context }, use) => {
-    await context.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) =>
+  // Only this test's own server. Everything else (Google Fonts, the fixture
+  // job hosts, any other 127.0.0.1 port such as the live :7777) never leaves
+  // the browser: fonts are aborted (the page falls back to system fonts), a
+  // page load gets the stub.
+  context: async ({ context, server }, use) => {
+    await context.route((url) => url.origin !== server.base, (route) =>
       route.request().resourceType() === "document"
         ? route.fulfill({ contentType: "text/html", body: JOB_STUB })
         : route.abort());
