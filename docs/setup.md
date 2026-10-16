@@ -65,7 +65,8 @@ of losing them. Anything still unsent after two days is dropped. The log is
 
 What leaves the Mac is the alert text: job title, company and LLM verdict, the
 recruiter's name and the start of their message. Nothing else does. Like every
-run, the alerts need the Mac awake.
+run, the alerts need the Mac awake; to keep a Mac on the charger awake with the
+lid closed, see [below](#keep-the-mac-awake-with-the-lid-closed-optional).
 
 ## Schedule it (launchd)
 
@@ -111,3 +112,37 @@ fully awake it scrapes LinkedIn only and removes the marker. On AC power nothing
 is deferred. A LinkedIn run that finds the browser profile or the run lock busy
 (an overlapping `check.mjs` or `jobs.mjs`) leaves the same marker, so LinkedIn
 is retried within 15 minutes instead of at the next 3-hour slot.
+
+## Keep the Mac awake with the lid closed (optional)
+
+Runs and alerts stop while the Mac sleeps, and a MacBook sleeps as soon as its
+lid closes. If the Mac stays home on the charger while you are out, the
+`com.example.lid-awake.plist.example` LaunchDaemon keeps it working. Every 10
+seconds it checks the power source:
+
+| Power   | What it does |
+|---------|--------------|
+| Charger | `pmset -a disablesleep 1`: the Mac does not sleep, lid closed included. The screen still turns off. |
+| Battery | `pmset -a disablesleep 0`: normal sleep. If the lid is already closed, `pmset sleepnow`, so an unplugged Mac in a bag does not stay awake. |
+
+It is a system daemon (it runs `pmset` as root), so installing it asks for your
+Mac password. Nothing in it needs editing:
+
+```bash
+sudo install -m 644 -o root -g wheel com.example.lid-awake.plist.example /Library/LaunchDaemons/com.example.lid-awake.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.example.lid-awake.plist
+pmset -g | grep SleepDisabled   # 1 while on the charger
+```
+
+To remove it and turn normal sleep back on:
+
+```bash
+sudo launchctl bootout system/com.example.lid-awake
+sudo rm /Library/LaunchDaemons/com.example.lid-awake.plist
+sudo pmset -a disablesleep 0
+```
+
+Worth knowing:
+- On the charger the Mac does not sleep at night either; only the screen turns off.
+- An unplugged Mac with a closed lid stays awake for up to 10 seconds.
+- Keep a closed Mac on the charger on a hard surface, not a blanket.

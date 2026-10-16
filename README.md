@@ -62,7 +62,9 @@ by a daily check.
 hourly and LinkedIn every 3 hours. A run posts one macOS banner, and only when
 it found something or something broke. Optionally the same alerts reach your
 phone through your own Telegram bot, each with a link to the vacancy or thread
-([setup](docs/setup.md#phone-alerts-telegram-optional)).
+([setup](docs/setup.md#phone-alerts-telegram-optional)). An optional
+LaunchDaemon keeps a Mac on the charger awake with the lid closed, so all of
+this goes on while you are out ([how](docs/setup.md#keep-the-mac-awake-with-the-lid-closed-optional)).
 
 ## Key principles
 - 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all (the optional Telegram alerts are the one exception: their text goes to your own bot)
