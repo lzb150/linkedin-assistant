@@ -3,6 +3,7 @@
 // Each test serves a fixture build through its own state server on a random
 // loopback port (e2e/fixtures/dashboard.mjs) — never the live :7777 instance.
 // First run on a machine: npx playwright install chromium
+// CI runs it in the e2e job of .github/workflows/test.yml (Ubuntu, Node 20 + 24).
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
