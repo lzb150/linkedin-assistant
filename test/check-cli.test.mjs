@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
-import { makeProject, spawnScript, waitFor, QUIET_BINS } from "./helpers/e2e.mjs";
+import { makeProject, spawnScript, waitFor, QUIET_BINS, startBotApi, waitForBotText } from "./helpers/e2e.mjs";
 import { messageKey } from "../lib/inbox.mjs";
 
 const quiet = QUIET_BINS;
@@ -184,6 +184,16 @@ test("check.mjs: a new unread message posts a banner with the sender and the sta
   const p = project(t, scanningPlaywright([JOB, "Sure, sending the details"], { items: [{ incoming: true, text: JOB }, { incoming: false, text: "Sure, sending the details" }] }), { bins: {} });
   await spawnScript(p, "check.mjs").done;
   assert.match(await waitFor(p.path("notify.log"), /Jane Recruiter/), /Jane Recruiter: Hi! We have a Senior QA/, "the banner quotes their message, not your reply");
+});
+
+test("check.mjs: with telegram.json set up, the new-message alert reaches Telegram with a link to the thread", async (t) => {
+  const api = await startBotApi(t);
+  const p = project(t, scanningPlaywright([JOB]));
+  writeFileSync(p.path("telegram.json"), JSON.stringify({ token: "1:test", chatId: 7, apiBase: api.base }));
+  await spawnScript(p, "check.mjs").done;
+  const text = await waitForBotText(api, /Jane Recruiter/);
+  assert.match(text, /^<b>LinkedIn<\/b>\nJane Recruiter: Hi! We have a Senior QA/);
+  assert.match(text, /\n<a href="https:\/\/www\.linkedin\.com\/messaging\/thread\/2-abc\/">Open<\/a>$/);
 });
 
 test("check.mjs: a thread that could not be read still posts a banner — the unread filter never lists it again", async (t) => {

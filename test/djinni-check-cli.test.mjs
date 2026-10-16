@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
-import { makeProject, spawnScript, QUIET_BINS } from "./helpers/e2e.mjs";
+import { makeProject, spawnScript, QUIET_BINS, startBotApi, waitForBotText } from "./helpers/e2e.mjs";
 
 const quiet = QUIET_BINS;
 const SEEN = ["111", "222"];
@@ -82,4 +82,18 @@ test("djinni-check.mjs: a busy profile is a benign overlap — exit 0, no banner
   assert.match(out, /Skipped \(profile busy\)/);
   assert.ok(!existsSync(p.path("notify.log")), "no banner for a busy profile");
   assert.ok(!existsSync(p.path("djinni-notify-state.json")), "badge state not rewritten");
+});
+
+test("djinni-check.mjs: with telegram.json set up, new messages reach Telegram linked to the thread, or to the unread list when several", async (t) => {
+  const api = await startBotApi(t);
+  const telegram = JSON.stringify({ token: "1:test", chatId: 7, apiBase: api.base });
+  const one = project(t, playwrightWith([{ id: "333", label: "Acme HR" }]));
+  writeFileSync(one.path("telegram.json"), telegram);
+  await spawnScript(one, "djinni-check.mjs").done;
+  assert.match(await waitForBotText(api, /Acme HR/), /^<b>Djinni<\/b>\nNew message: Acme HR\n<a href="https:\/\/djinni\.co\/my\/inbox\/333\/">Open<\/a>$/);
+
+  const two = project(t, playwrightWith([{ id: "333", label: "Acme HR" }, { id: "444", label: "Beta" }]));
+  writeFileSync(two.path("telegram.json"), telegram);
+  await spawnScript(two, "djinni-check.mjs").done;
+  assert.match(await waitForBotText(api, /2 new messages/), /\n<a href="https:\/\/djinni\.co\/my\/inbox\?bucket=unread">Open<\/a>$/);
 });

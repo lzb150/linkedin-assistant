@@ -45,6 +45,28 @@ node jobs.mjs        # one pass over every enabled source
 node dashboard.mjs   # build applications/index.html and look at what it found
 ```
 
+## Phone alerts (Telegram, optional)
+
+Banners only reach you at the Mac. To get the same alerts on your phone, connect
+a Telegram bot of your own. Each new package arrives as its own message linked
+to the vacancy, each new LinkedIn message links to its thread, and Djinni
+messages, an expired session or a broken source come through too.
+
+1. In Telegram, open **@BotFather**, send `/newbot` and pick a name.
+2. Send your new bot any message (a bot cannot write to you first).
+3. Run `node telegram-setup.mjs <token from BotFather>`. It finds your chat,
+   sends a test message and writes `telegram.json` (gitignored, readable by you
+   alone).
+
+Alerts are queued in `telegram-outbox/` and posted by a background process, so
+a Mac that wakes up without network yet sends them a few minutes later instead
+of losing them. Anything still unsent after two days is dropped. The log is
+`logs/telegram_YYYYMMDD.log`; delete `telegram.json` to turn the alerts off.
+
+What leaves the Mac is the alert text: job title, company and LLM verdict, the
+recruiter's name and the start of their message. Nothing else does. Like every
+run, the alerts need the Mac awake.
+
 ## Schedule it (launchd)
 
 What the daemons run, and when:

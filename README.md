@@ -60,10 +60,12 @@ by a daily check.
 
 **`04` Runs on its own** — launchd agents check the inboxes and DOU/Djinni
 hourly and LinkedIn every 3 hours. A run posts one macOS banner, and only when
-it found something or something broke.
+it found something or something broke. Optionally the same alerts reach your
+phone through your own Telegram bot, each with a link to the vacancy or thread
+([setup](docs/setup.md#phone-alerts-telegram-optional)).
 
 ## Key principles
-- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all
+- 🔒 **Security:** your password is never stored (you log in once yourself), everything is local; no API keys at all (the optional Telegram alerts are the one exception: their text goes to your own bot)
 - 🚫 **No auto-send:** the scripts only prepare — you review and apply manually
 - ⚖️ **Minimal risk:** DOU via legal RSS, LinkedIn scraping modest and toggleable
 

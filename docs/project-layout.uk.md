@@ -14,6 +14,7 @@
 ├── state-server.mjs   локальний HTTP-сервер (127.0.0.1:7777) для збереження job-state
 ├── report.mjs         тижневий звіт (launchd-завдання в понеділок або вручну)
 ├── make-skills.mjs    згенерувати skills.json з resume.txt (одноразове налаштування)
+├── telegram-setup.mjs одноразове налаштування необов'язкових сповіщень у Telegram → telegram.json
 ├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → відкрити браузер
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/LinkedIn)
@@ -41,6 +42,8 @@
 | `report.mjs`          | Тижневий звіт: запуски, пакети за джерелами, вердикти LLM, вихід джерел. |
 | `closed-check.mjs`    | Опитати New/Viewed адреси DOU, Djinni і LinkedIn; позначити неактивні вакансії Closed. |
 | `open-dashboard.sh`   | Помічник кліку в Dock: перегенерувати дашборд, відкрити браузер. |
+| `telegram-setup.mjs`  | Одноразове налаштування необов'язкових сповіщень у Telegram: знаходить ваш чат, записує `telegram.json`. |
+| `lib/telegram.mjs`    | Копія сповіщень у Telegram: формат повідомлень, черга `telegram-outbox/`, відправник. |
 | `lib/relevance.mjs`   | Локальне оцінювання (без API-ключа, нічого не покидає машину). |
 | `lib/dedup.mjs`       | Склейка між джерелами: ключ ідентичності + згортання дублікатів. |
 | `lib/draft.mjs`       | Збирає markdown чернетки відповіді.                       |

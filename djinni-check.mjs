@@ -106,7 +106,8 @@ async function scan(page, ctx) {
   }
 
   if (fresh.length) {
-    notify("Djinni", message);
+    // The phone copy opens the one new thread, or the unread list for several.
+    notify("Djinni", message, { link: fresh.length === 1 ? `https://djinni.co/my/inbox/${fresh[0].id}/` : UNREAD_URL });
     log(`notify: banner for ${fresh.length} new thread(s)`);
   }
 
