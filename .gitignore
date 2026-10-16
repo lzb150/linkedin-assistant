@@ -81,3 +81,7 @@ run-stats.jsonl
 
 # LinkedIn deferred by a DarkWake run, cleared by the catch-up agent (jobs.mjs)
 linkedin-pending
+
+# Playwright e2e output (npm run test:e2e)
+test-results/
+playwright-report/
