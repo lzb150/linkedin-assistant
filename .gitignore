@@ -85,3 +85,8 @@ linkedin-pending
 # Playwright e2e output (npm run test:e2e)
 test-results/
 playwright-report/
+
+# Telegram copy of the alerts (lib/telegram.mjs): bot token + chat id, the send queue and its lock
+telegram.json
+telegram-outbox/
+telegram-outbox.lock/

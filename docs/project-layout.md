@@ -14,6 +14,7 @@
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
 ├── make-skills.mjs    generate skills.json from resume.txt (one-time setup)
+├── telegram-setup.mjs one-time setup of the optional Telegram alerts → telegram.json
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
@@ -41,6 +42,8 @@
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, open browser. |
+| `telegram-setup.mjs`  | One-time setup of the optional Telegram alerts: finds your chat, writes `telegram.json`. |
+| `lib/telegram.mjs`    | Telegram copy of the alerts: message format, `telegram-outbox/` queue, sender. |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
 | `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |

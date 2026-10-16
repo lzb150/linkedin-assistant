@@ -31,6 +31,8 @@ import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { pool } from "./lib/sources/html.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
+import { queueTelegram, jobMessage, alertMessage } from "./lib/telegram.mjs";
+import { extractSalary } from "./lib/salary.mjs";
 import { launchBrowser, acquireProfileLock, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
@@ -149,8 +151,8 @@ for (const [section, known] of [["llm", KNOWN_LLM], ...Object.entries(KNOWN_SOUR
   for (const k of unknownIn(config[section], known)) log(`⚠ config: unknown ${section}.${k} — ignored (misspelt? known keys: ${[...known].join(", ")})`);
 }
 
-const notify = (msg) =>
-  banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
+const notify = (msg, opts) =>
+  banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready", opts);
 
 // jobs-seen.json stores identity keys (normalize(company)+title) with a
 // last-seen timestamp (90-day TTL), so a vacancy is "seen" regardless of
@@ -501,6 +503,13 @@ for (const m of toScore) {
   recordOutcome(summary, job.source, "written");
   recordTop(summary, scored.score, lbl);
   writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label: lbl });
+  // The phone gets each package as its own message, linked to the vacancy
+  // (a no-op unless telegram.json is set up).
+  queueTelegram(jobMessage({
+    title: job.title, company: job.company, location: job.location, source: job.source, url: job.url,
+    salary: extractSalary((job.text || "").slice(0, 5000)),
+    score: scored.score, llmScore: llm ? llm.score : null, why: llm?.why, redFlags: llm?.red_flags,
+  }));
   stamp(job, id);
   // Persist after every WRITTEN package: a crash mid-run must not forget one
   // (the next run would re-score and re-pay the LLM for it). Each save
@@ -553,8 +562,10 @@ try {
 }
 
 // One banner per run: breakage alerts + the new packages. Silent when neither.
+// Telegram already has every package as its own message, so it gets only the alerts.
 const bannerText = formatRunBanner(writtenList, alerts);
-if (bannerText) notify(bannerText);
+if (bannerText) notify(bannerText, { toTelegram: false });
+if (alerts.length) queueTelegram(alertMessage("Job assistant", alerts.join("\n")));
 // launchd must see a failed run as failed (the convention djinni-check.mjs:144
 // already follows). "Failed" is only "every source we tried threw" — a quiet
 // run that gathered nothing because there was nothing new stays 0.

@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync, copyFileSync, cpSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import { spawn } from "node:child_process";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "../../state-server.mjs";
 
 // Remove a throwaway dir. The fire-and-forget notify children keep writing for
@@ -50,6 +51,38 @@ export const SKILLS_FIXTURE = readFileSync(join(ROOT, "test", "fixtures", "skill
 // A minimal application package (frontmatter + heading).
 export const pkg = ({ source = "dou", title = "SDET", company = "Acme", url, generated = "2026-09-01T00:00:00Z" }) =>
   `---\nsource: ${source}\ntitle: ${title}\ncompany: ${company}\nurl: ${url}\ngenerated: ${generated}\n---\n# ${title}\n`;
+
+// A local server playing the Telegram Bot API, closed after the test.
+// `reply(n, path)` answers the n-th request (1-based) with [status, json];
+// `calls` collects { path, type, body } per request.
+export async function startBotApi(t, reply = () => [200, { ok: true }]) {
+  const calls = [];
+  const srv = createHttpServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => {
+      calls.push({ path: req.url, type: req.headers["content-type"], body: JSON.parse(body || "{}") });
+      const [status, json] = reply(calls.length, req.url);
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify(json));
+    });
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  return { calls, base: `http://127.0.0.1:${srv.address().port}` };
+}
+
+// Wait for a Bot API message whose text matches: the detached sender posts it
+// after the script has exited. Returns that text, or every text seen so far
+// (for the failing assertion's message) once `ms` runs out.
+export async function waitForBotText(api, re, ms = 10_000) {
+  for (const t0 = Date.now(); Date.now() - t0 < ms;) {
+    const hit = api.calls.find((c) => re.test(c.body.text || ""));
+    if (hit) return hit.body.text;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return api.calls.map((c) => c.body.text).join("\n---\n");
+}
 
 // Fake notifiers that log nothing, for tests that do not assert on banners.
 export const QUIET_BINS = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };

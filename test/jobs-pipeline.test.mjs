@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, existsSync, readFileSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { makeProject, runScript, waitFor, pkg, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
+import { makeProject, runScript, waitFor, pkg, SKILLS_FIXTURE, startBotApi } from "./helpers/e2e.mjs";
 
 const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map((i) =>
   `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link><description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
@@ -36,7 +36,7 @@ async function serveFeed(t, body) {
 
 // `llm` overrides the llm config block, `packages` pre-existing applications/*.md,
 // `claude` replaces the fake CLI below.
-function setupProject(t, feedUrl, { llm = {}, packages, claude } = {}) {
+function setupProject(t, feedUrl, { llm = {}, packages, claude, files = {} } = {}) {
   return makeProject(t, {
     scripts: ["jobs.mjs", "dashboard.mjs"],
     packages,
@@ -49,6 +49,7 @@ function setupProject(t, feedUrl, { llm = {}, packages, claude } = {}) {
         dou: { enabled: true, feeds: [feedUrl] },
         djinni: { enabled: false }, linkedin: { enabled: false },
       }),
+      ...files,
     },
     // Fake `claude` scores by company name and logs how it was called into the
     // project dir (the parent of bin/) — cwd must be OFF the project, it sees
@@ -115,6 +116,22 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.match(out2, /Considered 0 new, wrote 0 application package/);
   assert.equal(readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).length, 1);
   assert.equal((p.read("claude.log").match(/^args=/gm) || []).length, 2, "no LLM calls on the second run");
+});
+
+test("jobs.mjs: with telegram.json set up, each new package reaches Telegram as its own linked message", async (t) => {
+  const api = await startBotApi(t);
+  const telegram = JSON.stringify({ token: "1:test", chatId: 7, apiBase: api.base });
+  const p = setupProject(t, await serveFeed(t, () => FEED), { files: { "telegram.json": telegram } });
+  await runJobs(p);
+  // The detached sender posts after the run has exited: wait for an empty outbox.
+  const queued = () => readdirSync(p.path("telegram-outbox")).filter((f) => f.endsWith(".json")).length;
+  for (const t0 = Date.now(); queued() && Date.now() - t0 < 10_000;) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(queued(), 0, "every queued message was sent and removed");
+  const texts = api.calls.map((c) => c.body.text);
+  assert.equal(texts.length, 1, `one message for the one package; the "1 new" run banner stays on the Mac (got: ${texts.join(" | ")})`);
+  assert.match(texts[0], /^<a href="https:\/\/jobs\.dou\.ua\/companies\/acme\/vacancies\/1\/"><b>Senior SDET \(Playwright\)<\/b><\/a>$/m);
+  assert.match(texts[0], /^⭐ 85 — great fit$/m);
+  assert.equal(api.calls[0].body.chat_id, 7);
 });
 
 const mdFiles = (p) => readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));

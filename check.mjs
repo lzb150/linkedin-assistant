@@ -233,7 +233,7 @@ async function scan(page, ctx, signal) {
     // so a thread we could not read would otherwise vanish with a log line.
     if (!SCAN_ALL) {
       remember({ id: threadId, label: name });   // before the banner: a click on it reads this state
-      notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`);
+      notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`, { link: url });
     }
     // Past the run deadline finish() has already saved seen.json: stop before a
     // draft this run could not record (a SCAN_ALL rerun would draft it again
