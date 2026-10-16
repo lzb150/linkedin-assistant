@@ -5,7 +5,7 @@ import { COVER_START, COVER_END } from "../../lib/frontmatter.mjs";
 
 // buildApplication puts a zero-width space after the # of a heading-like line
 // so the letter cannot read as Markdown; Copy letter must strip it again.
-const ZWSP = "​";
+export const ZWSP = "\u200B";
 
 export const JOBS = {
   acme: {
