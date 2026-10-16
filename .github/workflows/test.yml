@@ -103,3 +103,37 @@ jobs:
           # (a missing framework, a bad -target) would have shipped green.
           xcrun swiftc -O -framework Cocoa -target "$(uname -m)-apple-macos13.0" -o "$RUNNER_TEMP/jobs" jobs-app.swift
           plutil -lint *.plist.example
+
+  # The dashboard in a real browser (npm run test:e2e, e2e/). Its own job: the
+  # unit job above never installs a browser, and macOS minutes would buy
+  # nothing here — the page is the same HTML on every OS. Node 20 + 24 because
+  # each test runs its own state server on the runner's Node.
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    runs-on: ubuntu-latest
+    # The suite takes ~10 s; the rest is npm ci and the Chromium download.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # The build pinned in package-lock.json, plus the system libraries it needs.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      # Report and traces (trace: retain-on-failure) for a red run.
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-node${{ matrix.node }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

@@ -71,4 +71,5 @@ and every test gets its own `createServer` instance on a random loopback port
 with a fresh `job-state.json`; the browser can reach only that server. The
 suite never talks to the live `:7777` server
 and never reads or writes your `job-state.json` or `applications/`. It lives
-outside `test/` because bare `node --test` runs every file there.
+outside `test/` because bare `node --test` runs every file there. CI runs it
+in its own `e2e` job (Ubuntu, Node 20 and 24).
