@@ -18,6 +18,8 @@
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/LinkedIn sources)
 ├── docs/              these pages, their headers/ bars + README images (HTML sources and render.mjs in docs/src/)
+├── test/              unit + black-box CLI tests (`npm test`, no browser)
+├── e2e/               dashboard end-to-end tests in a real browser (`npm run test:e2e`)
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── job-state.json     per-card state (status, notes, last-visit) — gitignored
@@ -48,3 +50,21 @@
 | `drafts/`             | Output — review and send these manually.                  |
 | `seen.json`           | Tracks processed messages (thread + newest message), so a follow-up in a known thread is processed again. |
 | `jobs-seen.json`      | Tracks processed vacancies by identity (no duplicate packages, across sources). |
+
+## Tests
+
+```bash
+npm test                          # unit + black-box CLI tests (node --test, no browser)
+npm run lint                      # oxlint
+npx playwright install chromium   # once per machine, for the e2e suite
+npm run test:e2e                  # dashboard end-to-end tests (Playwright, Chromium)
+```
+
+`e2e/` drives the dashboard in a real browser: the New / Viewed tabs, source
+chips, status buttons, notes, Copy letter, the Dark toggle, the offline badge
+and the empty / no-match states. Its global setup builds the page with the real
+`dashboard.mjs` from fixture packages (`e2e/support/jobs.mjs`) in a temp dir,
+and every test gets its own `createServer` instance on a random loopback port
+with a fresh `job-state.json`. The suite never talks to the live `:7777` server
+and never reads or writes your `job-state.json` or `applications/`. It lives
+outside `test/` because bare `node --test` runs every file there.

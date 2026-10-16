@@ -10,7 +10,8 @@
     "check": "node check.mjs",
     "jobs": "node jobs.mjs",
     "test": "node --test",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "test:e2e": "playwright test"
   },
   "engines": {
     "node": ">=20"
@@ -19,6 +20,7 @@
     "playwright": "1.63.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "oxlint": "1.16.0"
   }
 }
