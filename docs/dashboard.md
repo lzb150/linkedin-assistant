@@ -19,6 +19,13 @@ letter marks the card Viewed automatically.
 by identity** (`company + title`) at render time, keeping the most recently
 generated one. You see each vacancy once even when older packages linger on disk.
 
+On Himalayas and Telegram-channel cards, a green **✓ UKRAINE LISTED** next to the
+location means the employer named your country itself (`Remote · Poland,
+Ukraine`), not just the whole world. Those roles were picked for your country,
+so they are a better bet than a worldwide one. The country is the first
+`candidateCountry` entry in `jobs.config.json`. Djinni and DOU cards are not
+marked: naming Ukraine is the norm there.
+
 ### State server, statuses & filters
 
 **State server (`state-server.mjs`)** replaces in-browser localStorage as the

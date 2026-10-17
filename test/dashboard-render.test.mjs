@@ -67,6 +67,16 @@ test("renderCard: a url past the server's length limit renders read-only; middle
   assert.match(live, /onauxclick="if\(event\.button===1\) autoStatus\(/);
 });
 
+test("renderCard: a remote-board card whose countries name the candidate's country is marked; worldwide and Djinni are not", () => {
+  const card = (source, location, opts) => renderCard(toItem({ fm: { source, title: "SDET", url: "https://a/1", location }, cover: "" }), 0, opts);
+  assert.match(card("himalayas", "Remote · Poland, Ukraine"), /<span class="listed"><span aria-hidden="true">✓ <\/span>Ukraine listed<\/span>/);
+  assert.match(card("tgchannels", "Remote · Europe or Ukraine"), /Ukraine listed/);
+  assert.doesNotMatch(card("himalayas", "Remote · Worldwide"), /class="listed"/);
+  assert.doesNotMatch(card("djinni", "Тільки віддалено · Україна · 2 роки досвіду"), /class="listed"/, "on Djinni it is the norm, not a signal");
+  assert.match(card("himalayas", "Remote · Poland", { countries: ["Poland", "Польща"] }), /Poland listed/, "label from the first candidateCountry entry");
+  assert.match([toItem({ fm: { source: "himalayas", title: "SDET", url: "https://a/1", location: "Remote · Ukraine" }, cover: "" })].map(renderCard)[0], /Ukraine listed/, "map(renderCard) passes the array as the third argument: default countries");
+});
+
 test("sourceChips lists each source on disk once, sorted, with its label", () => {
   const items = [{ source: "linkedin" }, { source: "dou" }, { source: "linkedin" }, { source: "newboard" }];
   const html = sourceChips(items);

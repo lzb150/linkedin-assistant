@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isSearchPhrase, isChannelName, isLinkedInSearch, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isSearchPhrase, isChannelName, isLinkedInSearch, namesCountry, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -40,6 +40,13 @@ test("filterByLocation: Telegram channel posts are judged by their Location like
     { title: "E", source: "tgchannels", location: "Remote" },   // no Location field: nothing to judge, the LLM gate decides
   ];
   assert.deepEqual(filterByLocation(jobs, ["poland"]).map((j) => j.title), ["A", "B", "E"]);
+});
+
+test("namesCountry: the countries segment names the candidate's country itself, not just the whole world", () => {
+  for (const yes of ["Remote · Ukraine", "Remote · Poland, Ukraine", "Remote · Europe or Ukraine", "Тільки віддалено · Україна · 2 роки досвіду"]) assert.equal(namesCountry(yes), true, yes);
+  for (const no of ["Remote · Worldwide", "Remote · Europe", "Remote", "", undefined, "Part-time · 3 роки досвіду", "Тільки віддалено · Весь світ"]) assert.equal(namesCountry(no), false, String(no));
+  assert.equal(namesCountry("Remote · Poland", ["Poland", "Польща"]), true, "candidateCountry from the config");
+  assert.equal(namesCountry("Remote · Poland", []), false, "an empty list falls back to the default, not to 'matches everything'");
 });
 
 test("isChannelName: a public channel username, with or without @", () => {

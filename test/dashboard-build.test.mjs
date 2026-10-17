@@ -56,6 +56,21 @@ test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascr
   assert.equal((html.match(/ data-url="/g) || []).length, 2, "only the http(s) cards are live");
 });
 
+test("dashboard.mjs: the listed mark follows candidateCountry from jobs.config.json", async (t) => {
+  const p = makeProject(t, {
+    scripts: ["dashboard.mjs"],
+    files: { "jobs.config.json": JSON.stringify({ candidateCountry: ["Poland", "Польща"] }) },
+    packages: {
+      "pl.md": fm({ source: "himalayas", title: "SDET", company: "Acme", url: "https://h.example/1", location: "Remote · Poland", generated: "2026-09-01T00:00:00Z", score: 40 }),
+      "ua.md": fm({ source: "himalayas", title: "QA", company: "Beta", url: "https://h.example/2", location: "Remote · Ukraine", generated: "2026-09-01T00:00:00Z", score: 40 }),
+    },
+  });
+  await runScript(p, "dashboard.mjs");
+  const html = p.read("applications", "index.html");
+  assert.equal((html.match(/class="listed"/g) || []).length, 1);
+  assert.match(html, /Poland listed/);
+});
+
 test("dashboard.mjs: an alt_links pair with no '|' is dropped instead of rendered mangled", async (t) => {
   // indexOf("|") returns -1 on a hand-edited pair, which labelled the link with
   // the pair minus its last character and pointed it at the whole string.

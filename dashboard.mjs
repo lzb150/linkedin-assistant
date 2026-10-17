@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { readPackages } from "./lib/packages.mjs";
 import { parse, toItem, collapseItems, renderCard, sourceChips } from "./lib/dashboard-render.mjs";
+import { candidateCountryList } from "./lib/filters.mjs";
 import { execFile } from "node:child_process";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +34,13 @@ const items = collapseItems(readPackages(APPS, { warn, raw: true })
   .map(({ _raw }) => parse(_raw))
   .filter(Boolean)
   .map(toItem));
-const cards = items.map(renderCard).join("\n");
+// Only candidateCountry is read, for the "<country> listed" mark on remote-board
+// cards. A missing or broken config is jobs.mjs's to report; here it just means
+// the default country.
+let candidateCountry;
+try { candidateCountry = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8")).candidateCountry; } catch {}
+const countries = candidateCountryList(candidateCountry);
+const cards = items.map((it, i) => renderCard(it, i, { countries })).join("\n");
 
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -181,6 +188,8 @@ const html = `<!doctype html>
   }
   .lang { text-transform: uppercase; font: 11px var(--font-mono); color: var(--muted); }
   .salary { color: var(--success-text); font: 600 12.5px var(--font-mono); white-space: nowrap; }
+  /* The employer named the candidate's country itself (remote boards only). */
+  .listed { color: var(--success-text); font: 600 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
   .actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 132px; }
   .apply {
     white-space: nowrap; text-align: center; text-decoration: none; padding: 10px 14px;
