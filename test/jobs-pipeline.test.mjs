@@ -163,6 +163,34 @@ test("jobs.mjs: Himalayas is searched for the candidate's country and its jobs r
   assert.deepEqual(p.json("source-health.json").himalayas, [2]);
 });
 
+test("jobs.mjs: a Telegram channel's job posts reach the same gates; a post closed to the candidate's country is dropped", async (t) => {
+  const post = (id, title, company, location) => `<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="remote_qa_jobs/${id}">` +
+    `<div class="tgme_widget_message_text js-message_text"><b>Company name</b>: ${company}<br/><b>Title</b>: ${title}<br/>` +
+    `<b>Job description</b>: ${AQA}<br/><b>Location</b>: ${location}<br/><b>Anywhere</b>: No<br/><b>Remote</b>: Yes</div></div></div>`;
+  const asked = [];
+  const srv = createServer((req, res) => {
+    asked.push(req.url);
+    res.setHeader("content-type", "text/html");
+    res.end(`<section class="tgme_channel_history">${post(10, "QA Automation Engineer", "Yankee", "United States")}${post(11, "Senior SDET (Playwright)", "Acme", "Ukraine, Poland")}</section>`);
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const p = setupProject(t, await serveFeed(t, () => rss([])));
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.tgchannels = { enabled: true, channels: ["@remote_qa_jobs"] };
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+
+  const out = await runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf", TGCHANNELS_BASE: `http://127.0.0.1:${srv.address().port}/s/` });
+  assert.deepEqual(asked, ["/s/remote_qa_jobs"]);
+  assert.match(out, /Telegram channel ok \(2 jobs over 1 page\): @remote_qa_jobs/);
+  assert.match(out, /· location \[Remote · United States\] tgchannels: QA Automation Engineer/, "a job closed to the candidate's country is dropped");
+  assert.match(out, /✓ MATCH \[\d+ \/ llm 85\] tgchannels: Senior SDET \(Playwright\) @ Acme/);
+  const [file] = mdFiles(p);
+  assert.match(p.read("applications", file), /^source: tgchannels$/m);
+  assert.match(p.read("applications", file), /^url: https:\/\/t\.me\/remote_qa_jobs\/11$/m, "no apply link: the post itself");
+  assert.deepEqual(p.json("source-health.json").tgchannels, [2]);
+});
+
 const mdFiles = (p) => readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));
 const claudeCalls = (p) => (existsSync(p.path("claude.log")) ? p.read("claude.log").match(/^args=/gm) || [] : []).length;
 const ACME = { title: "Senior SDET (Playwright) в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/1/", desc: AQA };

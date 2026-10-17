@@ -56,6 +56,13 @@
     "searches": ["QA automation", "SDET", "test automation", "Playwright"]
   },
 
+  "tgchannels": {
+    "_comment": "Public Telegram job channels, read through their web preview (https://t.me/s/<channel>) — no login, no bot, no browser. Only channels have a preview: a group (members, not subscribers) is reported and skipped. Posts must use the 'Field: value' template @remote_qa_jobs uses (Title, Company name, Location, Anywhere, …); a post without a Title is skipped. Location / Anywhere decide eligibility like Djinni's countries: the candidate's country or the whole world. fullDescription (default true) fetches each new job's apply link for the full JSON-LD description — the post's own summary is too short for the LLM gate. pages (default 1): pages of ~20 posts read per channel. Unrelated to telegram.json, which sends your own alerts to your phone.",
+    "enabled": true,
+    "fullDescription": true,
+    "channels": ["remote_qa_jobs"]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,

@@ -17,7 +17,7 @@
 ├── telegram-setup.mjs one-time setup of the optional Telegram alerts → telegram.json
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
-├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Himalayas/LinkedIn sources)
+├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Himalayas/Telegram/LinkedIn sources)
 ├── docs/              these pages, their headers/ bars + README images (HTML sources and render.mjs in docs/src/)
 ├── test/              unit + black-box CLI tests (`npm test`, no browser)
 ├── e2e/               dashboard end-to-end tests in a real browser (`npm run test:e2e`)

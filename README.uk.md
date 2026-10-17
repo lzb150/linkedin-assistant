@@ -4,7 +4,7 @@
 
 <br>
 
-[![Джерела](https://img.shields.io/badge/%D0%B4%D0%B6%D0%B5%D1%80%D0%B5%D0%BB%D0%B0-DOU_%C2%B7_Djinni_%C2%B7_Himalayas_%C2%B7_LinkedIn-00f0ff?style=for-the-badge&labelColor=0b0a16)](docs/job-discovery.uk.md)
+[![Джерела](https://img.shields.io/badge/%D0%B4%D0%B6%D0%B5%D1%80%D0%B5%D0%BB%D0%B0-DOU_%C2%B7_Djinni_%C2%B7_Himalayas_%C2%B7_Telegram_%C2%B7_LinkedIn-00f0ff?style=for-the-badge&labelColor=0b0a16)](docs/job-discovery.uk.md)
 [![Дані](https://img.shields.io/badge/%D0%B4%D0%B0%D0%BD%D1%96-%D0%BB%D0%B8%D1%88%D0%B5_%D0%BB%D0%BE%D0%BA%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE-05ffa1?style=for-the-badge&labelColor=0b0a16)](#ключові-принципи)
 [![Автовідправка](https://img.shields.io/badge/%D0%B0%D0%B2%D1%82%D0%BE%D0%B2%D1%96%D0%B4%D0%BF%D1%80%D0%B0%D0%B2%D0%BA%D0%B0-%D0%BD%D1%96%D0%BA%D0%BE%D0%BB%D0%B8-ff2a6d?style=for-the-badge&labelColor=0b0a16)](#ключові-принципи)
 [![macOS](https://img.shields.io/badge/macOS-launchd-fcee0a?style=for-the-badge&labelColor=0b0a16)](docs/setup.uk.md#розклад-launchd)
@@ -19,7 +19,7 @@
 
 Ваш нетраннер на ринку праці. Він тихо працює на вашому Mac: стежить за
 повідомленнями рекрутерів у скриньці LinkedIn, прочісує DOU, Djinni,
-Himalayas та LinkedIn, міряє кожну вакансію вашим резюме і готує чернетки відповідей та
+Himalayas, Telegram-канали з вакансіями та LinkedIn, міряє кожну вакансію вашим резюме і готує чернетки відповідей та
 відгуків, готові до перегляду. **Сам нічого не надсилає** — останній клік
 завжди за вами.
 
@@ -39,8 +39,8 @@ Himalayas та LinkedIn, міряє кожну вакансію вашим ре�
 світяться на тому самому бейджі в Dock.
 
 **`02` Пошук вакансій** — бере нові вакансії з DOU (RSS), Djinni (публічна
-дошка), Himalayas (віддалена робота в іноземних компаніях, публічний API) і
-LinkedIn Jobs (пошук, можна вимкнути), склеює одну вакансію з кількох
+дошка), Himalayas (віддалена робота в іноземних компаніях, публічний API),
+публічні Telegram-канали з вакансіями і LinkedIn Jobs (пошук, можна вимкнути), склеює одну вакансію з кількох
 дощок і відкидає вакансії за кордоном. Кожна вакансія проходить два фільтри:
 keyword-бали з вашого профілю (≥ 18 і відповідна роль), потім локальна оцінка
 `claude -p` за вашим резюме (≥ 70). Збіг стає пакетом для відгуку:
@@ -62,7 +62,7 @@ Night City (світла й темна теми): за релевантніст�
 закрила, щодня позначаються як Closed.
 
 **`04` Працює сам** — агенти launchd щогодини перевіряють скриньки та
-DOU/Djinni/Himalayas, а LinkedIn кожні 3 години. Прогін показує один банер macOS, і лише
+DOU/Djinni/Himalayas/Telegram, а LinkedIn кожні 3 години. Прогін показує один банер macOS, і лише
 коли щось знайшов або щось зламалося. За бажанням ті самі сповіщення приходять
 на телефон через ваш власний Telegram-бот, кожне з посиланням на вакансію чи
 діалог ([налаштування](docs/setup.uk.md#сповіщення-на-телефон-telegram-необовязково)).

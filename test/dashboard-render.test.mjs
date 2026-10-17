@@ -36,6 +36,7 @@ test("scoreBand, langAttr and badge's unknown-source fallback", () => {
   assert.equal(langAttr("Senior SDET"), "");
   assert.equal(langAttr("Тестувальник автоматизації"), ' lang="uk"');
   assert.match(badge("dou"), /--src:#c93c33/);
+  assert.match(badge("tgchannels"), />Telegram</, "the label, not the source key");
   assert.match(badge("constructor"), /#6e7781">constructor</, "unknown source: gray, raw name, no prototype lookup");
   assert.match(badge("<b>"), />&lt;b&gt;</);
 });

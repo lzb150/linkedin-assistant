@@ -17,7 +17,7 @@
 ├── telegram-setup.mjs одноразове налаштування необов'язкових сповіщень у Telegram → telegram.json
 ├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → відкрити браузер
-├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/Himalayas/LinkedIn)
+├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/Himalayas/Telegram/LinkedIn)
 ├── docs/              ці сторінки, їхні шапки headers/ + картинки README (HTML-джерела і render.mjs у docs/src/)
 ├── test/              юніт- і black-box тести CLI (`npm test`, без браузера)
 ├── e2e/               end-to-end тести дашборда в справжньому браузері (`npm run test:e2e`)

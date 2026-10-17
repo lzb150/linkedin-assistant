@@ -27,7 +27,8 @@ entirely in config. To hunt, say, developer jobs instead:
 2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
    `https://djinni.co/jobs/?primary_keyword=Node.js`, Himalayas `"Node.js developer"`, LinkedIn
-   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
+   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`;
+   turn the QA Telegram channel off or swap in one for your field.
 3. **Resume** — replace `resume.txt` (drives LLM scoring, the cover letters,
    and `make-skills.mjs` above).
 4. **Attachment** — update `RESUME_PATH` in `run.sh`.
@@ -116,15 +117,18 @@ genitive position — they complete "досвід в …" / "опыт в …":
 
 ### 5. Searches — `jobs.config.json`
 
-Point **every** enabled source at the new field — there are four (`dou`,
-`djinni`, `himalayas`, `linkedin`); a source left on the old
-searches keeps fetching the old profession. Copy real URLs from your
+Point **every** enabled source at the new field — there are five (`dou`,
+`djinni`, `himalayas`, `tgchannels`, `linkedin`); a source left on the old
+searches keeps fetching the old profession. A Telegram channel must post in the
+"Field: value" template `@remote_qa_jobs` uses (`Title`, `Company name`,
+`Location`, …); without one for your field, set `tgchannels.enabled: false`. Copy real URLs from your
 browser's filters — that keeps parameters valid:
 
 ```json
 "dou":      { "feeds": ["https://jobs.dou.ua/vacancies/feeds/?search=fullstack"] },
 "djinni":   { "searches": ["https://djinni.co/jobs/?primary_keyword=Fullstack"] },
 "himalayas": { "searches": ["Fullstack TypeScript", "Node.js developer"] },
+"tgchannels": { "enabled": false },
 "linkedin": { "searches": [{ "keywords": "Fullstack TypeScript React", "location": "Ukraine", "remote": true }] }
 ```
 
@@ -134,8 +138,8 @@ The global `minScore` (18) is only a keyword pre-gate; the LLM gate
 ### 5b. Country — `candidateCountry`
 
 Where the candidate lives and works remotely from, in every spelling the boards
-use (`["Ukraine", "Україна"]` ships). Djinni's countries segment must name one
-of these or the whole world; Himalayas searches are filtered by the first
+use (`["Ukraine", "Україна"]` ships). Djinni's countries segment and a Telegram
+post's `Location` must name one of these or the whole world; Himalayas searches are filtered by the first
 entry, so put the English name first; the LLM gate scores a vacancy closed to that
 country at most 10. Someone in Poland sets `["Poland", "Польща", "Країни ЄС"]`
 and moves `"Poland"`/`"Польща"` out of `excludeLocation`.
