@@ -28,7 +28,8 @@
 2. **Пошуки** — перенаправте `jobs.config.json` на нову сферу, напр. DOU-фід
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
    `https://djinni.co/jobs/?primary_keyword=Node.js`, Himalayas `"Node.js developer"`, LinkedIn
-   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
+   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`;
+   QA-канал Telegram вимкніть або замініть на канал своєї сфери.
 3. **Резюме** — замініть `resume.txt` (керує LLM-оцінкою, листами й
    `make-skills.mjs` вище).
 4. **Вкладення** — оновіть `RESUME_PATH` у `run.sh`.
@@ -120,15 +121,18 @@
 
 ### 5. Пошук — `jobs.config.json`
 
-Переведіть на нову сферу **кожне** увімкнене джерело — їх чотири (`dou`,
-`djinni`, `himalayas`, `linkedin`); джерело зі старими запитами далі тягне вакансії старої
-професії. Копіюйте справжні URL із фільтрів у браузері — так параметри
+Переведіть на нову сферу **кожне** увімкнене джерело — їх п'ять (`dou`,
+`djinni`, `himalayas`, `tgchannels`, `linkedin`); джерело зі старими запитами далі тягне вакансії старої
+професії. Telegram-канал має публікувати пости в шаблоні «Поле: значення», як
+`@remote_qa_jobs` (`Title`, `Company name`, `Location`, …); якщо такого для вашої
+сфери немає, задайте `tgchannels.enabled: false`. Копіюйте справжні URL із фільтрів у браузері — так параметри
 лишаються правильними:
 
 ```json
 "dou":      { "feeds": ["https://jobs.dou.ua/vacancies/feeds/?search=fullstack"] },
 "djinni":   { "searches": ["https://djinni.co/jobs/?primary_keyword=Fullstack"] },
 "himalayas": { "searches": ["Fullstack TypeScript", "Node.js developer"] },
+"tgchannels": { "enabled": false },
 "linkedin": { "searches": [{ "keywords": "Fullstack TypeScript React", "location": "Ukraine", "remote": true }] }
 ```
 
@@ -139,7 +143,7 @@
 
 Де кандидат живе і звідки працює віддалено, в усіх написаннях, які
 використовують дошки (типово `["Ukraine", "Україна"]`). Сегмент країн на Djinni
-має містити одне з них або весь світ; пошуки Himalayas фільтруються за першим
+і поле `Location` у пості Telegram мають містити одне з них або весь світ; пошуки Himalayas фільтруються за першим
 написанням, тож ставте першою англійську назву; LLM-фільтр ставить вакансії, закритій для
 цієї країни, не більше 10. Людина в Польщі задає
 `["Poland", "Польща", "Країни ЄС"]` і прибирає `"Poland"`/`"Польща"` з

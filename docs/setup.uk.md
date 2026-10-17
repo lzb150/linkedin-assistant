@@ -30,7 +30,7 @@ node login.mjs                   # ВИ логінитесь вручну (з 2F
 **`jobs.config.json`** у поставці налаштований на вакансії з автоматизації
 тестування. Це той крок, який ніхто за вас не зробить: це вибір дощок і формулювань
 запитів, а не факт, який можна витягти з резюме. Змініть фіди DOU, пошукові URL
-Djinni, запити Himalayas та LinkedIn на свою сферу й вкажіть `candidateCountry` — див.
+Djinni, запити Himalayas та LinkedIn і Telegram-канали на свою сферу й вкажіть `candidateCountry` — див.
 [Адаптація під іншу професію](specialization.uk.md).
 
 `login.mjs` відкриває справжній браузер, і ви підключаєтесь самі. Залогіньтесь повністю (з 2FA); він сам
@@ -77,7 +77,7 @@ node dashboard.mjs   # зібрати applications/index.html і подивит�
 |--------------------|-----------------------|
 | Перевірка скриньки LinkedIn (`linkedin-assistant`)   | щогодини               |
 | Скринька Djinni + автобамп (`djinni-inbox`)           | щогодини               |
-| Пошук на DOU / Djinni / Himalayas (`job-discovery-dou`) | щогодини             |
+| Пошук на DOU / Djinni / Himalayas / Telegram (`job-discovery-dou`) | щогодини |
 | Повний пошук із LinkedIn (`job-discovery-linkedin`)   | кожні 3 години (о :45) |
 | Дозапуск LinkedIn після DarkWake (`linkedin-catchup`) | кожні 15 хв (нічого не робить без маркера) |
 | Перевірка закритих + архів (`closed-check`)           | щодня 08:30            |
@@ -106,7 +106,7 @@ launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
 DarkWake — фоновому пробудженні на 5–10 с, — а на батареї `caffeinate -s` не
 тримає Mac, тож стрічка LinkedIn там ніколи не встигала завантажитись
 (`page.goto: Timeout 30000ms`, LinkedIn 0). Тепер `jobs.mjs` спершу питає
-`pmset`: у DarkWake на батареї він проганяє DOU, Djinni і Himalayas, пише в лог
+`pmset`: у DarkWake на батареї він проганяє DOU, Djinni, Himalayas і Telegram, пише в лог
 `linkedin: deferred`, не рахує LinkedIn у моніторингу здоров'я джерел і
 створює маркер `linkedin-pending`. `com.example.linkedin-catchup.plist.example`
 (`LINKEDIN_CATCHUP=1 run.sh jobs.mjs`, кожні 15 хв) без маркера одразу

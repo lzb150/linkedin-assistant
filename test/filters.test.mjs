@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isSearchPhrase, isLinkedInSearch, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isSearchPhrase, isChannelName, isLinkedInSearch, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -29,6 +29,22 @@ test("filterByLocation: Himalayas is judged by its countries like Djinni, not by
   ];
   assert.deepEqual(filterByLocation(jobs, ["poland"]).map((j) => j.title), ["A", "B", "D"]);
   assert.deepEqual(filterByLocation(jobs, [], ["United States"]).map((j) => j.title), ["A", "C"]);
+});
+
+test("filterByLocation: Telegram channel posts are judged by their Location like Djinni; a region alone names no country", () => {
+  const jobs = [
+    { title: "A", source: "tgchannels", location: "Remote · Worldwide" },
+    { title: "B", source: "tgchannels", location: "Remote · Europe or Ukraine" },   // names Ukraine → kept
+    { title: "C", source: "tgchannels", location: "Remote · Latin America" },
+    { title: "D", source: "tgchannels", location: "Remote · Europe" },
+    { title: "E", source: "tgchannels", location: "Remote" },   // no Location field: nothing to judge, the LLM gate decides
+  ];
+  assert.deepEqual(filterByLocation(jobs, ["poland"]).map((j) => j.title), ["A", "B", "E"]);
+});
+
+test("isChannelName: a public channel username, with or without @", () => {
+  for (const ok of ["remote_qa_jobs", "@remote_qa_jobs", " qa_vacancies "]) assert.equal(isChannelName(ok), true, ok);
+  for (const no of ["", "qa", "1channel", "https://t.me/s/remote_qa_jobs", "t.me/remote_qa_jobs", "a".repeat(33), 42, null, ["remote_qa_jobs"]]) assert.equal(isChannelName(no), false, JSON.stringify(no));
 });
 
 test("isSearchPhrase: a non-empty string that is not a URL", () => {
