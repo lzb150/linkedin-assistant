@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isLinkedInSearch, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isSearchPhrase, isLinkedInSearch, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
@@ -18,6 +18,22 @@ test("filterByLocation: foreign terms drop a job unless it is a remote DOU listi
   // Another candidate: living in Poland, F (Канада, Польща, Сербія) becomes eligible and H (Європи та Україна) does not
   const pl = filterByLocation(jobs, ["ukraine"], ["Poland", "Польща"]);
   assert.deepEqual(pl.map((j) => j.title), ["A", "B", "C", "D", "E", "F"]);
+});
+
+test("filterByLocation: Himalayas is judged by its countries like Djinni, not by excludeLocation substrings", () => {
+  const jobs = [
+    { title: "A", source: "himalayas", location: "Remote · Worldwide" },
+    { title: "B", source: "himalayas", location: "Remote · Poland, Ukraine" },   // names Poland, but open to Ukraine → kept
+    { title: "C", source: "himalayas", location: "Remote · United States" },
+    { title: "D", source: "himalayas", location: "Remote · Ukraine" },
+  ];
+  assert.deepEqual(filterByLocation(jobs, ["poland"]).map((j) => j.title), ["A", "B", "D"]);
+  assert.deepEqual(filterByLocation(jobs, [], ["United States"]).map((j) => j.title), ["A", "C"]);
+});
+
+test("isSearchPhrase: a non-empty string that is not a URL", () => {
+  for (const ok of ["SDET", "QA automation"]) assert.equal(isSearchPhrase(ok), true, ok);
+  for (const no of ["", "  ", "https://himalayas.app/jobs?q=SDET", 42, null, { keywords: "SDET" }]) assert.equal(isSearchPhrase(no), false, JSON.stringify(no));
 });
 
 test("djinniEligible: the countries segment must name Ukraine or the whole world; no segment means keep", () => {

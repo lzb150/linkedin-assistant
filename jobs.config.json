@@ -50,6 +50,12 @@
     ]
   },
 
+  "himalayas": {
+    "_comment": "Himalayas remote-jobs board (https://himalayas.app) via its free public JSON API — no key, no login, no browser. Foreign employers hiring remotely. Each search is a free-text query; the API itself keeps only jobs open to the FIRST candidateCountry entry (use its English name) or to the whole world, newest first. pages (default 2): pages of up to 20 read per search.",
+    "enabled": true,
+    "searches": ["QA automation", "SDET", "test automation", "Playwright"]
+  },
+
   "linkedin": {
     "_comment": "Scraping LinkedIn job search violates ToS and is more detectable. Kept modest: few results, polite delays. Set enabled=false to turn off.",
     "enabled": true,

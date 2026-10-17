@@ -4,7 +4,7 @@
 
 <br>
 
-[![Sources](https://img.shields.io/badge/sources-DOU_%C2%B7_Djinni_%C2%B7_LinkedIn-00f0ff?style=for-the-badge&labelColor=0b0a16)](docs/job-discovery.md)
+[![Sources](https://img.shields.io/badge/sources-DOU_%C2%B7_Djinni_%C2%B7_Himalayas_%C2%B7_LinkedIn-00f0ff?style=for-the-badge&labelColor=0b0a16)](docs/job-discovery.md)
 [![Data](https://img.shields.io/badge/data-100%25_local-05ffa1?style=for-the-badge&labelColor=0b0a16)](#key-principles)
 [![Auto-send](https://img.shields.io/badge/auto--send-never-ff2a6d?style=for-the-badge&labelColor=0b0a16)](#key-principles)
 [![macOS](https://img.shields.io/badge/macOS-launchd-fcee0a?style=for-the-badge&labelColor=0b0a16)](docs/setup.md#schedule-it-launchd)
@@ -18,7 +18,7 @@
 > 🇺🇦 [Українською](README.uk.md)
 
 Your netrunner on the job market. It runs quietly on your Mac: watches recruiter
-messages in your LinkedIn inbox, sweeps DOU, Djinni and LinkedIn for vacancies,
+messages in your LinkedIn inbox, sweeps DOU, Djinni, Himalayas and LinkedIn for vacancies,
 measures each one against your resume, and prepares ready-to-review
 reply/application drafts. **It never sends anything** — the final click is
 always yours.
@@ -37,7 +37,8 @@ profile and drafts a reply in the sender's language (🇺🇦/🇷🇺/🇬🇧)
 to attach your resume. Unread Djinni threads light up the same Dock badge.
 
 **`02` Job discovery** — pulls new vacancies from DOU (RSS), Djinni (public
-board) and LinkedIn Jobs (search, can be turned off), collapses the same vacancy
+board), Himalayas (remote jobs at foreign companies, public API) and LinkedIn
+Jobs (search, can be turned off), collapses the same vacancy
 posted on several boards, and drops jobs located abroad. Each vacancy passes two
 gates: a keyword score from your profile (≥ 18 and a matching role), then a
 local `claude -p` fit score against your resume (≥ 70). A match becomes an
@@ -58,7 +59,7 @@ application package: tailored cover letter, link and resume path.
 notes, search and a source filter. Vacancies the board closes are marked Closed
 by a daily check.
 
-**`04` Runs on its own** — launchd agents check the inboxes and DOU/Djinni
+**`04` Runs on its own** — launchd agents check the inboxes and DOU/Djinni/Himalayas
 hourly and LinkedIn every 3 hours. A run posts one macOS banner, and only when
 it found something or something broke. Optionally the same alerts reach your
 phone through your own Telegram bot, each with a link to the vacancy or thread
