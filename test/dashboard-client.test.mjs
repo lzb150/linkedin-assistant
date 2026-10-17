@@ -292,6 +292,31 @@ test("source chips follow the status tabs: hidden with no cards there unless sel
   assert.equal(chips[2].hidden, false);
 });
 
+// Deselecting such a chip from the keyboard hides it; focus must move to All
+// rather than drop to <body> (WCAG 2.4.3).
+test("a chip hidden while focused hands focus to All", async () => {
+  const doc = { activeElement: null };
+  const chip = (src) => ({ dataset: { src }, hidden: false, classList: { toggle() {} }, setAttribute() {}, focus() { doc.activeElement = this; } });
+  const chips = [chip("all"), chip("dou"), chip("himalayas")];
+  const H = "https://h/1";
+  const store = new Map([
+    ["jobFilters2", JSON.stringify({ status: ["new"], src: ["himalayas"], query: "" })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [H]: { status: "viewed" } })],
+  ]);
+  Object.assign(doc, { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({
+    ".src-seg button": chips,
+    ".filter-seg button": [{ dataset: { filter: "new" }, classList: { toggle() {} }, setAttribute() {} }, { dataset: { filter: "viewed" }, classList: { toggle() {} }, setAttribute() {} }],
+    ".card": [domCard({ url: "https://d/1", source: "dou" }), domCard({ url: H, source: "himalayas" })],
+  })[sel] || [] });
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(chips[2].hidden, false, "selected: shown although its only card is Viewed");
+  chips[2].focus();
+  c.run("setSource('himalayas')");   // Space on the focused chip
+  assert.equal(chips[2].hidden, true);
+  assert.equal(doc.activeElement, chips[0], "focus moved to All");
+});
+
 // buildApplication neutralises heading-like lines in the letter with a
 // zero-width space after the #s. The card shows nothing different, but
 // innerText carries the character, and so would the pasted email.

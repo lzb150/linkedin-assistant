@@ -72,5 +72,16 @@ test.describe("source chips", () => {
 
       await expect(dashboard.sourceChips.getByRole("button")).toHaveText(["All", "Djinni", "DOU", "LinkedIn"]);
     });
+
+    test("deselecting its chip from the keyboard in the New view moves focus to All", async ({ dashboard }) => {
+      await dashboard.toggleSource("Djinni");   // selected while visible
+      await dashboard.toggleViewedTab();        // New only: Djinni stays, it is selected
+      await dashboard.sourceChip("Djinni").focus();
+
+      await dashboard.page.keyboard.press("Space");
+
+      await expect(dashboard.sourceChip("Djinni")).toBeHidden();
+      await expect(dashboard.sourceChip("All")).toBeFocused();
+    });
   });
 });
