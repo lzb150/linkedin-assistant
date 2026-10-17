@@ -37,8 +37,9 @@ profile and drafts a reply in the sender's language (🇺🇦/🇷🇺/🇬🇧)
 to attach your resume. Unread Djinni threads light up the same Dock badge.
 
 **`02` Job discovery** — pulls new vacancies from DOU (RSS), Djinni (public
-board), Himalayas (remote jobs at foreign companies, public API), public
-Telegram job channels and LinkedIn Jobs (search, can be turned off), collapses the same vacancy
+board) and LinkedIn Jobs (search, can be turned off); Himalayas (remote jobs
+at foreign companies) and public Telegram job channels are built in but off as
+shipped. It collapses the same vacancy
 posted on several boards, and drops jobs located abroad. Each vacancy passes two
 gates: a keyword score from your profile (≥ 18 and a matching role), then a
 local `claude -p` fit score against your resume (≥ 70). A match becomes an
