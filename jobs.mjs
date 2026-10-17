@@ -82,7 +82,7 @@ try {
 // Every on/off switch is normalized once, here, so jobs.mjs and the sources
 // that read their own section see real booleans (see flag() in lib/filters.mjs).
 config.requireRole = flag("requireRole", config.requireRole, false, log);
-for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["himalayas", "enabled", false], ["tgchannels", "enabled", false], ["tgchannels", "fullDescription", true], ["linkedin", "enabled", false]]) {
+for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["himalayas", "enabled", false], ["himalayas", "worldwide", true], ["tgchannels", "enabled", false], ["tgchannels", "fullDescription", true], ["tgchannels", "worldwide", true], ["linkedin", "enabled", false]]) {
   const sec = config[section];
   if (sec && typeof sec === "object" && key in sec) sec[key] = flag(`${section}.${key}`, sec[key], fallback, log);
 }
@@ -121,6 +121,8 @@ const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__d
 // the LLM prompt — can never disagree (an empty/typo'd candidateCountry used to
 // leave the filter rejecting everything while the prompt still said Ukraine).
 const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
+// Remote boards set to `worldwide: false`: only jobs that name candidateCountry.
+const COUNTRY_ONLY = new Set(["himalayas", "tgchannels"].filter((s) => config[s]?.worldwide === false));
 const LLM = config.llm || {};
 // Every numeric knob goes through here: a value that is not a number used to
 // switch its gate off silently (`score < "abc"` is false for every score).
@@ -146,8 +148,8 @@ const KNOWN_LLM = new Set(["enabled", "model", "maxPerRun", "concurrency", "minS
 const KNOWN_SOURCE = {
   dou: new Set(["enabled", "minScore", "feeds"]),
   djinni: new Set(["enabled", "minScore", "searches", "maxResults", "pages", "concurrency", "fullDescription"]),
-  himalayas: new Set(["enabled", "minScore", "searches", "pages"]),
-  tgchannels: new Set(["enabled", "minScore", "channels", "pages", "fullDescription"]),
+  himalayas: new Set(["enabled", "minScore", "searches", "pages", "worldwide"]),
+  tgchannels: new Set(["enabled", "minScore", "channels", "pages", "fullDescription", "worldwide"]),
   linkedin: new Set(["enabled", "minScore", "searches", "maxResults"]),
 };
 const unknownIn = (obj, known) => Object.keys(obj || {}).filter((k) => !k.startsWith("_") && !known.has(k));
@@ -314,7 +316,7 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Djinni "Тільки офіс · Польща", etc).
 {
   const before = jobs.length;
-  const keptLoc = filterByLocation(jobs, config.excludeLocation, CANDIDATE_COUNTRY);
+  const keptLoc = filterByLocation(jobs, config.excludeLocation, CANDIDATE_COUNTRY, { countryOnly: COUNTRY_ONLY });
   if (keptLoc.length < before) {
     const kept = new Set(keptLoc);
     log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
