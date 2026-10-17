@@ -134,6 +134,35 @@ test("jobs.mjs: with telegram.json set up, each new package reaches Telegram as 
   assert.equal(api.calls[0].body.chat_id, 7);
 });
 
+test("jobs.mjs: Himalayas is searched for the candidate's country and its jobs reach the same gates", async (t) => {
+  const asked = [];
+  const job = (title, company, countries) => ({ title, companyName: company, locationRestrictions: countries, description: `<p>${AQA}</p>`,
+    guid: `https://himalayas.app/companies/${company.toLowerCase()}/jobs/${title.toLowerCase().replace(/\W+/g, "-")}` });
+  const srv = createServer((req, res) => {
+    const u = new URL(req.url, "http://x");
+    asked.push(u.searchParams);
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ jobs: u.searchParams.get("page") ? [] : [job("Senior SDET (Playwright)", "Acme", []), job("QA Automation Engineer", "Yankee", ["United States"])] }));
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const p = setupProject(t, await serveFeed(t, () => rss([])));
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.himalayas = { enabled: true, searches: ["SDET"] };
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+
+  const out = await runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf", HIMALAYAS_API: `http://127.0.0.1:${srv.address().port}/jobs/api/search` });
+  assert.match(out, /Himalayas search ok \(2 over 1 page\): SDET/);
+  assert.equal(asked[0].get("country"), "Ukraine", "the first candidateCountry entry (the default here)");
+  assert.equal(asked[0].get("sort"), "recent");
+  assert.match(out, /· location \[Remote · United States\] himalayas: QA Automation Engineer/, "a job closed to the candidate's country is dropped");
+  assert.match(out, /✓ MATCH \[\d+ \/ llm 85\] himalayas: Senior SDET \(Playwright\) @ Acme/);
+  const [file] = mdFiles(p);
+  assert.match(p.read("applications", file), /^source: himalayas$/m);
+  assert.match(p.read("applications", file), /^url: https:\/\/himalayas\.app\/companies\/acme\/jobs\/senior-sdet-playwright-$/m);
+  assert.deepEqual(p.json("source-health.json").himalayas, [2]);
+});
+
 const mdFiles = (p) => readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));
 const claudeCalls = (p) => (existsSync(p.path("claude.log")) ? p.read("claude.log").match(/^args=/gm) || [] : []).length;
 const ACME = { title: "Senior SDET (Playwright) в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/1/", desc: AQA };

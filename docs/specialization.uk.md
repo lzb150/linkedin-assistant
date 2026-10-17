@@ -27,7 +27,7 @@
    ("досвід в …").
 2. **Пошуки** — перенаправте `jobs.config.json` на нову сферу, напр. DOU-фід
    `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
-   `https://djinni.co/jobs/?primary_keyword=Node.js`, LinkedIn
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, Himalayas `"Node.js developer"`, LinkedIn
    `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`.
 3. **Резюме** — замініть `resume.txt` (керує LLM-оцінкою, листами й
    `make-skills.mjs` вище).
@@ -120,14 +120,15 @@
 
 ### 5. Пошук — `jobs.config.json`
 
-Переведіть на нову сферу **кожне** увімкнене джерело — їх три (`dou`,
-`djinni`, `linkedin`); джерело зі старими запитами далі тягне вакансії старої
+Переведіть на нову сферу **кожне** увімкнене джерело — їх чотири (`dou`,
+`djinni`, `himalayas`, `linkedin`); джерело зі старими запитами далі тягне вакансії старої
 професії. Копіюйте справжні URL із фільтрів у браузері — так параметри
 лишаються правильними:
 
 ```json
 "dou":      { "feeds": ["https://jobs.dou.ua/vacancies/feeds/?search=fullstack"] },
 "djinni":   { "searches": ["https://djinni.co/jobs/?primary_keyword=Fullstack"] },
+"himalayas": { "searches": ["Fullstack TypeScript", "Node.js developer"] },
 "linkedin": { "searches": [{ "keywords": "Fullstack TypeScript React", "location": "Ukraine", "remote": true }] }
 ```
 
@@ -138,7 +139,8 @@
 
 Де кандидат живе і звідки працює віддалено, в усіх написаннях, які
 використовують дошки (типово `["Ukraine", "Україна"]`). Сегмент країн на Djinni
-має містити одне з них або весь світ; LLM-фільтр ставить вакансії, закритій для
+має містити одне з них або весь світ; пошуки Himalayas фільтруються за першим
+написанням, тож ставте першою англійську назву; LLM-фільтр ставить вакансії, закритій для
 цієї країни, не більше 10. Людина в Польщі задає
 `["Poland", "Польща", "Країни ЄС"]` і прибирає `"Poland"`/`"Польща"` з
 `excludeLocation`.

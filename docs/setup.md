@@ -29,8 +29,8 @@ it is written; read the result once either way, and adjust the weights.
 
 **`jobs.config.json`** ships pointed at QA automation vacancies. That is the
 step nothing can do for you: it is a choice of boards and search wording, not a
-fact to extract from a resume. Change the DOU feeds, the Djinni search URLs and
-the LinkedIn queries to your own field, and set `candidateCountry` to where you
+fact to extract from a resume. Change the DOU feeds, the Djinni search URLs, the
+Himalayas and LinkedIn queries to your own field, and set `candidateCountry` to where you
 live — see [Specifying your specialization](specialization.md).
 
 `login.mjs` opens a real browser, and you jack in yourself. Log in fully (2FA included); it detects the
@@ -76,7 +76,7 @@ What the daemons run, and when:
 |--------------------------------------------------|------------------------|
 | LinkedIn inbox check (`linkedin-assistant`)      | hourly                 |
 | Djinni inbox check + auto-bump (`djinni-inbox`)  | hourly                 |
-| DOU / Djinni discovery (`job-discovery-dou`)     | hourly                 |
+| DOU / Djinni / Himalayas discovery (`job-discovery-dou`) | hourly         |
 | Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
 | LinkedIn catch-up after a DarkWake (`linkedin-catchup`) | every 15 min (no-op unless pending) |
 | Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
@@ -104,7 +104,7 @@ server is `com.example.state-server.plist.example` (always on, also set the node
 next DarkWake — a 5–10 s background wake — and on battery `caffeinate -s` cannot
 hold the Mac up, so the LinkedIn feed never loaded there (`page.goto: Timeout
 30000ms`, LinkedIn 0 found). `jobs.mjs` now checks `pmset` first: in a DarkWake
-on battery it still runs DOU and Djinni, logs `linkedin: deferred`, leaves
+on battery it still runs DOU, Djinni and Himalayas, logs `linkedin: deferred`, leaves
 LinkedIn out of health monitoring and writes a `linkedin-pending` marker.
 `com.example.linkedin-catchup.plist.example` (`LINKEDIN_CATCHUP=1 run.sh
 jobs.mjs`, every 15 min) exits at once without the marker; with it and the Mac

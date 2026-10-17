@@ -11,7 +11,7 @@ each strong match into `applications/`. **It never submits anything.**
 
 ```bash
 node jobs.mjs              # all sources (per jobs.config.json)
-DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU + Djinni still run — fully ToS-clean)
+DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU, Djinni and Himalayas still run — fully ToS-clean)
 HEADFUL=1 node jobs.mjs    # visible Chrome window (watch the LinkedIn part)
 ```
 
@@ -22,6 +22,7 @@ back with a visible browser.
 
 - **DOU** — official RSS feeds (`jobs.dou.ua`), clean and structured. Edit feeds in `jobs.config.json`.
 - **Djinni** — public jobs board (`djinni.co/jobs/`), read with a plain fetch (no login, no browser). Each search is a full jobs-search URL — copy them from your browser's filters. On only with `djinni.enabled: true` (as shipped). `pages` (default 3) is how many pages of 15 each search reads — Djinni does not list newest-first; `concurrency` (default 5) caps the parallel detail-page fetches; `fullDescription: false` scores on the listing snippet only.
+- **Himalayas** — remote-jobs board (`himalayas.app`) for foreign employers, read through its free public JSON API (no key, no login, no browser). Each search is a free-text query (`"SDET"`, `"QA automation"`); the API itself keeps only jobs open to the first `candidateCountry` entry (put the English name first) or to the whole world, newest first. On only with `himalayas.enabled: true` (as shipped). `pages` (default 2) is how many pages of up to 20 each search reads. Its job pages sit behind Cloudflare, so the daily closed check skips them; a viewed card still moves to the archive after 30 days untouched.
 - **LinkedIn Jobs** — scrapes search results (⚠️ ToS-restricted, more detectable). On only with `linkedin.enabled: true` (as shipped). DOU is the one source that is on unless `dou.enabled: false`.
 - **Title filter** — titles containing a whole word from `excludeTitle` in
   `jobs.config.json` (`junior`, `intern`, `internship`, `trainee`, `manual` by
@@ -32,7 +33,7 @@ back with a visible browser.
   Jobs whose location contains any substring from the top-level
   `excludeLocation` list in `jobs.config.json` (case-insensitive) are dropped
   across **all** sources before scoring.
-- Cold applications pass a keyword pre-gate — `minScore` (shipped as 18; 25 if the key is missing) + `requireRole` — and then the LLM gate (`llm.minScore`, shipped as 70; a missing key means advisory-only), which does the real screening. `excludeLocation` still keeps a remote DOU listing that merely lists a foreign office. Djinni is judged by its own countries segment instead: it must name the candidate's country (`candidateCountry` in `jobs.config.json`, every spelling the boards use — `["Ukraine", "Україна"]` by default — an empty or mistyped list falls back to that default rather than rejecting every Djinni vacancy) or the whole world, so "Тільки віддалено · Канада, Польща, Сербія" or "Країни ЄС" is dropped even though remote. The LLM gate gets the same rule in words: a vacancy open only to residents of other countries, requiring relocation or an office abroad scores at most 10.
+- Cold applications pass a keyword pre-gate — `minScore` (shipped as 18; 25 if the key is missing) + `requireRole` — and then the LLM gate (`llm.minScore`, shipped as 70; a missing key means advisory-only), which does the real screening. `excludeLocation` still keeps a remote DOU listing that merely lists a foreign office. Djinni and Himalayas are judged by their own countries segment instead: it must name the candidate's country (`candidateCountry` in `jobs.config.json`, every spelling the boards use — `["Ukraine", "Україна"]` by default — an empty or mistyped list falls back to that default rather than rejecting every Djinni vacancy) or the whole world, so "Тільки віддалено · Канада, Польща, Сербія" or "Країни ЄС" is dropped even though remote. The LLM gate gets the same rule in words: a vacancy open only to residents of other countries, requiring relocation or an office abroad scores at most 10.
 - **Cross-source de-dup** — the same vacancy arriving from several sources (its URL
   differs per board) is collapsed into one record before scoring. The record with
   the fullest description is kept; the other source links are recorded under

@@ -1,11 +1,11 @@
-// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board)
-// and LinkedIn (scrape), scores them against your resume, and
+// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board),
+// Himalayas (JSON API) and LinkedIn (scrape), scores them against your resume, and
 // writes an application package for each RELEVANT match. IT NEVER SUBMITS
 // ANYTHING — you review and apply manually.
 //
 // Run:  node jobs.mjs              (all sources per jobs.config.json)
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
-//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
+//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU, Djinni and Himalayas still run)
 //       LINKEDIN_CATCHUP=1 node jobs.mjs  (LinkedIn only, and only when a DarkWake run deferred it)
 
 import { readFileSync, mkdirSync, existsSync, writeFileSync, rmSync } from "node:fs";
@@ -20,13 +20,14 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sa
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag, sourceList, isHttpUrl, isLinkedInSearch } from "./lib/filters.mjs";
+import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag, sourceList, isHttpUrl, isSearchPhrase, isLinkedInSearch } from "./lib/filters.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
 } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
+import { fetchHimalayas } from "./lib/sources/himalayas.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { pool } from "./lib/sources/html.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
@@ -79,12 +80,12 @@ try {
 // Every on/off switch is normalized once, here, so jobs.mjs and the sources
 // that read their own section see real booleans (see flag() in lib/filters.mjs).
 config.requireRole = flag("requireRole", config.requireRole, false, log);
-for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["linkedin", "enabled", false]]) {
+for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["himalayas", "enabled", false], ["linkedin", "enabled", false]]) {
   const sec = config[section];
   if (sec && typeof sec === "object" && key in sec) sec[key] = flag(`${section}.${key}`, sec[key], fallback, log);
 }
 // And every source's list, so a source iterates only entries it can search.
-for (const [section, key, valid, want] of [["dou", "feeds", isHttpUrl, "a feed URL"], ["djinni", "searches", isHttpUrl, "a search URL"], ["linkedin", "searches", isLinkedInSearch, '{ "keywords": "…" }']]) {
+for (const [section, key, valid, want] of [["dou", "feeds", isHttpUrl, "a feed URL"], ["djinni", "searches", isHttpUrl, "a search URL"], ["himalayas", "searches", isSearchPhrase, "a search phrase"], ["linkedin", "searches", isLinkedInSearch, '{ "keywords": "…" }']]) {
   const sec = config[section];
   if (sec && typeof sec === "object" && key in sec) sec[key] = sourceList(`${section}.${key}`, sec[key], valid, want, log);
 }
@@ -125,7 +126,7 @@ const LLM = config.llm || {};
 const knob = (name, v, fallback, range) => configKnob(name, v, fallback, range, log);
 const MIN_SCORE = knob("minScore", config.minScore, 25);
 // A source may set its own minScore — it overrides the global.
-const SOURCE_MIN_SCORE = Object.fromEntries(["dou", "djinni", "linkedin"].map((s) => [s, knob(`${s}.minScore`, config[s]?.minScore, MIN_SCORE)]));
+const SOURCE_MIN_SCORE = Object.fromEntries(["dou", "djinni", "himalayas", "linkedin"].map((s) => [s, knob(`${s}.minScore`, config[s]?.minScore, MIN_SCORE)]));
 const LLM_MIN_SCORE = knob("llm.minScore", LLM.minScore, 0, [0, 100]);   // 0 = advisory-only, as when unset
 const LLM_MAX_PER_RUN = knob("llm.maxPerRun", LLM.maxPerRun, 15, [1, Infinity]);   // 0 must not mean "defer everything forever"
 const LLM_CONCURRENCY = knob("llm.concurrency", LLM.concurrency, 3, [1, Infinity]);   // 0 must not mean zero workers (every verdict empty, gate bypassed)
@@ -137,12 +138,13 @@ if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is mi
 // typo'd source name drops that source entirely — both with a clean log. Names
 // we do not recognise are therefore reported rather than ignored. `_`-prefixed
 // keys are the documentation blocks the shipped config is full of.
-const KNOWN_TOP = new Set(["minScore", "requireRole", "candidateCountry", "excludeTitle", "excludeLocation", "llm", "dou", "djinni", "linkedin"]);
+const KNOWN_TOP = new Set(["minScore", "requireRole", "candidateCountry", "excludeTitle", "excludeLocation", "llm", "dou", "djinni", "himalayas", "linkedin"]);
 const KNOWN_LLM = new Set(["enabled", "model", "maxPerRun", "concurrency", "minScore"]);
 // Per-source keys: `djinni.serches` drops every Djinni search just as quietly.
 const KNOWN_SOURCE = {
   dou: new Set(["enabled", "minScore", "feeds"]),
   djinni: new Set(["enabled", "minScore", "searches", "maxResults", "pages", "concurrency", "fullDescription"]),
+  himalayas: new Set(["enabled", "minScore", "searches", "pages"]),
   linkedin: new Set(["enabled", "minScore", "searches", "maxResults"]),
 };
 const unknownIn = (obj, known) => Object.keys(obj || {}).filter((k) => !k.startsWith("_") && !known.has(k));
@@ -199,11 +201,13 @@ const excludedByTitle = titleExcluder(excludeList(config.excludeTitle));
 // the seen entry because the job is returned from its list fields.
 const knownJob = (job) => seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title));
 
-// 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board).
+// 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
+// Himalayas (public JSON API, remote jobs open to candidateCountry).
 // Same gather/record/collect shape.
 const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
   { name: "djinni", enabled: config.djinni?.enabled, fetch: (cfg, lg) => fetchDjinni(cfg, lg, { skip: knownJob }) },
+  { name: "himalayas", enabled: config.himalayas?.enabled, fetch: (cfg, lg) => fetchHimalayas(cfg, lg, { country: CANDIDATE_COUNTRY[0] }) },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   // Say it out loud: a source turned off by a typo looked exactly like a source
