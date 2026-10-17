@@ -191,6 +191,27 @@ test("jobs.mjs: a Telegram channel's job posts reach the same gates; a post clos
   assert.deepEqual(p.json("source-health.json").tgchannels, [2]);
 });
 
+test("jobs.mjs: himalayas.worldwide false keeps only jobs that name the candidate's country", async (t) => {
+  const job = (title, company, countries) => ({ title, companyName: company, locationRestrictions: countries, description: `<p>${AQA}</p>`,
+    guid: `https://himalayas.app/companies/${company.toLowerCase()}/jobs/${title.toLowerCase().replace(/\W+/g, "-")}` });
+  const srv = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ jobs: new URL(req.url, "http://x").searchParams.get("page") ? [] : [job("Senior SDET (Playwright)", "Acme", ["Poland", "Ukraine"]), job("QA Automation Engineer", "Globex", [])] }));
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const p = setupProject(t, await serveFeed(t, () => rss([])));
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.himalayas = { enabled: true, worldwide: false, searches: ["SDET"] };
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+
+  const out = await runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf", HIMALAYAS_API: `http://127.0.0.1:${srv.address().port}/jobs/api/search` });
+  assert.doesNotMatch(out, /unknown himalayas\.worldwide/, "worldwide is a known himalayas key");
+  assert.match(out, /· location \[Remote · Worldwide\] himalayas: QA Automation Engineer/, "open to the whole world: dropped");
+  assert.match(out, /✓ MATCH \[\d+ \/ llm 85\] himalayas: Senior SDET \(Playwright\) @ Acme/);
+  assert.equal(mdFiles(p).length, 1);
+});
+
 const mdFiles = (p) => readdirSync(p.path("applications")).filter((f) => f.endsWith(".md"));
 const claudeCalls = (p) => (existsSync(p.path("claude.log")) ? p.read("claude.log").match(/^args=/gm) || [] : []).length;
 const ACME = { title: "Senior SDET (Playwright) в Acme, Київ", link: "https://jobs.dou.ua/companies/acme/vacancies/1/", desc: AQA };

@@ -31,6 +31,19 @@ test("filterByLocation: Himalayas is judged by its countries like Djinni, not by
   assert.deepEqual(filterByLocation(jobs, [], ["United States"]).map((j) => j.title), ["A", "C"]);
 });
 
+test("filterByLocation: a countryOnly source drops worldwide jobs too; the others keep them", () => {
+  const jobs = [
+    { title: "A", source: "himalayas", location: "Remote · Worldwide" },
+    { title: "B", source: "himalayas", location: "Remote · Poland, Ukraine" },
+    { title: "C", source: "tgchannels", location: "Remote · Worldwide" },
+    { title: "D", source: "tgchannels", location: "Remote" },   // no Location: it names no country either
+    { title: "E", source: "djinni", location: "Тільки віддалено · Весь світ · 5 років досвіду" },
+  ];
+  assert.deepEqual(filterByLocation(jobs, [], undefined, { countryOnly: new Set(["himalayas", "tgchannels"]) }).map((j) => j.title), ["B", "E"]);
+  assert.deepEqual(filterByLocation(jobs, [], undefined, { countryOnly: new Set(["himalayas"]) }).map((j) => j.title), ["B", "C", "D", "E"]);
+  assert.deepEqual(filterByLocation(jobs, []).map((j) => j.title), ["A", "B", "C", "D", "E"], "default: worldwide is kept");
+});
+
 test("filterByLocation: Telegram channel posts are judged by their Location like Djinni; a region alone names no country", () => {
   const jobs = [
     { title: "A", source: "tgchannels", location: "Remote · Worldwide" },
