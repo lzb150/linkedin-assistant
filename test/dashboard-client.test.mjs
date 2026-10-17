@@ -256,10 +256,65 @@ test("restoreFilters keeps only sources that still have a header chip", async ()
   const store = new Map([["jobFilters2", JSON.stringify({ status: ["new"], src: ["linkedin", "dou"], query: "" })]]);
   const c = await bootClient({
     fetch: () => Promise.reject(new Error("offline")), store,
-    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => (sel === ".src-seg button" ? chips : []) },
+    // One New DOU card: a chip with nothing in the selected tabs is dropped too (next test).
+    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({ ".src-seg button": chips, ".card": [domCard({ url: "https://a/1", source: "dou" })] })[sel] || [] },
   });
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...srcSel])"), JSON.stringify(["dou"]));
+});
+
+// A board's chip shows only while it has cards in the selected status tabs: in
+// the New view a board whose cards are all Viewed has no chip — unless it is
+// selected, so a pressed chip never vanishes under the user.
+test("source chips follow the status tabs: hidden with no cards there unless selected", async () => {
+  const chip = (src) => ({ dataset: { src }, hidden: false, classList: { toggle() {} }, setAttribute() {} });
+  const chips = [chip("all"), chip("dou"), chip("himalayas")];
+  const H = "https://h/1";
+  const store = new Map([
+    ["jobFilters2", JSON.stringify({ status: ["new"], src: [], query: "" })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [H]: { status: "viewed" } })],
+  ]);
+  const c = await bootClient({
+    fetch: () => Promise.reject(new Error("offline")), store,
+    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({
+      ".src-seg button": chips,
+      ".filter-seg button": [chip("new"), chip("viewed")].map((b) => ({ ...b, dataset: { filter: b.dataset.src } })),
+      ".card": [domCard({ url: "https://d/1", source: "dou" }), domCard({ url: H, source: "himalayas" })],
+    })[sel] || [] },
+  });
+  await new Promise((r) => setImmediate(r));   // init() continues after `ready`
+  assert.deepEqual(chips.map((b) => b.hidden), [false, false, true], "New view: Himalayas has only a Viewed card");
+  c.run("setFilter('viewed')");   // New + Viewed
+  assert.deepEqual(chips.map((b) => b.hidden), [false, false, false]);
+  c.run("setFilter('viewed')");   // back to New only
+  assert.deepEqual(chips.map((b) => b.hidden), [false, false, true]);
+  c.run("srcSel.add('himalayas'); applyFilter()");   // a selected board keeps its chip even with nothing to show
+  assert.equal(chips[2].hidden, false);
+});
+
+// Deselecting such a chip from the keyboard hides it; focus must move to All
+// rather than drop to <body> (WCAG 2.4.3).
+test("a chip hidden while focused hands focus to All", async () => {
+  const doc = { activeElement: null };
+  const chip = (src) => ({ dataset: { src }, hidden: false, classList: { toggle() {} }, setAttribute() {}, focus() { doc.activeElement = this; } });
+  const chips = [chip("all"), chip("dou"), chip("himalayas")];
+  const H = "https://h/1";
+  const store = new Map([
+    ["jobFilters2", JSON.stringify({ status: ["new"], src: ["himalayas"], query: "" })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [H]: { status: "viewed" } })],
+  ]);
+  Object.assign(doc, { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({
+    ".src-seg button": chips,
+    ".filter-seg button": [{ dataset: { filter: "new" }, classList: { toggle() {} }, setAttribute() {} }, { dataset: { filter: "viewed" }, classList: { toggle() {} }, setAttribute() {} }],
+    ".card": [domCard({ url: "https://d/1", source: "dou" }), domCard({ url: H, source: "himalayas" })],
+  })[sel] || [] });
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(chips[2].hidden, false, "selected: shown although its only card is Viewed");
+  chips[2].focus();
+  c.run("setSource('himalayas')");   // Space on the focused chip
+  assert.equal(chips[2].hidden, true);
+  assert.equal(doc.activeElement, chips[0], "focus moved to All");
 });
 
 // buildApplication neutralises heading-like lines in the letter with a

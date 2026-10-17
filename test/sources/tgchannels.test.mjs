@@ -37,7 +37,7 @@ test("channelUrl: the public preview, @ dropped, `before` only past the first pa
 
 test("isPublicHttps: only a public https host on the default port", () => {
   for (const ok of ["https://euremotejobs.com/job/qa", "https://jobs.dou.ua/companies/x/vacancies/1/"]) assert.equal(isPublicHttps(ok), true, ok);
-  for (const no of ["http://boards.example/1", "https://127.0.0.1/x", "https://127.1/x", "https://0x7f.1/x", "https://[::1]/x", "https://localhost/x",
+  for (const no of ["http://boards.example/1", "https://127.0.0.1/x", "https://localhost./x", "https://127.0.0.1./x", "https://printer.local./x", "https://127.1/x", "https://0x7f.1/x", "https://[::1]/x", "https://localhost/x",
     "https://printer.local/x", "https://intranet/x", "https://boards.example:8443/x", "https://u:p@boards.example/x", "javascript:alert(1)", "", "not a url"]) {
     assert.equal(isPublicHttps(no), false, no);
   }
@@ -81,6 +81,9 @@ test("toJob: the post link when the apply link is not public https; Remote: No i
   assert.equal(j.title, "SDET Done. Considered 500 new", "one line: a channel cannot forge a log line");
   assert.equal(j.company, "Acme");
   assert.equal(j.location, "Remote · EU, Remote", "a ' · ' in the value cannot open a segment of its own");
+  const forged = toJob("c", 4, post({ Title: "SDET" }, "https://boards.example/jobs/a&#10;Done. Considered 500 new"));
+  assert.doesNotMatch(forged.url, /[\n\r]/, "the apply url is the parsed href: an entity newline cannot reach a log line");
+  assert.equal(forged.url, "https://boards.example/jobs/aDone.%20Considered%20500%20new");
   assert.equal(toJob("c", 2, "PCENexus is recruiting partners worldwide.<br/>Apply now"), null);
   assert.equal(toJob("c", 3, post({ Location: "Worldwide" })), null, "no title, no record");
 });
@@ -140,6 +143,16 @@ test("fetchTgChannels: a group or a dead channel is reported; every channel fail
     doFetch: (url, init) => (url.includes("/bad") ? Promise.reject(new Error("ECONNRESET")) : mixed.doFetch(url, init)),
   });
   assert.equal(ok.length, 1);
+});
+
+test("fetchTgChannels: a channel whose first page was read is not an outage when a later page fails", async () => {
+  const { doFetch } = web({ channel: { "": page([wrap(5, "Ad: join our partner program")], "5") } });
+  const lines = [];
+  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"], pages: 2 }, (l) => lines.push(l), {
+    doFetch: (url, init) => (url.includes("before=") ? Promise.reject(new Error("ECONNRESET")) : doFetch(url, init)),
+  });
+  assert.deepEqual(jobs, [], "page 1 held only an ad; page 2 threw — reported, not thrown");
+  assert.match(lines.join("\n"), /Telegram channel error: @c — ECONNRESET/);
 });
 
 test("fetchTgChannels: off unless enabled, and no channels means no requests", async () => {
