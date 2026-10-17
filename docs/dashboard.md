@@ -60,8 +60,8 @@ counts, both selected by default.
 ![Card expanded in the Night City skin — cover letter, private note](card.png)
 
 **Find & freshness** — a search box filters cards by title, company, or skill
-keywords; the source chips (All, plus one per board that has packages on disk)
-narrow the list to a single board. Cards that arrived since your last visit are highlighted with a
+keywords; the source chips (All, plus one per board that has cards in the selected New /
+Viewed tabs; a selected chip always stays) narrow the list to a single board. Cards that arrived since your last visit are highlighted with a
 **NEW** ribbon. Viewed cards you have not touched for 30 days are archived by the
 daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 

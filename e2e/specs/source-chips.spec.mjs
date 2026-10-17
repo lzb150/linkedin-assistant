@@ -1,6 +1,8 @@
-// Source chips: All plus one chip per board that has packages on disk.
+// Source chips: All plus one chip per board that has packages on disk, shown
+// while the board has cards in the selected status tabs (or is selected).
 // Multi-select; an empty selection is "All".
 import { test, expect, cardsTitled } from "../fixtures/dashboard.mjs";
+import { JOBS, DEFAULT_STATE } from "../support/jobs.mjs";
 
 test.describe("source chips", () => {
   test("one chip per board with packages, All selected by default", async ({ dashboard }) => {
@@ -56,5 +58,19 @@ test.describe("source chips", () => {
 
     await expect(dashboard.sourceChip("Djinni")).toHaveAttribute("aria-pressed", "true");
     await expect(dashboard.cardTitles).toHaveText(cardsTitled("globex"));
+  });
+
+  test.describe("a board whose only card is Viewed", () => {
+    test.use({ seedState: { ...DEFAULT_STATE, [JOBS.globex.url]: { status: "viewed" } } });
+
+    test("has no chip in the New view, and gets it back with Viewed", async ({ dashboard }) => {
+      await dashboard.toggleViewedTab();   // New only
+
+      await expect(dashboard.sourceChips.getByRole("button")).toHaveText(["All", "DOU", "LinkedIn"]);
+
+      await dashboard.toggleViewedTab();
+
+      await expect(dashboard.sourceChips.getByRole("button")).toHaveText(["All", "Djinni", "DOU", "LinkedIn"]);
+    });
   });
 });
