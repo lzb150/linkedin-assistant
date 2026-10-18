@@ -88,3 +88,16 @@ test("keywordGate: a folded copy's title hits excludeTitle for the keeper", () =
   assert.equal(g.kind, "excluded");
   assert.equal(g.term, "junior");
 });
+
+test("keywordGate: a folded copy's key finds a package from another board, judged by the copy's own source", () => {
+  const djinni = job({ source: "djinni", title: "Strong Middle SDET (Playwright)", url: "https://djinni.co/jobs/9/" });
+  const keeper = job({ source: "tgchannels", title: "QA Automation Engineer (FinTech)", url: "https://djinni.co/jobs/9/",
+    mergedKeys: [{ key: canonicalKey(djinni), source: "djinni", url: djinni.url }] });
+  const fromLinkedIn = new Map([[canonicalKey(djinni), [{ file: "li.md", source: "linkedin", url: "https://www.linkedin.com/jobs/view/1/" }]]]);
+  assert.deepEqual(keywordGate(keeper, ctx({ packageIndex: fromLinkedIn })), { id: identityKey(keeper), kind: "dup", file: "li.md" });
+  // A Djinni package of another req under that key: same board as the copy, a distinct req.
+  const otherReq = new Map([[canonicalKey(djinni), [{ file: "d.md", source: "djinni", url: "https://djinni.co/jobs/8/" }]]]);
+  assert.equal(keywordGate(keeper, ctx({ packageIndex: otherReq })).kind, "match");
+  const sameReq = new Map([[canonicalKey(djinni), [{ file: "d.md", source: "djinni", url: djinni.url }]]]);
+  assert.deepEqual(keywordGate(keeper, ctx({ packageIndex: sameReq })), { id: identityKey(keeper), kind: "packaged", file: "d.md" });
+});

@@ -18,10 +18,12 @@ test("telegram-setup.mjs: saves the chat you messaged the bot from and sends a c
   const api = await startBotApi(t, fakeBot([
     update(1, { id: 555, type: "private" }),
     update(2, { id: -100, type: "group" }),
-    update(3, { id: 777, type: "private" }),
+    update(3, { id: 777, type: "private", first_name: "Eu\u001b[2Jgene", username: "lzb" }),
   ]));
   const p = makeProject(t, { scripts: ["telegram-setup.mjs"] });
   const out = await spawnScript(p, "telegram-setup.mjs", { TELEGRAM_API: api.base }, [TOKEN]).done;
+  assert.match(out, /chat 777: Eu\[2Jgene \(@lzb\)\)\. Not you\?/, "names whoever the alerts go to");
+  assert.ok(!out.includes("\u001b"), "a sender's name cannot drive the terminal");
   assert.deepEqual(p.json("telegram.json"), { token: TOKEN, chatId: 777, apiBase: api.base }, "the newest private chat, not the group");
   assert.equal(statSync(p.path("telegram.json")).mode & 0o777, 0o600, "the token is readable by you alone");
   const sent = api.calls.find((c) => c.path.endsWith("/sendMessage"));

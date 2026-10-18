@@ -42,8 +42,11 @@ try { candidateCountry = JSON.parse(readFileSync(join(__dir, "jobs.config.json")
 const countries = candidateCountryList(candidateCountry);
 const cards = items.map((it, i) => renderCard(it, i, { countries })).join("\n");
 
+// no-referrer: "Open job ↗" and the alt links would tell every board the
+// visit came from 127.0.0.1:7777 (http → https is not a downgrade).
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Jobs — ${items.length}</title>
 <script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -54,6 +54,28 @@ test.describe("status buttons", () => {
     await expect.poll(() => server.readState()[JOBS.initech.url]?.status).toBe("viewed");
   });
 
+  test("opening the cover letter from the keyboard marks the card Viewed", async ({ dashboard, server }) => {
+    const initech = dashboard.card(JOBS.initech.title);
+
+    await initech.openCoverLetterWithKeyboard();
+
+    await expect(initech.viewedButton).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => server.readState()[JOBS.initech.url]?.status).toBe("viewed");
+  });
+
+  test("a letter find-in-page opened leaves the card New", async ({ dashboard, server }) => {
+    const initech = dashboard.card(JOBS.initech.title);
+
+    await initech.revealCoverLetterByFind();
+    // Writes are serialized: once a later click has landed, a stray Viewed would have too.
+    await dashboard.card(JOBS.globex.title).markViewed();
+    await expect.poll(() => server.readState()[JOBS.globex.url]?.status).toBe("viewed");
+
+    await expect(initech.copyButton).toBeVisible();
+    await expect(initech.newButton).toHaveAttribute("aria-pressed", "true");
+    expect(server.readState()[JOBS.initech.url]?.status).toBeUndefined();
+  });
+
   test("opening the job link marks the card Viewed", async ({ dashboard, server }) => {
     const acme = dashboard.card(JOBS.acme.title);
 

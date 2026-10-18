@@ -2,9 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Jobs.app badge daemon, started at login. `--background` = show the unread Dock badge only,
-  do not open the dashboard. `open -W` gives launchd a live pid; it exits 0 however the app
-  ended, so KeepAlive is unconditional — with a WRONG path launchd respawns `open` every 10 s
-  forever, so replace YOUR_USERNAME (launchd needs absolute paths) before loading. Install/uninstall: docs/setup.md → "Schedule it (launchd)".
+  do not open the dashboard. The app's own binary, not `open -W -a Jobs.app`: launchd then owns
+  the app's pid, so `launchctl kickstart -k` or unload stops the app itself. Under `open -W` it
+  stopped only `open`, and the relaunched `open` reached the running app as a Dock-click reopen —
+  opening the unread thread in the browser and clearing the badge with no click. With a WRONG
+  path launchd respawns the binary every 10 s forever, so replace YOUR_USERNAME (launchd needs
+  absolute paths) before loading. Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
@@ -13,20 +16,15 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/open</string>
-    <string>-W</string>
-    <string>-g</string>
-    <string>-a</string>
-    <string>/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app</string>
-    <string>--args</string>
+    <string>/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app/Contents/MacOS/jobs</string>
     <string>--background</string>
   </array>
 
   <key>RunAtLoad</key>
   <true/>
 
-  <!-- Relaunch whenever the daemon exits: `open -W` reports 0 even for a crash,
-       so SuccessfulExit=false would never fire. Stop it with launchctl unload. -->
+  <!-- Relaunch whenever the daemon exits, a Quit from the Dock included (it is the
+       badge). Stop it with launchctl unload. -->
   <key>KeepAlive</key>
   <true/>
 
