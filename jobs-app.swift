@@ -216,7 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)            // show in Dock, own a dock tile
-        // A .regular app launched in the background (by launchd, or open -g) is never
+        // A .regular app launched in the background (open -g from launchd) is never
         // activated, and the Dock keeps showing the pinned static tile WITHOUT our
         // badge until the first activation (verified: badge appeared only after
         // `open -a`). Activate once and hand focus straight back; we own no windows,
