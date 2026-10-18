@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { channelUrl, isPublicHttps, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels } from "../../lib/sources/tgchannels.mjs";
+import { channelUrl, isPublicHttps, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 // A real t.me/s/remote_qa_jobs page (2026-10-17) cut to four posts: 384
@@ -77,15 +77,46 @@ test("toJob: the post link when the apply link is not public https; Remote: No i
   assert.equal(local.url, "https://t.me/remote_qa_jobs/7");
   assert.equal(local.apply, "");
   assert.equal(local.location, "Office · Poland");
-  const j = toJob("c", 1, post({ Title: "SDET&#10;Done. Considered 500 new", "Company name": "Acme&#8238;", Location: "EU · Remote" }));
+  const j = toJob("c", 1, post({ Title: "SDET&#10;Done. Considered 500 new", "Company name": "Acme&#8238;", Location: "EU · Poland" }));
   assert.equal(j.title, "SDET Done. Considered 500 new", "one line: a channel cannot forge a log line");
   assert.equal(j.company, "Acme");
-  assert.equal(j.location, "Remote · EU, Remote", "a ' · ' in the value cannot open a segment of its own");
+  assert.equal(j.location, "Remote · EU, Poland", "a ' · ' in the value cannot open a segment of its own");
   const forged = toJob("c", 4, post({ Title: "SDET" }, "https://boards.example/jobs/a&#10;Done. Considered 500 new"));
   assert.doesNotMatch(forged.url, /[\n\r]/, "the apply url is the parsed href: an entity newline cannot reach a log line");
   assert.equal(forged.url, "https://boards.example/jobs/aDone.%20Considered%20500%20new");
   assert.equal(toJob("c", 2, "PCENexus is recruiting partners worldwide.<br/>Apply now"), null);
   assert.equal(toJob("c", 3, post({ Location: "Worldwide" })), null, "no title, no record");
+});
+
+test("toJob: the Apply link, not a company name Telegram auto-linked earlier in the post", () => {
+  const text = `<b>Company name</b>: <a href="http://Coderslab.io/" target="_blank">Coderslab.io</a><br/><b>Title</b>: QA Automation<br/>` +
+    `<b>Job description</b>: See <a href="https://acme.example/about">https://acme.example/about</a><br/><br/>` +
+    `<a href="https://www.getonbrd.com/jobs/qa-automation" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);"><i class="emoji"><b>👉</b></i> ( Job Description &amp; Apply ) <i class="emoji"><b>👈️</b></i></a>`;
+  assert.equal(toJob("c", 1, text).url, "https://www.getonbrd.com/jobs/qa-automation");
+  assert.equal(toJob("c", 2, post({ Title: "SDET", "Job description": "<a href=\"https://acme.example/about\">site</a>" }).replace(/👉 \( Job Description &amp; Apply \) 👈️/, "here")).url,
+    "https://acme.example/about", "no Apply link: the first real one, as before");
+});
+
+test("placeOf: format words go, so the place names its countries; Anywhere: Yes keeps the countries a post names", () => {
+  for (const [raw, want] of [["Ukraine (Remote)", "Ukraine"], ["Warsaw, Poland (100% Remote)", "Warsaw, Poland"], ["Belgrade +4 locations (Remote, Europe)", "Belgrade +4 locations (Europe)"],
+    ["USA, remote", "USA"], ["France or Remote", "France"], ["remote", ""], ["Europe or Ukraine", "Europe or Ukraine"], ["EU · Poland", "EU, Poland"]]) {
+    assert.equal(placeOf(raw), want, raw);
+  }
+  const loc = (Location, Anywhere) => toJob("c", 1, post({ Title: "SDET", Location, Anywhere })).location;
+  assert.equal(loc("Ukraine, Poland", "Yes"), "Remote · Worldwide, Ukraine, Poland");
+  assert.equal(loc("Worldwide (100% remote; HQ Dubai)", "Yes"), "Remote · Worldwide");
+  assert.equal(loc("Anywhere in the World", "Yes"), "Remote · Worldwide");
+  assert.equal(loc("Ukraine (Remote)", "No"), "Remote · Ukraine");
+});
+
+test("forbidsCountry: a plain list naming the country bans it; the channel's 'Outside …' allow-list and an 'except' do not", () => {
+  const ua = ["Ukraine", "Україна"];
+  assert.equal(forbidsCountry("Ukraine, Russia, Belarus", ua), true);
+  assert.equal(forbidsCountry("Росія, Україна", ua), true);
+  assert.equal(forbidsCountry("Outside Europe and Ukraine", ua), false);
+  assert.equal(forbidsCountry("All countries except Ukraine", ua), false);
+  assert.equal(forbidsCountry("Russia, Belarus", ua), false);
+  assert.equal(forbidsCountry("", ua), false);
 });
 
 test("jobPostingText: the JobPosting description as text, from a plain object, an array or @graph; '' when none", () => {
@@ -120,6 +151,19 @@ test("fetchTgChannels walks `pages` pages by `before`, enriches new jobs from th
   assert.deepEqual(Object.keys(jobs[0]).sort(), ["company", "location", "source", "text", "title", "url"], "internal fields dropped");
   assert.ok(lines.includes("  Telegram channel ok (2 jobs over 2 pages): @remote_qa_jobs"), lines.join("\n"));
   assert.ok(lines.includes("  Telegram: enriched 1/2 with the full description"), lines.join("\n"));
+});
+
+test("fetchTgChannels drops a post whose Forbidden locations name the candidate's country, before fetching its page", async () => {
+  const banned = "https://boards.example/jobs/banned";
+  const { urls, doFetch } = web({ channel: { "": page([
+    wrap(1, post({ Title: "SDET Banned", Location: "Worldwide", Anywhere: "Yes", "Forbidden locations": "Ukraine, Russia, Belarus" }, banned)),
+    wrap(2, post({ Title: "SDET Europe", Location: "Europe or Ukraine", "Forbidden locations": "Outside Europe and Ukraine" })),
+  ]) } });
+  const lines = [];
+  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"] }, (l) => lines.push(l), { doFetch, country: ["Ukraine", "Україна"] });
+  assert.deepEqual(jobs.map((j) => j.title), ["SDET Europe"]);
+  assert.ok(!urls.includes(banned), "no page fetch for a dropped post");
+  assert.ok(lines.includes("  Telegram: dropped, forbidden locations name the candidate's country [Ukraine, Russia, Belarus]: SDET Banned"), lines.join("\n"));
 });
 
 test("fetchTgChannels: known jobs and fullDescription:false skip the job pages", async () => {

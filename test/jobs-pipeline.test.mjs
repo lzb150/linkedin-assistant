@@ -191,6 +191,28 @@ test("jobs.mjs: a Telegram channel's job posts reach the same gates; a post clos
   assert.deepEqual(p.json("source-health.json").tgchannels, [2]);
 });
 
+test("jobs.mjs: a channel's repost of a packaged Djinni job, under another title, is that package — no LLM call", async (t) => {
+  const srv = createServer((req, res) => {
+    res.setHeader("content-type", "text/html");
+    res.end(`<section class="tgme_channel_history"><div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="remote_qa_jobs/384">` +
+      `<div class="tgme_widget_message_text js-message_text"><b>Company name</b>: Acme<br/><b>Title</b>: QA Automation Engineer (FinTech)<br/>` +
+      `<b>Job description</b>: ${AQA}<br/><b>Location</b>: Ukraine<br/><b>Anywhere</b>: No<br/><b>Remote</b>: Yes<br/><br/>` +
+      `<a href="https://djinni.co/jobs/830692-qa-automation-engineer-fintech">( Job Description &amp; Apply )</a></div></div></div></section>`);
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const existing = pkg({ source: "djinni", title: "Strong Middle SDET (Playwright)", company: "Acme", url: "https://djinni.co/jobs/830692-strong-middle-sdet-playwright/" });
+  const p = setupProject(t, await serveFeed(t, () => rss([])), { packages: { "old.md": existing } });
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.tgchannels = { enabled: true, channels: ["@remote_qa_jobs"], fullDescription: false };
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+
+  const out = await runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf", TGCHANNELS_BASE: `http://127.0.0.1:${srv.address().port}/s/` });
+  assert.match(out, /· already packaged \(old\.md\) tgchannels: QA Automation Engineer \(FinTech\)/);
+  assert.equal(claudeCalls(p), 0, "no LLM call for a known vacancy");
+  assert.deepEqual(mdFiles(p), ["old.md"], "no second package");
+});
+
 test("jobs.mjs: himalayas.worldwide false keeps only jobs that name the candidate's country", async (t) => {
   const job = (title, company, countries) => ({ title, companyName: company, locationRestrictions: countries, description: `<p>${AQA}</p>`,
     guid: `https://himalayas.app/companies/${company.toLowerCase()}/jobs/${title.toLowerCase().replace(/\W+/g, "-")}` });
