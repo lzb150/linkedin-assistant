@@ -125,9 +125,21 @@ test("stripHtml ends a tag at the '>' outside its quoted attributes, not inside 
   assert.equal(stripHtml("<p unterminated"), "<p unterminated");
 });
 
+test("stripHtml: a quote opens a value only after '=' in an element tag; a comment ends at '-->'", () => {
+  assert.equal(stripHtml("<p>Hello</p><!-- don't remove --><p>We need <b>Playwright</b></p>"), "Hello We need Playwright");
+  assert.equal(stripHtml("<!-- a > b -->text"), "text", "a '>' inside a comment does not end it");
+  assert.equal(stripHtml("<!-->abrupt"), "abrupt");
+  assert.equal(stripHtml("<a title=don't href=x>link</a> after"), "link after");
+  assert.equal(stripHtml("<!DOCTYPE html><p>it's</p>"), "it's");
+  assert.equal(stripHtml('<a href="x>text'), "text", "a value still open at the end: the tag ends at its first '>'");
+  assert.equal(stripHtml("<p>kept</p><!-- unterminated"), "kept");
+});
+
 test("stripHtml stays linear on unterminated quotes (the scan has no bound to outgrow)", () => {
   assertLinear("open quotes", (n) => stripHtml('<a title="'.repeat(n)), 25_000);
   assertLinear("quoted > in tags", (n) => stripHtml('<a title="x > y">t'.repeat(n)), 25_000);
+  assertLinear("open quotes in unquoted values", (n) => stripHtml("<a b='x>".repeat(n)), 25_000);
+  assertLinear("comment openers", (n) => stripHtml("<!-- x --".repeat(n)), 25_000);
 });
 
 test("stripHtml drops tags longer than the bounded scan (inline SVG / data: URI)", () => {

@@ -277,3 +277,13 @@ test("dedupeJobs: a job matching one group by title and another by link joins th
   assert.deepEqual(deduped, [c]);
   assert.deepEqual(c.altLinks.map((l) => l.source).sort(), ["dou", "tgchannels"]);
 });
+
+test("dedupeJobs records a link-joined copy's own key and source; a canonical merge records none", () => {
+  const djinni = { source: "djinni", company: "Acme", title: "Strong Middle SDET (Playwright)", url: "https://djinni.co/jobs/9-strong-middle-sdet/", text: "s" };
+  const tg = { source: "tgchannels", company: "Acme", title: "QA Automation Engineer (FinTech)", url: "https://djinni.co/jobs/9-qa-automation-engineer", text: "the longer, enriched text" };
+  dedupeJobs([djinni, tg]);
+  assert.deepEqual(tg.mergedKeys, [{ key: canonicalKey(djinni), source: "djinni", url: djinni.url }]);
+  const dou = { source: "dou", company: "Acme", title: "SDET", url: "https://jobs.dou.ua/1/", text: "long text" };
+  dedupeJobs([dou, { source: "djinni", company: "Acme", title: "SDET", url: "https://djinni.co/jobs/1/", text: "t" }]);
+  assert.equal(dou.mergedKeys, undefined, "same key: nothing more to look up");
+});

@@ -65,6 +65,10 @@ test("renderCard: a url past the server's length limit renders read-only; middle
   assert.doesNotMatch(ro, /data-url=|status-seg|note-wrap|autoStatus/);
   const live = renderCard(toItem({ fm: { source: "dou", title: "SDET", url: "https://a/1" }, cover: "" }), 1);
   assert.match(live, /onauxclick="if\(event\.button===1\) autoStatus\(/);
+  // The letter marks Viewed from a summary click, never from toggle (find-in-page opens it too).
+  assert.match(live, /<summary onclick="if\(!this\.parentElement\.open\) autoStatus\(/);
+  assert.doesNotMatch(live, /ontoggle/);
+  assert.match(live, /<span class="sr-only card-status" lang="en"><\/span><\/h2>/, "the English cue is not read in the title's language");
 });
 
 test("renderCard: a remote-board card whose countries name the candidate's country is marked; worldwide and Djinni are not", () => {

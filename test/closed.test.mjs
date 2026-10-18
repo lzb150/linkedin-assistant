@@ -91,3 +91,11 @@ test("planArchive: a status inherited from Object.prototype is not a cutoff", ()
   const stateMap = { "https://dou.ua/1": { status: "toString" } };   // no updatedAt: the "old enough" path, where a function cutoff slips through
   assert.deepEqual(planArchive({ packages, stateMap }), []);
 });
+
+test("selectCandidates: a channel's package linking a board is probed as that board", () => {
+  const packages = [
+    { url: "https://djinni.co/jobs/830692-qa-automation-engineer/", source: "tgchannels" },
+    { url: "https://zerotaxjobs.com/jobs/automation-qa-engineer", source: "tgchannels" },
+  ];
+  assert.deepEqual(selectCandidates({ packages, now }), [{ url: packages[0].url, source: "djinni" }]);
+});

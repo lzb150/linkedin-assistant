@@ -30,6 +30,10 @@ export class JobCard {
   async markViewed() { await this.viewedButton.click(); }
   async markNew() { await this.newButton.click(); }
   async openCoverLetter() { await this.coverLetterToggle.click(); }
+  async openCoverLetterWithKeyboard() { await this.coverLetterToggle.press("Enter"); }
+  // What Chromium's find-in-page does to a closed <details> whose text matches:
+  // opens it (and fires toggle) with no click on the summary.
+  async revealCoverLetterByFind() { await this.coverLetterToggle.evaluate((s) => { s.parentElement.open = true; }); }
   async copyLetter() { await this.copyButton.click(); }
   async openNote() { await this.noteToggle.click(); }
 

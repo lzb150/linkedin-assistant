@@ -44,4 +44,9 @@ if (!chat) fail(`no message to the bot yet — open https://t.me/${me.username},
 // Test message first: a config is only saved once it has been shown to work.
 await call("sendMessage", { chat_id: chat.id, text: "✅ linkedin-assistant: Telegram alerts are on. New matching jobs and recruiter messages will arrive here." });
 writeJsonAtomic(join(__dir, "telegram.json"), { token, chatId: chat.id, ...(process.env.TELEGRAM_API ? { apiBase: API } : {}) }, 2);   // 0600
-console.log(`✓ telegram.json written — alerts go to @${me.username} (chat ${chat.id}). Check Telegram for the test message.`);
+// The chat is whoever messaged the bot last, so name them: a stranger who found
+// the bot by its username shortly before this run would get every alert.
+// Control and format characters go — the name is theirs and prints to a terminal.
+const who = [chat.first_name, chat.last_name].filter(Boolean).join(" ") + (chat.username ? ` (@${chat.username})` : "");
+const name = who.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 80) || "no name";
+console.log(`✓ telegram.json written — alerts go to @${me.username} (chat ${chat.id}: ${name}). Not you? Delete telegram.json, send the bot a message yourself and run this again. Check Telegram for the test message.`);

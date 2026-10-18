@@ -103,4 +103,6 @@ test("dashboard.mjs: one header preference (Dark), re-applied before paint; font
   assert.doesNotMatch(html, /jobGlow|toggleGlow|id="glow"/);
   // Fonts are third-party: no referrer, so Google never sees the local dashboard url.
   assert.match(head, /<link rel="stylesheet" referrerpolicy="no-referrer" href="https:\/\/fonts\.googleapis\.com\//);
+  // …and no board learns the dashboard's url from "Open job ↗" either.
+  assert.match(head, /<meta name="referrer" content="no-referrer">/);
 });

@@ -98,3 +98,11 @@ test("the від…до range needs a money marker, so years of experience are n
   assert.equal(extractSalary("від 3000 USD до 5000 USD"), "від 3000 USD до 5000 USD");
   assert.equal(extractSalary("від $3k до $5k"), "від $3k до $5k");
 });
+
+test("the Russian and English word ranges keep their floor", () => {
+  assert.equal(extractSalary("Зарплата от 3000 до 5000 USD"), "от 3000 до 5000 USD");
+  assert.equal(extractSalary("Salary from $3,000 to $5,000 per month"), "from $3,000 to $5,000");
+  assert.equal(extractSalary("Salary from 3k to 5k USD"), "from 3k to 5k USD");
+  assert.equal(extractSalary("from 3 to 5 years of experience"), null, "experience is not money");
+  assert.equal(extractSalary("a team growing from 10 to 25 engineers"), null);
+});
