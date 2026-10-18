@@ -67,3 +67,24 @@ test("keywordGate: a match on a title-only text carries retry, so an LLM drop do
   assert.equal(keywordGate({ source: "linkedin", title: "SDET", company: "A", url: "u1", text: "SDET at A." }, opts).retry, true);
   assert.equal(keywordGate({ source: "linkedin", title: "SDET", company: "A", url: "u2", text: "x".repeat(400) }, opts).retry, false);
 });
+
+test("keywordGate: a merged keeper is seen when a copy folded into it is", () => {
+  const djinni = job({ source: "djinni", title: "Strong Middle SDET" });
+  const keeper = job({ source: "tgchannels", mergedIds: [identityKey(djinni)] });
+  assert.equal(keywordGate(keeper, ctx({ seen: new Set([identityKey(djinni)]) })).kind, "seen");
+  assert.equal(keywordGate(keeper, ctx()).kind, "match");
+});
+
+test("keywordGate: the same link packaged from another board is that package, whatever the title", () => {
+  const repost = job({ source: "tgchannels", title: "QA Automation Engineer", url: "https://djinni.co/jobs/830692-qa-automation-engineer/" });
+  const links = new Map([["djinni.co/jobs/830692", "a.md"]]);
+  assert.deepEqual(keywordGate(repost, ctx({ packageLinks: links })), { id: identityKey(repost), kind: "packaged", file: "a.md" });
+  assert.equal(keywordGate(job({ url: "not a url" }), ctx({ packageLinks: new Map([["", "x.md"]]) })).kind, "match", "no link, no match");
+});
+
+test("keywordGate: a folded copy's title hits excludeTitle for the keeper", () => {
+  const keeper = job({ title: "QA Automation Engineer", mergedTitles: ["Strong Junior/Middle QA Automation Engineer"] });
+  const g = keywordGate(keeper, ctx({ excludedByTitle: titleExcluder(["junior"]) }));
+  assert.equal(g.kind, "excluded");
+  assert.equal(g.term, "junior");
+});

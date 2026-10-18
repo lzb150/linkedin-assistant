@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeCompany, normalizeTitle, identityKey, canonicalKey, dedupeJobs } from "../lib/dedup.mjs";
+import { normalizeCompany, normalizeTitle, identityKey, canonicalKey, dedupeJobs, linkKey } from "../lib/dedup.mjs";
 
 test("normalizeCompany strips a company suffix so SoftServe LLC == SoftServe", () => {
   assert.equal(normalizeCompany("SoftServe LLC"), normalizeCompany("SoftServe"));
@@ -245,4 +245,35 @@ test("dedupeJobs records the folded copies' own identity keys on their keeper", 
   const other = keeper === li ? dou : li;
   assert.notEqual(identityKey(other), identityKey(keeper), "the fixture's premise: one vacancy, two identity keys");
   assert.deepEqual(keeper.mergedIds, [identityKey(other)]);
+});
+
+test("linkKey: one posting whatever the slash, the www or Djinni's title slug; '' for a non-URL", () => {
+  assert.equal(linkKey("https://djinni.co/jobs/830692-qa-automation-engineer-trading-and-fintech-in/"), "djinni.co/jobs/830692");
+  assert.equal(linkKey("https://djinni.co/jobs/830692-strong-junior-middle-qa-automation-engineer"), "djinni.co/jobs/830692");
+  assert.equal(linkKey("https://www.Boards.example/jobs/1/?utm_source=tg"), linkKey("https://boards.example/jobs/1"));
+  assert.notEqual(linkKey("https://boards.example/jobs/1"), linkKey("https://boards.example/jobs/2"));
+  assert.equal(linkKey("u-djinni"), "");
+  assert.equal(linkKey(undefined), "");
+});
+
+test("dedupeJobs folds a channel's repost of a board's job by link, under a title of its own", () => {
+  const djinni = { source: "djinni", company: "DevBrother", title: "Strong Junior/Middle QA Automation Engineer", url: "https://djinni.co/jobs/830692-strong-junior-middle-qa-automation-engineer/", text: "snippet" };
+  const tg = { source: "tgchannels", company: "DevBrother", title: "QA Automation Engineer (Trading and FinTech infrastructure)", url: "https://djinni.co/jobs/830692-qa-automation-engineer-trading-and-fintech-in", text: "the full JSON-LD description, longer" };
+  assert.notEqual(canonicalKey(djinni), canonicalKey(tg), "the fixture's premise: the titles do not match");
+  const { deduped, mergedCount } = dedupeJobs([djinni, tg]);
+  assert.equal(mergedCount, 1);
+  assert.deepEqual(deduped, [tg], "the longer text keeps");
+  assert.deepEqual(tg.altLinks, [{ source: "djinni", url: djinni.url }]);
+  assert.deepEqual(tg.mergedIds, [identityKey(djinni)]);
+  assert.deepEqual(tg.mergedTitles, [djinni.title], "the excludeTitle gate reads the folded title too");
+});
+
+test("dedupeJobs: a job matching one group by title and another by link joins the two", () => {
+  const a = { source: "dou", company: "Acme", title: "SDET", url: "https://jobs.dou.ua/companies/acme/vacancies/1/", text: "a" };
+  const b = { source: "tgchannels", company: "Acme", title: "Test Automation Engineer", url: "https://boards.example/jobs/9", text: "b" };
+  const c = { source: "linkedin", company: "Acme", title: "SDET", url: "https://boards.example/jobs/9/", text: "the longest text of the three" };
+  const { deduped, mergedCount } = dedupeJobs([a, b, c]);
+  assert.equal(mergedCount, 2);
+  assert.deepEqual(deduped, [c]);
+  assert.deepEqual(c.altLinks.map((l) => l.source).sort(), ["dou", "tgchannels"]);
 });

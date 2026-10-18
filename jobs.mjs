@@ -19,7 +19,7 @@ import { buildApplication, appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sanitizeVacancyText } from "./lib/llm.mjs";
 import { detectLang } from "./lib/lang.mjs";
-import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
+import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
 import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag, sourceList, isHttpUrl, isSearchPhrase, isChannelName, isLinkedInSearch } from "./lib/filters.mjs";
 import {
@@ -214,7 +214,7 @@ const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
   { name: "djinni", enabled: config.djinni?.enabled, fetch: (cfg, lg) => fetchDjinni(cfg, lg, { skip: knownJob }) },
   { name: "himalayas", enabled: config.himalayas?.enabled, fetch: (cfg, lg) => fetchHimalayas(cfg, lg, { country: CANDIDATE_COUNTRY[0] }) },
-  { name: "tgchannels", enabled: config.tgchannels?.enabled, fetch: (cfg, lg) => fetchTgChannels(cfg, lg, { skip: knownJob }) },
+  { name: "tgchannels", enabled: config.tgchannels?.enabled, fetch: (cfg, lg) => fetchTgChannels(cfg, lg, { skip: knownJob, country: CANDIDATE_COUNTRY }) },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   // Say it out loud: a source turned off by a typo looked exactly like a source
@@ -337,6 +337,7 @@ log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length}
 // resurfacing on ANOTHER board must not spawn a second package — its link is
 // appended to the existing one instead. Same source = a distinct req, allowed.
 const packageIndex = new Map();
+const packageLinks = new Map();
 for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable package skipped: ${f} (${e?.message})`) })) {
   // "—" is the blank-company placeholder; canonicalKey scopes those by url,
   // so pass the url along instead of filtering on a truthy company.
@@ -351,6 +352,9 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
   const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
   if (!packageIndex.has(key)) packageIndex.set(key, []);
   packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "" });
+  // By link too: a channel's repost of this vacancy carries a title of its own.
+  const link = linkKey(fm.url);
+  if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
 }
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
@@ -372,7 +376,7 @@ function titleOnlyNo(job, id, gate) {
 }
 for (const job of jobs) {
   const g = keywordGate(job, {
-    seen, packageIndex, excludedByTitle,
+    seen, packageIndex, packageLinks, excludedByTitle,
     minScore: SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE,
     requireRole: config.requireRole,
   });
