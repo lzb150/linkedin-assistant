@@ -42,8 +42,11 @@ Without a built `Jobs.app` they fall back to `osascript` (Script Editor icon).
 Build it with `./build-jobs.sh`, then start it at login by installing
 `com.example.jobs-badge.plist.example` as `com.example.jobs-badge.plist` into
 `~/Library/LaunchAgents/` (replace `YOUR_USERNAME` inside first — with a wrong
-path launchd respawns it every 10 s forever). `check.mjs` also relaunches it
-defensively on each scan.
+path launchd respawns `open` every 10 s forever). `check.mjs` also relaunches it
+defensively on each scan. The agent leaves a running app alone (`open` on it would
+act as a Dock click), so `launchctl kickstart -k` or unload restarts only the agent;
+stop the app itself with `pkill -f Jobs.app/Contents/MacOS/jobs` (launchd starts
+it again within 10 s).
 
 ## Djinni inbox (combined Dock badge)
 
