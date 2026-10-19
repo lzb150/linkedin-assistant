@@ -72,7 +72,8 @@
     "searches": [
       { "keywords": "SDET", "location": "Ukraine", "remote": true },
       { "keywords": "QA Automation TypeScript", "location": "Ukraine", "remote": true },
-      { "keywords": "Senior QA Automation Engineer", "location": "Ukraine", "remote": true }
+      { "keywords": "Senior QA Automation Engineer", "location": "Ukraine", "remote": true },
+      { "keywords": "Test Engineer", "location": "Ukraine", "remote": true }
     ]
   }
 }
