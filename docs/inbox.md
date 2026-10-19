@@ -46,7 +46,8 @@ path launchd respawns `open` every 10 s forever). `check.mjs` also relaunches it
 defensively on each scan. The agent leaves a running app alone (`open` on it would
 act as a Dock click), so `launchctl kickstart -k` or unload restarts only the agent;
 stop the app itself with `pkill -f Jobs.app/Contents/MacOS/jobs` (launchd starts
-it again within 10 s).
+it again within 10 s). To stop it for good, `launchctl unload` the agent first,
+then run that `pkill`.
 
 ## Djinni inbox (combined Dock badge)
 
