@@ -159,7 +159,7 @@ gitignore.
 ## Сеньйорність
 
 - `excludeTitle` у `jobs.config.json` відкидає заголовки зі словами
-  `junior` / `intern` / `internship` / `trainee` / `manual` ще до оцінки —
+  `junior` / `intern` / `internship` / `trainee` / `manual` / `lead` ще до оцінки —
   цілими словами, лише в заголовку.
 - Позитивного фільтра «лише senior» немає: бал залежить від навичок, а
   заголовки senior-посад і так збігаються з вашими ролями як підрядки.

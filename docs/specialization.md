@@ -154,7 +154,7 @@ cover letters. All three files are gitignored.
 ## Seniority
 
 - `excludeTitle` in `jobs.config.json` drops titles containing
-  `junior` / `intern` / `internship` / `trainee` / `manual` before scoring —
+  `junior` / `intern` / `internship` / `trainee` / `manual` / `lead` before scoring —
   whole-word, title-only.
 - There is no "senior-only" positive filter: the score is skill-based, and
   senior titles already match your role entries by substring.
