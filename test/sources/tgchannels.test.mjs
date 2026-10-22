@@ -160,7 +160,7 @@ test("fetchTgChannels drops a post whose Forbidden locations name the candidate'
     wrap(2, post({ Title: "SDET Europe", Location: "Europe or Ukraine", "Forbidden locations": "Outside Europe and Ukraine" })),
   ]) } });
   const lines = [];
-  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"] }, (l) => lines.push(l), { doFetch, country: ["Ukraine", "Україна"] });
+  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"] }, (l) => lines.push(l), { doFetch, countries: ["Ukraine", "Україна"] });
   assert.deepEqual(jobs.map((j) => j.title), ["SDET Europe"]);
   assert.ok(!urls.includes(banned), "no page fetch for a dropped post");
   assert.ok(lines.includes("  Telegram: dropped, forbidden locations name the candidate's country [Ukraine, Russia, Belarus]: SDET Banned"), lines.join("\n"));

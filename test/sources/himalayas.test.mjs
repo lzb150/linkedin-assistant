@@ -67,7 +67,7 @@ test("toJob: no https link or no title = no record; restriction objects and cont
 test("fetchHimalayas reads pages until an empty one, passes the country, and dedups across searches", async () => {
   const { urls, doFetch } = api({ 1: page(1, 2), 2: page(3) });
   const lines = [];
-  const jobs = await fetchHimalayas({ enabled: true, searches: ["SDET", "QA"], pages: 5 }, (l) => lines.push(l), { country: "Ukraine", doFetch });
+  const jobs = await fetchHimalayas({ enabled: true, searches: ["SDET", "QA"], pages: 5 }, (l) => lines.push(l), { countries: ["Ukraine"], doFetch });
   assert.deepEqual(jobs.map((j) => j.title), ["SDET 1", "SDET 2", "SDET 3"], "the second search's copies collapse by url");
   assert.equal(urls.filter((u) => new URL(u).searchParams.get("q") === "SDET").length, 3, "pages 1, 2 and the empty page 3 — not all 5");
   assert.ok(urls.every((u) => new URL(u).searchParams.get("country") === "Ukraine"));
