@@ -37,7 +37,7 @@
 | `check.mjs`           | Read unread → score → draft. Never sends.                 |
 | `djinni-check.mjs`    | Count unread Djinni inbox threads. Count-only, never opens threads. |
 | `jobs.mjs`            | Discover vacancies → application packages. Never submits. |
-| `dashboard.mjs`       | Build the HTML dashboard (Viewed / Closed, notes, filters). |
+| `dashboard.mjs`       | Build the HTML dashboard (Viewed / Closed, notes, filters); inlines `lib/dashboard.css` and the client script. |
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
