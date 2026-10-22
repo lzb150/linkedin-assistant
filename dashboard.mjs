@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { readPackages } from "./lib/packages.mjs";
 import { parse, toItem, collapseItems, renderCard, sourceChips } from "./lib/dashboard-render.mjs";
+import { readJobsConfig } from "./lib/jobs-config.mjs";
 import { candidateCountryList } from "./lib/filters.mjs";
 import { execFile } from "node:child_process";
 
@@ -43,7 +44,7 @@ const items = collapseItems(readPackages(APPS, { warn, raw: true })
 // cards. A missing or broken config is jobs.mjs's to report; here it just means
 // the default country.
 let candidateCountry;
-try { candidateCountry = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8")).candidateCountry; } catch {}
+try { candidateCountry = readJobsConfig(join(__dir, "jobs.config.json")).candidateCountry; } catch {}
 const countries = candidateCountryList(candidateCountry);
 const llmInUse = items.some((it) => it.llm != null);
 const cards = items.map((it, i) => renderCard(it, i, { countries, llmInUse })).join("\n");

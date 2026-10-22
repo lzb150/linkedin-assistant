@@ -44,6 +44,8 @@
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, open browser. |
 | `telegram-setup.mjs`  | One-time setup of the optional Telegram alerts: finds your chat, writes `telegram.json`. |
 | `lib/telegram.mjs`    | Telegram copy of the alerts: message format, `telegram-outbox/` queue, sender. |
+| `lib/jobs-config.mjs` | `jobs.config.json` → normalized flags, lists, knobs; reports misspelt keys. |
+| `lib/llm-gate.mjs`    | The LLM gate: verdicts in parallel, packages in score order, deferral on failure. |
 | `lib/relevance.mjs`   | Local scoring (no API key, nothing leaves the machine).   |
 | `lib/dedup.mjs`       | Cross-source de-dup: identity key + collapse duplicates.  |
 | `lib/draft.mjs`       | Builds the reply-draft markdown.                          |
