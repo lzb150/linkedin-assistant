@@ -115,7 +115,8 @@ jobs:
         node: [20, 24]
     runs-on: ubuntu-latest
     # The suite takes ~10 s; the rest is npm ci and the Chromium download.
-    timeout-minutes: 10
+    # 15, not 10: the install step below may take three bounded attempts.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -125,8 +126,23 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      # The build pinned in package-lock.json, plus the system libraries it needs.
-      - run: npx playwright install --with-deps chromium
+      # The Chromium build pinned in package-lock.json, cached across runs: the
+      # download hung four times on 2026-10-22 alone, each time until the job
+      # timeout cancelled it. On a cache hit `playwright install` has nothing
+      # to fetch and only the apt step (--with-deps) runs.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      # Bounded and retried: a hung download or apt mirror fails the attempt
+      # after 3 minutes and is tried again, instead of sitting until the job
+      # timeout and needing a manual rerun.
+      - run: |
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install --with-deps chromium && exit 0
+            echo "::warning::playwright install attempt $attempt failed or hung — retrying"
+          done
+          exit 1
       - run: npm run test:e2e
       # Report and traces (trace: retain-on-failure) for a red run.
       - if: failure()
