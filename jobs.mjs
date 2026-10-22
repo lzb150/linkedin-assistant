@@ -21,7 +21,8 @@ import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sa
 import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList, knob as configKnob, flag, sourceList, isHttpUrl, isSearchPhrase, isChannelName, isLinkedInSearch } from "./lib/filters.mjs";
+import { filterByLocation, excludeList } from "./lib/filters.mjs";
+import { readJobsConfig, normalizeJobsConfig } from "./lib/jobs-config.mjs";
 import {
   newSummary, recordFound, recordOutcome, recordMerged, recordTop,
   formatTable, formatRunBanner,
@@ -70,27 +71,22 @@ const DOU_ONLY = process.env.DOU_ONLY === "1";
 // the file, before the run lock or a banner — noticed only by reading logs/.
 // Nothing sensible runs without it, so the run stops, but says why. The banner
 // is the 3-hourly run's alone: the catch-up agent would repeat it every 15 min.
-let config;
+// Flags, lists, numeric knobs and misspelt keys are all handled in
+// lib/jobs-config.mjs, once, so every section below sees normalized values.
+let rawConfig;
 try {
-  config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
-  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("not a JSON object");
+  rawConfig = readJobsConfig(join(__dir, "jobs.config.json"));
 } catch (e) {
   log(`⚠ jobs.config.json unusable (${e.message}) — fix the JSON; nothing was scanned`);
   if (!CATCHUP) banner("Job assistant", "jobs.config.json is broken — fix the JSON (details in logs/)");
   process.exit(1);
 }
-// Every on/off switch is normalized once, here, so jobs.mjs and the sources
-// that read their own section see real booleans (see flag() in lib/filters.mjs).
-config.requireRole = flag("requireRole", config.requireRole, false, log);
-for (const [section, key, fallback] of [["llm", "enabled", false], ["dou", "enabled", true], ["djinni", "enabled", false], ["djinni", "fullDescription", true], ["himalayas", "enabled", false], ["himalayas", "worldwide", true], ["tgchannels", "enabled", false], ["tgchannels", "fullDescription", true], ["tgchannels", "worldwide", true], ["linkedin", "enabled", false]]) {
-  const sec = config[section];
-  if (sec && typeof sec === "object" && key in sec) sec[key] = flag(`${section}.${key}`, sec[key], fallback, log);
-}
-// And every source's list, so a source iterates only entries it can search.
-for (const [section, key, valid, want] of [["dou", "feeds", isHttpUrl, "a feed URL"], ["djinni", "searches", isHttpUrl, "a search URL"], ["himalayas", "searches", isSearchPhrase, "a search phrase"], ["tgchannels", "channels", isChannelName, "a public channel name"], ["linkedin", "searches", isLinkedInSearch, '{ "keywords": "…" }']]) {
-  const sec = config[section];
-  if (sec && typeof sec === "object" && key in sec) sec[key] = sourceList(`${section}.${key}`, sec[key], valid, want, log);
-}
+const {
+  config, minScore: MIN_SCORE, sourceMinScore: SOURCE_MIN_SCORE,
+  llmMinScore: LLM_MIN_SCORE, llmMaxPerRun: LLM_MAX_PER_RUN, llmConcurrency: LLM_CONCURRENCY,
+  candidateCountry: CANDIDATE_COUNTRY, countryOnly: COUNTRY_ONLY,
+} = normalizeJobsConfig(rawConfig, { log });
+const LLM = config.llm || {};
 
 // A run that was due to scrape LinkedIn but could not (the run lock or the
 // browser profile was busy) leaves the catch-up marker behind, so the 15-minute
@@ -117,46 +113,8 @@ try {
 
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
 const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
-// Normalized once so the two gates that read it — the Djinni country filter and
-// the LLM prompt — can never disagree (an empty/typo'd candidateCountry used to
-// leave the filter rejecting everything while the prompt still said Ukraine).
-const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
-// Remote boards set to `worldwide: false`: only jobs that name candidateCountry.
-const COUNTRY_ONLY = new Set(["himalayas", "tgchannels"].filter((s) => config[s]?.worldwide === false));
-const LLM = config.llm || {};
-// Every numeric knob goes through here: a value that is not a number used to
-// switch its gate off silently (`score < "abc"` is false for every score).
-// It falls back to the default and says so once, in this run's log.
-const knob = (name, v, fallback, range) => configKnob(name, v, fallback, range, log);
-const MIN_SCORE = knob("minScore", config.minScore, 25);
-// A source may set its own minScore — it overrides the global.
-const SOURCE_MIN_SCORE = Object.fromEntries(["dou", "djinni", "himalayas", "tgchannels", "linkedin"].map((s) => [s, knob(`${s}.minScore`, config[s]?.minScore, MIN_SCORE)]));
-const LLM_MIN_SCORE = knob("llm.minScore", LLM.minScore, 0, [0, 100]);   // 0 = advisory-only, as when unset
-const LLM_MAX_PER_RUN = knob("llm.maxPerRun", LLM.maxPerRun, 15, [1, Infinity]);   // 0 must not mean "defer everything forever"
-const LLM_CONCURRENCY = knob("llm.concurrency", LLM.concurrency, 3, [1, Infinity]);   // 0 must not mean zero workers (every verdict empty, gate bypassed)
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
-
-// A misspelt key is not a no-op, it is a silently different run: "llm" typo'd
-// turns the whole LLM gate off (every keyword-passer gets a package) and a
-// typo'd source name drops that source entirely — both with a clean log. Names
-// we do not recognise are therefore reported rather than ignored. `_`-prefixed
-// keys are the documentation blocks the shipped config is full of.
-const KNOWN_TOP = new Set(["minScore", "requireRole", "candidateCountry", "excludeTitle", "excludeLocation", "llm", "dou", "djinni", "himalayas", "tgchannels", "linkedin"]);
-const KNOWN_LLM = new Set(["enabled", "model", "maxPerRun", "concurrency", "minScore"]);
-// Per-source keys: `djinni.serches` drops every Djinni search just as quietly.
-const KNOWN_SOURCE = {
-  dou: new Set(["enabled", "minScore", "feeds"]),
-  djinni: new Set(["enabled", "minScore", "searches", "maxResults", "pages", "concurrency", "fullDescription"]),
-  himalayas: new Set(["enabled", "minScore", "searches", "pages", "worldwide"]),
-  tgchannels: new Set(["enabled", "minScore", "channels", "pages", "fullDescription", "worldwide"]),
-  linkedin: new Set(["enabled", "minScore", "searches", "maxResults"]),
-};
-const unknownIn = (obj, known) => Object.keys(obj || {}).filter((k) => !k.startsWith("_") && !known.has(k));
-for (const k of unknownIn(config, KNOWN_TOP)) log(`⚠ config: unknown top-level key "${k}" — ignored (misspelt? known keys: ${[...KNOWN_TOP].join(", ")})`);
-for (const [section, known] of [["llm", KNOWN_LLM], ...Object.entries(KNOWN_SOURCE)]) {
-  for (const k of unknownIn(config[section], known)) log(`⚠ config: unknown ${section}.${k} — ignored (misspelt? known keys: ${[...known].join(", ")})`);
-}
 
 const notify = (msg, opts) =>
   banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready", opts);

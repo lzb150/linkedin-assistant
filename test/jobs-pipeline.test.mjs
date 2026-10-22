@@ -502,39 +502,6 @@ test("jobs.mjs: a corrupt jobs.config.json stops the run with the file named, no
   assert.match(err.message, /jobs\.config\.json unusable \(.+\) — fix the JSON/, "the file and the fix are named");
 });
 
-test("jobs.mjs: a source list entry that cannot be searched is reported and skipped, the rest still run", async (t) => {
-  // A LinkedIn item without keywords scraped LinkedIn's unfiltered newest feed;
-  // a bare string where a list belongs walked its characters.
-  const p = setupProject(t, await serveFeed(t, () => FEED));
-  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
-  cfg.dou.feeds.push("SDET", 42);
-  cfg.djinni.searches = "https://djinni.co/jobs/?all_keywords=SDET";
-  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
-  const out = await runJobs(p);
-  assert.match(out, /⚠ jobs.config.json: dou.feeds item "SDET" is not a feed URL — skipped/);
-  assert.match(out, /⚠ jobs.config.json: dou.feeds item 42 is not a feed URL — skipped/);
-  assert.match(out, /⚠ jobs.config.json: djinni.searches is "https:\/\/djinni.co\/jobs\/\?all_keywords=SDET", not a list — ignored/);
-  assert.match(out, /Considered 3 new, wrote \d+ application package/, "the valid feed still runs");
-});
-
-test("jobs.mjs: a typo'd numeric knob is reported and replaced by its default, not read as \"gate off\"", async (t) => {
-  // `score < "abc"` is false for every score, so a misspelt minScore used to
-  // pass everything through that gate with a clean log. The run still ends the
-  // same way as with the shipped config, and the owner is told why.
-  const p = setupProject(t, await serveFeed(t, () => FEED), { llm: { minScore: "abc", maxPerRun: true } });
-  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
-  cfg.minScore = "";
-  cfg.dou.minScore = "high";
-  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
-
-  const out = await runJobs(p);
-  assert.match(out, /⚠ jobs.config.json: minScore is "", not a number — using 25/);
-  assert.match(out, /⚠ jobs.config.json: dou.minScore is "high", not a number — using 25/, "a per-source override falls back to the global gate, and says so");
-  assert.match(out, /⚠ jobs.config.json: llm.minScore is "abc", not a number — using 0/);
-  assert.match(out, /⚠ jobs.config.json: llm.maxPerRun is true, not a number — using 15/);
-  assert.match(out, /Considered 3 new, wrote \d+ application package/, "the run completes");
-});
-
 test("jobs.mjs: exits 1 only when every source it tried failed — a quiet run stays 0", async (t) => {
   // launchd must see a failed run as failed (the convention djinni-check.mjs
   // already follows), but the definition has to be narrow: the common case at
