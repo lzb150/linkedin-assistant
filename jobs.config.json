@@ -18,7 +18,7 @@
     "Грузія", "Georgia", "Тбілісі", "Tbilisi"
   ],
 
-  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). Keyword minScore/requireRole decide what reaches the LLM; when the LLM answers with a fit score below llm.minScore (0–100) the job is dropped as low instead of getting a package. A CLI failure is retried once, then falls back to a keyword-only package (never lose a match to an outage). Set minScore to 0 to make the LLM advisory-only. maxPerRun caps CLI calls per run. `model` is the claude CLI alias (sonnet by default: stricter on weak fits and ~2x faster than haiku); `concurrency` = parallel CLI calls per run (default 3); `timeoutSec` (default 180, min 30) kills a call that runs longer — a timed-out verdict defers the job to the next run, the log line `llm: verdict in N s` shows what good calls take.",
+  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). Keyword minScore/requireRole decide what reaches the LLM; when the LLM answers with a fit score below llm.minScore (0–100) the job is dropped as low instead of getting a package. A failed or timed-out verdict defers the job to the next run; a second failure writes a keyword-only package (never lose a match to an outage). Set minScore to 0 to make the LLM advisory-only. maxPerRun caps CLI calls per run. `model` is the claude CLI alias (sonnet by default: stricter on weak fits and ~2x faster than haiku); `concurrency` = parallel CLI calls per run (default 3); `timeoutSec` (default 180, min 30) kills a call that runs longer; the log line `llm: verdict in N s` shows what good calls take.",
   "llm": {
     "enabled": true,
     "model": "sonnet",
