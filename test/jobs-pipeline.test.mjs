@@ -78,6 +78,9 @@ test("jobs.mjs end-to-end: feed → gates → package → seen → health → da
   assert.match(out, /skip \[excluded:junior\] dou: Junior QA Automation/);
   assert.match(out, /skip \[\d+ \/ llm 20\] dou: SDET Automation Engineer @ LowFit/, "LLM gate drops a confident low fit");
   assert.match(out, /✓ MATCH \[\d+ \/ llm 85\] dou: Senior SDET \(Playwright\) @ Acme/);
+  const stat = JSON.parse(p.read("run-stats.jsonl").trim().split("\n").pop());
+  assert.equal(stat.llmCalls, 2, "both gate-passers were judged");
+  assert.ok(stat.llmMs >= 1000, `two fake calls of 0.6 s each: ${stat.llmMs} ms`);
   assert.match(out, /Considered 3 new, wrote 1 application package/);
 
   // The package: one file, LLM verdict + tailored letter in it.

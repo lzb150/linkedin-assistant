@@ -110,3 +110,14 @@ test("buildReport counts the first run once, whichever side of the stat entry it
     assert.match(r.text, /1 runs · 5 new vacancies considered/, `stat ${statAt} / log ${logAt}`);
   }
 });
+
+test("buildReport shows the average LLM call time from the run stats, and nothing when no run made a call", () => {
+  const stats = [
+    { at: "2026-09-06T01:00:00Z", considered: 2, written: 1, dropped: 0, failed: 0, llmCalls: 2, llmMs: 46_000 },
+    { at: "2026-09-06T02:00:00Z", considered: 1, written: 0, dropped: 1, failed: 1, llmCalls: 1, llmMs: 185_000 },
+  ];
+  const r = buildReport({ now, days: 7, packages: [], runStats: stats });
+  assert.match(r.text, /failed 1 · 3 LLM calls, avg 77 s/, "(46 + 185) / 3");
+  const quiet = buildReport({ now, days: 7, packages: [], runStats: [{ at: "2026-09-06T01:00:00Z", considered: 1 }] });
+  assert.doesNotMatch(quiet.text, /LLM calls/);
+});

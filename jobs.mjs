@@ -77,7 +77,7 @@ try {
 }
 const {
   config, minScore: MIN_SCORE, sourceMinScore: SOURCE_MIN_SCORE,
-  llmMinScore: LLM_MIN_SCORE, llmMaxPerRun: LLM_MAX_PER_RUN, llmConcurrency: LLM_CONCURRENCY,
+  llmMinScore: LLM_MIN_SCORE, llmMaxPerRun: LLM_MAX_PER_RUN, llmConcurrency: LLM_CONCURRENCY, llmTimeoutMs: LLM_TIMEOUT_MS,
   candidateCountry: CANDIDATE_COUNTRY, countryOnly: COUNTRY_ONLY,
 } = normalizeJobsConfig(rawConfig, { log });
 const LLM = config.llm || {};
@@ -359,8 +359,8 @@ for (const job of jobs) {
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
 // per run), then the package write — lib/llm-gate.mjs.
-const { written, writtenList, llmFailed, llmDropped, llmDeferred, llmFallback } = await judgeMatches(matches, {
-  llm: { on: llmOn, minScore: LLM_MIN_SCORE, maxPerRun: LLM_MAX_PER_RUN, concurrency: LLM_CONCURRENCY, model: LLM.model || "sonnet", resume: RESUME_TXT, country: CANDIDATE_COUNTRY[0] },
+const { written, writtenList, llmFailed, llmDropped, llmDeferred, llmFallback, llmCalls, llmMs } = await judgeMatches(matches, {
+  llm: { on: llmOn, minScore: LLM_MIN_SCORE, maxPerRun: LLM_MAX_PER_RUN, concurrency: LLM_CONCURRENCY, model: LLM.model || "sonnet", resume: RESUME_TXT, country: CANDIDATE_COUNTRY[0], timeoutMs: LLM_TIMEOUT_MS },
   seen, stamp, titleOnlyNo, summary, appsDir: APPS, log,
 });
 
@@ -376,7 +376,7 @@ const { written, writtenList, llmFailed, llmDropped, llmDeferred, llmFallback } 
 // the file is created (or rotated) fell inside that window and was counted
 // twice, once from each source. Writing the stat first makes the ordering
 // deterministic in the direction that cannot double-count.
-appendRunStat(RUN_STATS, { considered, written, dropped: llmDropped, failed: llmFailed });
+appendRunStat(RUN_STATS, { considered, written, dropped: llmDropped, failed: llmFailed, llmCalls, llmMs });
 log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
 
 // Per-source digest of this run (scraper health + the day's catch).

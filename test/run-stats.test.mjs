@@ -64,3 +64,14 @@ test("a failed line-cap trim is reported, even though a failed append stays sile
   assert.match(warns[0], /could not trim/);
   assert.ok(readFileSync(file, "utf8").split("\n").filter(Boolean).length > 5, "the append still landed");
 });
+
+test("appendRunStat records the LLM calls and their total time, so the digest can show the average latency", (t) => {
+  const f = join(tmpDir(t), "run-stats.jsonl");
+  appendRunStat(f, { considered: 3, written: 1, llmCalls: 2, llmMs: 46_000 }, new Date("2026-09-14T09:00:00Z"));
+  appendRunStat(f, { considered: 1 }, new Date("2026-09-15T09:00:00Z"));
+  const all = readRunStats(f);
+  assert.equal(all[0].llmCalls, 2);
+  assert.equal(all[0].llmMs, 46_000);
+  assert.equal(all[1].llmCalls, 0, "a run without calls says 0, not undefined — the shape is stable");
+  assert.equal(all[1].llmMs, 0);
+});
