@@ -134,15 +134,18 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      # Bounded and retried: a hung download or apt mirror fails the attempt
-      # after 3 minutes and is tried again, instead of sitting until the job
-      # timeout and needing a manual rerun.
+      # Bounded and retried: a hung download fails the attempt after 3 minutes
+      # and is tried again, instead of sitting until the job timeout and
+      # needing a manual rerun. Only the download is under the loop — a kill
+      # mid apt-get would leave dpkg interrupted and sink the next attempts on
+      # the same lock, so the system packages are installed once, after it.
       - run: |
           for attempt in 1 2 3; do
-            timeout 180 npx playwright install --with-deps chromium && exit 0
-            echo "::warning::playwright install attempt $attempt failed or hung — retrying"
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::playwright download attempt $attempt failed or hung — retrying"
           done
           exit 1
+      - run: npx playwright install-deps chromium
       - run: npm run test:e2e
       # Report and traces (trace: retain-on-failure) for a red run.
       - if: failure()
