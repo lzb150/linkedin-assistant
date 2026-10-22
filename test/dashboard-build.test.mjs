@@ -54,6 +54,9 @@ test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascr
   // (d) a javascript: url is never an href; the card renders read-only (no data-url → no status/notes).
   assert.ok(!html.includes('href="javascript:'));
   assert.equal((html.match(/ data-url="/g) || []).length, 2, "only the http(s) cards are live");
+
+  // (e) the LLM is in use (Acme has a verdict), so the two cards without one are marked unverified.
+  assert.equal((html.match(/class="llm unverified"/g) || []).length, 2, "keyword-only cards carry the unverified badge");
 });
 
 test("dashboard.mjs: the listed mark follows candidateCountry from jobs.config.json", async (t) => {

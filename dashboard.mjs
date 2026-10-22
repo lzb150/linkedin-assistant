@@ -40,7 +40,8 @@ const items = collapseItems(readPackages(APPS, { warn, raw: true })
 let candidateCountry;
 try { candidateCountry = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8")).candidateCountry; } catch {}
 const countries = candidateCountryList(candidateCountry);
-const cards = items.map((it, i) => renderCard(it, i, { countries })).join("\n");
+const llmInUse = items.some((it) => it.llm != null);
+const cards = items.map((it, i) => renderCard(it, i, { countries, llmInUse })).join("\n");
 
 // no-referrer: "Open job ↗" and the alt links would tell every board the
 // visit came from 127.0.0.1:7777 (http → https is not a downgrade).
@@ -181,6 +182,9 @@ const html = `<!doctype html>
     background: var(--hot); color: var(--hot-ink); font: 700 12px/1 var(--font-mono); font-variant-numeric: tabular-nums;
     clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
   }
+  /* No verdict on a page that has them: the hazard colour, not the hot one, so the
+     badge reads as a gap in the data and not as a score. */
+  .llm.unverified { background: var(--warn-text); color: var(--hot-ink); }
   .llm-why { color: var(--muted); }
   .src {
     --src-text: light-dark(color-mix(in srgb, var(--src) 75%, black), color-mix(in srgb, var(--src) 50%, white));
