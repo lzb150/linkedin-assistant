@@ -15,31 +15,25 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { keywordGate, titleExcluder, seenEither } from "./lib/keyword-gate.mjs";
-import { buildApplication, appendAltLink } from "./lib/application.mjs";
+import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
-import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sanitizeVacancyText } from "./lib/llm.mjs";
-import { detectLang } from "./lib/lang.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
 import { filterByLocation, excludeList } from "./lib/filters.mjs";
 import { readJobsConfig, normalizeJobsConfig } from "./lib/jobs-config.mjs";
-import {
-  newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatRunBanner,
-} from "./lib/run-summary.mjs";
+import { newSummary, recordFound, recordOutcome, recordMerged, formatTable, formatRunBanner } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
 import { fetchHimalayas } from "./lib/sources/himalayas.mjs";
 import { fetchTgChannels } from "./lib/sources/tgchannels.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { pool } from "./lib/sources/html.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
-import { queueTelegram, jobMessage, alertMessage } from "./lib/telegram.mjs";
-import { extractSalary } from "./lib/salary.mjs";
+import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
 import { launchBrowser, acquireProfileLock, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
-import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
+import { judgeMatches } from "./lib/llm-gate.mjs";
+import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { darkWakeOnBattery } from "./lib/wake.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -318,7 +312,7 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
-let written = 0, considered = 0, llmFailed = 0, llmDropped = 0, llmDeferred = 0, llmFallback = 0;
+let considered = 0;
 const matches = [];
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); };
@@ -360,159 +354,11 @@ for (const job of jobs) {
 }
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
-// per run), then write the package. LLM fit below llm.minScore → dropped;
-// LLM failure → deferred once, keyword-only package on the second failure; past
-// the per-run cap → deferred to the next run (not written, not marked seen) so
-// the weakest matches — the likeliest false positives — never bypass the LLM gate.
-matches.sort((a, b) => b.scored.score - a.scored.score);
-const writtenList = [];
-const label = (job) => `${job.title} @ ${job.company}`;
-const toScore = llmOn ? matches.slice(0, LLM_MAX_PER_RUN) : matches;
-for (const { job, scored } of matches.slice(toScore.length)) {
-  log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
-}
-// Score a few CLI calls at a time (~20 s each on sonnet, ~55 s on haiku; 15 in
-// sequence used to take 14 min) while the loop below consumes verdicts in score
-// order and writes each package as soon as its verdict is in — so a crash or a
-// sleeping Mac mid-scoring keeps every package already paid for, exactly like
-// the old sequential loop.
-const verdict = new Map();   // m → Promise<llm result | null>
-let scoring = Promise.resolve();
-if (llmOn) {
-  // One deferred promise per match: the pool settles it, the loop below awaits it.
-  // (Promise.withResolvers is Node 22+; CI also runs 20.)
-  const resolvers = new Map();
-  for (const m of toScore) verdict.set(m, new Promise((resolve) => resolvers.set(m, resolve)));
-  scoring = pool(toScore, LLM_CONCURRENCY, async (m) => {
-    // Every promise must settle. A throw in here used to leave `await
-    // verdict.get(m)` pending forever — the run deadlocked mid-scoring with an
-    // unhandled rejection on `scoring` — so a failure resolves null, which the
-    // consumer already treats as "llm failed, keyword-only package".
-    try {
-      resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: CANDIDATE_COUNTRY[0] }), { model: LLM.model || "sonnet", log }));
-    } catch (e) {
-      log(`  · llm threw for: ${m.job.title} — ${e?.message}`);
-      resolvers.get(m)(null);
-    }
-  });
-}
-// Guarded like the package write below: an ENOSPC/EIO here used to throw out
-// of the loop (with LLM workers still running) and take run stats, source
-// health, the dashboard refresh and the banner with it. A failed save only
-// costs repeated verdicts next run; the final call retries it.
-function saveSeen() {
-  try { seen.save(); } catch (e) { log(`  · jobs-seen.json save failed: ${e.message}`); }
-}
-for (const m of toScore) {
-  const { id, job, scored, retry } = m;
-  const lbl = label(job);
-  let llm = null;
-  let suspect = null;
-  if (llmOn) {
-    const res = await verdict.get(m);
-    // Normalize the score once at the trust boundary; downstream (log,
-    // package frontmatter, writtenList) can rely on a rounded number.
-    const n = res ? numericScore(res.score) : null;
-    // A posting that talks to the screener may well have talked it into this
-    // score — or into no usable answer at all, which falls back to a
-    // keyword-only package. Either way the warning goes with the package.
-    // Scan the SANITIZED text: it is what the model actually saw, and
-    // composeText builds job.text as "<title> at <company>. <location>. <desc>",
-    // so every field buildJobPrompt puts in the prompt is already in here.
-    // Scanning the raw field let a posting split a payload with "<vacancy>"
-    // tokens and slip past the markers while the model read the reassembled
-    // sentence. (Reviewed 2026-09-17: passing the fields in separately as well
-    // only double-counts the markers and inflates the suspect line.)
-    const marks = injectionMarkers(sanitizeVacancyText(job.text));
-    if (marks.length) {
-      suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`;
-      log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`);
-    }
-    if (n !== null) {
-      // `score` was the only model-controlled field bounded here; `why` and
-      // `red_flags` went into the package verbatim, so a posting could steer
-      // the model into writing an arbitrarily long line there (fmValue keeps it
-      // to one line, but not to a sane length). Bound everything that crosses.
-      // Built as an explicit allow-list, NOT `{...res}`: the spread carried
-      // every other key of the model's JSON through verbatim, so a posting
-      // could have the model emit its own `suspect` ("verified clean") and
-      // forge the very field that exists to warn about it. These five are the
-      // only verdict keys anything downstream reads; `suspect` is ours alone.
-      llm = {
-        score: Math.min(100, Math.max(0, Math.round(n))),
-        why: String(res.why ?? "").slice(0, 300),
-        red_flags: (Array.isArray(res.red_flags) ? res.red_flags : []).slice(0, 10).map((f) => String(f).slice(0, 200)),
-        cover: typeof res.cover === "string" ? res.cover : "",
-        model: LLM.model || "sonnet",
-      };
-    }
-    else {
-      llmFailed++;
-      // No verdict is not a verdict. A failed call used to write the keyword-only
-      // package at once — so a 180 s timeout on a busy Mac let the match skip the
-      // LLM gate for good, with the generic cover note (19 of 64 real packages by
-      // 2026-10-22, "AQA Lead" and "Project Manager with QA Automation" among
-      // them). Now the first failure leaves the job unseen for the next run, like
-      // llm.maxPerRun; only a SECOND failure writes the keyword-only package, so
-      // a real outage still never loses a match. `llm-retry:` keys never read as
-      // seen (keywordGate checks the bare id).
-      const retryKey = `llm-retry:${id}`;
-      if (!seen.has(retryKey)) {
-        seen.add(retryKey);
-        llmDeferred++;
-        log(`  · llm failed for: ${job.title} — deferred, next run`);
-        continue;
-      }
-      llmFallback++;
-      log(`  · llm failed again for: ${job.title} — keyword-only package`);
-    }
-  }
-  if (llmRejects(llm, LLM_MIN_SCORE)) {
-    llmDropped++;
-    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}${retry ? " (no description — will retry)" : ""}`);
-    recordOutcome(summary, job.source, "low");
-    // Judged on its title alone: the LLM's "no" is not a verdict on the job yet.
-    if (retry) titleOnlyNo(job, id, "llm");
-    else stamp(job, id);   // persisted with the next written package, or at the end of the loop
-    continue;
-  }
-  // Skip the one package the way every other per-item failure in this loop
-  // does. Unwrapped, a single ENOSPC/EACCES threw mid-loop and took the rest of
-  // the run with it: the remaining matches, run stats, source health, the
-  // dashboard refresh and the end-of-run banner.
-  // buildApplication is INSIDE the try, not one line above it: composing the
-  // package is per-item work too, and a throw there (a scraped field of an
-  // unexpected shape) had the whole blast radius this try exists to prevent.
-  let filename, markdown;
-  try {
-    ({ filename, markdown } = buildApplication(job, scored, llm, { suspect }));
-    writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
-  } catch (e) {
-    log(`  · package build/write failed (${filename || lbl}): ${e.message}`);
-    continue;
-  }
-  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${lbl}`);
-  recordOutcome(summary, job.source, "written");
-  recordTop(summary, scored.score, lbl);
-  writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label: lbl });
-  // The phone gets each package as its own message, linked to the vacancy
-  // (a no-op unless telegram.json is set up).
-  queueTelegram(jobMessage({
-    title: job.title, company: job.company, location: job.location, source: job.source, url: job.url,
-    salary: extractSalary((job.text || "").slice(0, 5000)),
-    score: scored.score, llmScore: llm ? llm.score : null, why: llm?.why, redFlags: llm?.red_flags,
-  }));
-  stamp(job, id);
-  // Persist after every WRITTEN package: a crash mid-run must not forget one
-  // (the next run would re-score and re-pay the LLM for it). Each save
-  // rewrites and fsyncs the whole store, so the drop path above does not
-  // pay for it — a dropped id lost to a crash costs one repeated verdict.
-  saveSeen();
-  written++;
-}
-await scoring;   // every worker has finished (all verdicts were consumed above; this just joins the pool)
-
-saveSeen();
+// per run), then the package write — lib/llm-gate.mjs.
+const { written, writtenList, llmFailed, llmDropped, llmDeferred, llmFallback } = await judgeMatches(matches, {
+  llm: { on: llmOn, minScore: LLM_MIN_SCORE, maxPerRun: LLM_MAX_PER_RUN, concurrency: LLM_CONCURRENCY, model: LLM.model || "sonnet", resume: RESUME_TXT, country: CANDIDATE_COUNTRY[0] },
+  seen, stamp, titleOnlyNo, summary, appsDir: APPS, log,
+});
 
 // The weekly digest used to reconstruct these four numbers by regex-matching the
 // log lines above — anchored to their exact wording and leading-space count, so
