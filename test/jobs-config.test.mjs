@@ -86,3 +86,18 @@ test("normalizeJobsConfig: flags, country and countryOnly come out normalized; d
   assert.equal(bare.llmConcurrency, 3);
   assert.deepEqual([...bare.countryOnly], []);
 });
+
+test("normalizeJobsConfig: llm.timeoutSec is a knob (seconds in the file, ms for the wrapper), bounded and reported like the others", () => {
+  const { lines, log } = collect();
+  const cfg = shipped();
+  cfg.llm.timeoutSec = 300;
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 300_000);
+  assert.ok(!lines.some((l) => /unknown llm\.timeoutSec/.test(l)), "a known key");
+  cfg.llm.timeoutSec = "long";
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 180_000, "the default");
+  assert.ok(lines.some((l) => /llm.timeoutSec is "long", not a number — using 180/.test(l)), lines.join("\n"));
+  cfg.llm.timeoutSec = 5;
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 30_000, "clamped: 5 s would time out every real call");
+  delete cfg.llm.timeoutSec;
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 180_000);
+});

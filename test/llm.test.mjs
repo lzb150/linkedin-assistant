@@ -120,13 +120,14 @@ test("llmJSON retries once: a transient failure then JSON → the JSON; two fail
   const flaky = (_c, _a, _o, cb) => (++calls === 1 ? cb(killed, "", "") : cb(null, '{"score":80}'));
   assert.deepEqual(await llmJSON("p", { exec: flaky, log, retryDelayMs: 0 }), { score: 80 });
   assert.equal(calls, 2);
-  assert.equal(lines.length, 1, "the first failure is logged");
+  assert.equal(lines.filter((l) => l.startsWith("llm failed")).length, 1, "the first failure is logged");
+  assert.equal(lines.filter((l) => l.startsWith("llm: verdict in")).length, 1, "and the verdict's duration");
 
   calls = 0;
   const dead = (_c, _a, _o, cb) => { calls++; cb(killed, "", ""); };
   assert.equal(await llmJSON("p", { exec: dead, log, retryDelayMs: 0 }), null);
   assert.equal(calls, 2, "exactly one retry");
-  assert.equal(lines.length, 3);
+  assert.equal(lines.filter((l) => l.startsWith("llm failed")).length, 3);
 
   calls = 0;
   const ok = (_c, _a, _o, cb) => { calls++; cb(null, '{"score":50}'); };
@@ -289,4 +290,13 @@ test("a synchronous throw after the child spawned kills its process group instea
       assert.ok(killed.some(([pid, sig]) => pid === -4242 && sig === "SIGKILL"),
         `the whole process group must be killed, got ${JSON.stringify(killed)}`);
     });
+});
+
+test("llmJSON logs how long a verdict took — 29 daily logs carried timeouts and nothing said how long the good calls were taking", async () => {
+  const lines = [];
+  const exec = (_cmd, _args, _opts, cb) => { setTimeout(() => cb(null, '{"score":70}'), 30); return { stdin: { end() {} } }; };
+  await llmJSON("p", { exec, log: (...a) => lines.push(a.join(" ")) });
+  const line = lines.find((l) => /^llm: verdict in \d+\.\d s \(sonnet\)$/.test(l));
+  assert.ok(line, `no duration line in: ${lines.join(" | ")}`);
+  assert.ok(parseFloat(line.match(/in ([\d.]+) s/)[1]) >= 0.0, "seconds, one decimal");
 });
