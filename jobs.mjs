@@ -162,11 +162,15 @@ const knownJob = (job) => seenEither(seen, identityKey(job)) || Boolean(excluded
 // Himalayas (public JSON API, remote jobs open to candidateCountry), Telegram
 // channels (public web preview of job channels).
 // Same gather/record/collect shape.
+// One contract for every source: fetch(sectionConfig, log, { skip, countries, doFetch }).
+// A source ignores what it does not need (DOU reads full RSS items, so none of
+// it); adding a board is one row here plus one module in lib/sources/.
+const SOURCE_OPTS = { skip: knownJob, countries: CANDIDATE_COUNTRY };
 const BROWSERLESS_SOURCES = [
   { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
-  { name: "djinni", enabled: config.djinni?.enabled, fetch: (cfg, lg) => fetchDjinni(cfg, lg, { skip: knownJob }) },
-  { name: "himalayas", enabled: config.himalayas?.enabled, fetch: (cfg, lg) => fetchHimalayas(cfg, lg, { country: CANDIDATE_COUNTRY[0] }) },
-  { name: "tgchannels", enabled: config.tgchannels?.enabled, fetch: (cfg, lg) => fetchTgChannels(cfg, lg, { skip: knownJob, country: CANDIDATE_COUNTRY }) },
+  { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
+  { name: "himalayas", enabled: config.himalayas?.enabled, fetch: fetchHimalayas },
+  { name: "tgchannels", enabled: config.tgchannels?.enabled, fetch: fetchTgChannels },
 ];
 for (const s of BROWSERLESS_SOURCES) {
   // Say it out loud: a source turned off by a typo looked exactly like a source
@@ -184,7 +188,7 @@ for (const s of BROWSERLESS_SOURCES) {
   log(`Gathering ${s.name}...`);
   sourcesTried++;
   try {
-    const found = await s.fetch(config[s.name], log);
+    const found = await s.fetch(config[s.name], log, SOURCE_OPTS);
     recordFound(summary, s.name, found.length);
     jobs.push(...found);
   } catch (e) {
