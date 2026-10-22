@@ -1,0 +1,21 @@
+# Monthly, grouped: one PR for the npm packages and one for the pinned
+# actions, so a Playwright bump (which needs `npx playwright install` and a
+# green e2e run) is reviewed on its own schedule and oxlint never drifts 70
+# minor versions behind again (1.16 → 1.89 by 2026-10-22).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      npm:
+        patterns: ["*"]
+    versioning-strategy: increase   # package.json pins exact versions; keep it that way
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

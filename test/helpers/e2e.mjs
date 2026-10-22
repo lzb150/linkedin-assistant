@@ -146,7 +146,7 @@ export function spawnScript(p, script, env = {}, args = []) {
   const done = new Promise((res, rej) => child.on("exit", (code, signal) => {
     const err = code === 0 ? null : new Error(`${script} exit ${code === null ? `signal ${signal}` : code}\n${out}`);
     for (const w of waiters) w.rej(err || new Error(`${script} exited before output matched ${w.re}\n${out}`));   // never leave an output() waiter hanging
-    err ? rej(err) : res(out);
+    if (err) rej(err); else res(out);
   }));
   return { done, output: (re) => (re.test(out) ? Promise.resolve() : new Promise((res, rej) => waiters.push({ re, res, rej }))) };
 }
