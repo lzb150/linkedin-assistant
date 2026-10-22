@@ -2,7 +2,7 @@
 // Weekly digest: runs and new vacancies considered, packages per source, LLM verdicts,
 // and per-source yield for the last N days (default 7).
 //   node report.mjs              print to stdout
-//   node report.mjs --notify     also post a macOS notification (launchd job)
+//   node report.mjs --notify     also post a macOS banner and send the digest to Telegram (launchd job)
 //   REPORT_DAYS=14 node report.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { readPackages } from "./lib/packages.mjs";
@@ -11,6 +11,7 @@ import { normalizeHistory } from "./lib/source-health.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { notify } from "./lib/notify.mjs";
+import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
 import { buildReport } from "./lib/report.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
 
@@ -43,4 +44,10 @@ const { text, notification } = buildReport({
   })()),
 });
 console.log(text);
-if (process.argv.includes("--notify")) notify("Weekly job report", notification);
+// The banner gets the one-liner (a macOS banner shows ~2 lines); the phone gets
+// the whole digest — it used to get the one-liner too, and the per-source
+// lines stayed in logs/report.out.log, the one place nobody looks on a Monday.
+if (process.argv.includes("--notify")) {
+  notify("Weekly job report", notification, { toTelegram: false });
+  queueTelegram(alertMessage("Weekly job report", text));
+}

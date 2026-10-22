@@ -100,7 +100,8 @@ deletes archived packages older than 180 days. It never posts a banner — closu
 runs and new vacancies considered, packages written per source, LLM verdicts
 (dropped / failed / scored, plus the top match) and the
 median per-run yield of every source. `node report.mjs` prints it;
-`--notify` also posts a one-line macOS notification, which is what the weekly
+`--notify` also posts a one-line macOS notification and, with
+[Telegram alerts](setup.md#phone-alerts-telegram-optional) set up, sends the whole digest to your phone — which is what the weekly
 launchd job (`com.eugene.jobs-report.plist`, ships as `.example`, Monday
 09:00) does. `REPORT_DAYS=14` widens the window. LLM counts come from the run
 logs in `logs/`, so they cover only what the log rotation still holds. Install:
