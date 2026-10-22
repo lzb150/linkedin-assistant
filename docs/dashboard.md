@@ -26,6 +26,12 @@ so they are a better bet than a worldwide one. The country is the first
 `candidateCountry` entry in `jobs.config.json`. Djinni and DOU cards are not
 marked: naming Ukraine is the norm there.
 
+A yellow **AI ?** badge marks a package with no LLM verdict while other cards
+have one: the `claude` call failed twice (or the package predates the retry),
+so the fit gate never ran and the cover note is the generic keyword template.
+Read the posting yourself before applying. Those cards sort below every
+LLM-scored one.
+
 ### State server, statuses & filters
 
 **State server (`state-server.mjs`)** replaces in-browser localStorage as the

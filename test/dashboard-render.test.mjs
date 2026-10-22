@@ -59,6 +59,17 @@ test("renderCard: a flagged package without an LLM score still shows the injecti
   assert.doesNotMatch(html, /class="llm"/);
 });
 
+test("renderCard: a package without a verdict is marked unverified when the LLM is in use, and left alone when it never was", () => {
+  // A keyword-only package written while the LLM was down skipped the fit
+  // gate, and its cover note is the generic template: say so on the card.
+  const fm = { source: "dou", title: "SDET", company: "Acme", url: "https://a/1", score: "36" };
+  const html = renderCard(toItem({ fm, cover: "" }), 0, { llmInUse: true });
+  assert.match(html, /class="llm unverified"/);
+  assert.match(html, /no LLM verdict/);
+  const quiet = renderCard(toItem({ fm, cover: "" }), 0, { llmInUse: false });
+  assert.doesNotMatch(quiet, /unverified|no LLM verdict/);
+});
+
 test("renderCard: a url past the server's length limit renders read-only; middle-click marks Viewed", () => {
   const long = `https://a/${"x".repeat(2100)}`;
   const ro = renderCard(toItem({ fm: { source: "dou", title: "SDET", url: long }, cover: "" }), 0);

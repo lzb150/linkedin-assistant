@@ -58,7 +58,9 @@ back with a visible browser.
 The strongest keyword matches get a
 second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
 a one-line "why", and a tailored cover letter. A fit below `llm.minScore` drops
-the job instead of writing a package (see the gates above). Any CLI failure still falls back to a keyword-only package.
+the job instead of writing a package (see the gates above). A CLI failure (a timeout on a busy Mac, a crash) is not a verdict: the job is
+deferred to the next run, like a match past `maxPerRun`; only a second failure writes a keyword-only package, so an outage never loses a match.
+Such a package shows an **AI ?** badge on the dashboard (see [Dashboard](dashboard.md)).
 Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
 `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `minScore` — 0 makes the LLM advisory-only, which is also what a missing key means). Matches past
 the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper

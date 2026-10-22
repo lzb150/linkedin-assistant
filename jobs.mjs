@@ -360,7 +360,7 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
-let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
+let written = 0, considered = 0, llmFailed = 0, llmDropped = 0, llmDeferred = 0, llmFallback = 0;
 const matches = [];
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); };
@@ -403,9 +403,9 @@ for (const job of jobs) {
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
 // per run), then write the package. LLM fit below llm.minScore → dropped;
-// LLM failure → keyword-only package; past the per-run cap → deferred to the
-// next run (not written, not marked seen) so the weakest matches — the likeliest
-// false positives — never bypass the LLM gate.
+// LLM failure → deferred once, keyword-only package on the second failure; past
+// the per-run cap → deferred to the next run (not written, not marked seen) so
+// the weakest matches — the likeliest false positives — never bypass the LLM gate.
 matches.sort((a, b) => b.scored.score - a.scored.score);
 const writtenList = [];
 const label = (job) => `${job.title} @ ${job.company}`;
@@ -488,7 +488,26 @@ for (const m of toScore) {
         model: LLM.model || "sonnet",
       };
     }
-    else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
+    else {
+      llmFailed++;
+      // No verdict is not a verdict. A failed call used to write the keyword-only
+      // package at once — so a 180 s timeout on a busy Mac let the match skip the
+      // LLM gate for good, with the generic cover note (19 of 64 real packages by
+      // 2026-10-22, "AQA Lead" and "Project Manager with QA Automation" among
+      // them). Now the first failure leaves the job unseen for the next run, like
+      // llm.maxPerRun; only a SECOND failure writes the keyword-only package, so
+      // a real outage still never loses a match. `llm-retry:` keys never read as
+      // seen (keywordGate checks the bare id).
+      const retryKey = `llm-retry:${id}`;
+      if (!seen.has(retryKey)) {
+        seen.add(retryKey);
+        llmDeferred++;
+        log(`  · llm failed for: ${job.title} — deferred, next run`);
+        continue;
+      }
+      llmFallback++;
+      log(`  · llm failed again for: ${job.title} — keyword-only package`);
+    }
   }
   if (llmRejects(llm, LLM_MIN_SCORE)) {
     llmDropped++;
@@ -560,7 +579,10 @@ log("\n" + formatTable(summary));
 // one run is a breakage too (a single flake is not).
 const degraded = detectDegradations(health, summary, { skipped: skippedSources });
 if (degraded.length) alerts.push(formatAlert(degraded));
-if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
+if (llmFailed > 2) {
+  const fate = [llmDeferred && `${llmDeferred} deferred to the next run`, llmFallback && `${llmFallback} keyword-only`].filter(Boolean).join(", ");
+  alerts.push(`⚠️ LLM failed ${llmFailed}× — ${fate}`);
+}
 // Never write back a baseline we could not read: that is the silent reset.
 // Guarded like the package write: an ENOSPC/EACCES here used to take down the
 // dashboard refresh, the banner and the exit code below with it.
