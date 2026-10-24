@@ -129,7 +129,7 @@ jobs:
       # The Chromium build pinned in package-lock.json, cached across runs: the
       # download hung four times on 2026-10-22 alone, each time until the job
       # timeout cancelled it. On a cache hit `playwright install` has nothing
-      # to fetch and only the apt step (--with-deps) runs.
+      # to fetch and only the install-deps step below does any work.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
