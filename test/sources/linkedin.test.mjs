@@ -184,7 +184,7 @@ test("readCard halves a doubled title and leaves a genuine title alone", () => {
     querySelector: (sel) => (sel === "t" ? { innerText: title, getAttribute: () => "/jobs/view/1/" } : sel === "c" ? { innerText: "Acme\nverified" } : null),
     querySelectorAll: () => [{ innerText: "Kyiv" }],
   });
-  assert.deepEqual(readCard(card("Middle Automation QA EngineerMiddle Automation QA Engineer"), SEL), { title: "Middle Automation QA Engineer", href: "/jobs/view/1/", company: "Acme", location: "Kyiv" });
+  assert.deepEqual(readCard(card("Middle Automation QA EngineerMiddle Automation QA Engineer"), SEL), { title: "Middle Automation QA Engineer", href: "/jobs/view/1/", company: "Acme", location: "Kyiv", posted: "" });
   assert.equal(readCard(card("QA QA"), SEL).title, "QA QA", "a real repeated word is not a doubled title (odd length with the space)");
   assert.equal(readCard(card("abab"), SEL).title, "ab", "even a short doubled string halves — LinkedIn never emits one this short");
   assert.equal(readCard(card(""), SEL).title, "");
@@ -242,4 +242,13 @@ test("fetchLinkedInJobs throws when every search errored with nothing gathered",
   const page = fakePage([]);
   page.goto = async () => { throw new Error("net::ERR_INTERNET_DISCONNECTED"); };
   await assert.rejects(fetchLinkedInJobs(page, { searches: [{ keywords: "a" }, { keywords: "b" }] }, () => {}, { sleep: async () => {} }), /all 2 LinkedIn search\(es\) failed/);
+});
+
+test("readCard reads the card's <time datetime> when LinkedIn renders one", () => {
+  const SEL = { title: "t", company: "c", location: "l" };
+  const card = {
+    querySelector: (sel) => (sel === "t" ? { innerText: "SDET", getAttribute: () => "/jobs/view/1/" } : sel === "time[datetime]" ? { getAttribute: () => "2026-10-27" } : null),
+    querySelectorAll: () => [],
+  };
+  assert.equal(readCard(card, SEL).posted, "2026-10-27");
 });

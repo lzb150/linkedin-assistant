@@ -73,7 +73,10 @@ written unless the vacancy closed first.
 **Find & freshness** — a search box filters cards by title, company, or skill
 keywords; the source chips (All, plus one per board that has cards in the selected New /
 Viewed tabs; a selected chip always stays) narrow the list to a single board. Cards that arrived since your last visit are highlighted with a
-**NEW** ribbon. Viewed cards you have not touched for 30 days are archived by the
+**NEW** ribbon. A card's subtitle says when the board posted it ("posted 3 d
+ago", from the package's `posted`) and, in the hazard colour, **reposted ×N**
+when the board closed an earlier listing of the same vacancy and listed it
+again (see [Job discovery](job-discovery.md)). Viewed cards you have not touched for 30 days are archived by the
 daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 
 ![The Djinni chip and a search query narrowing the list](filters.png)

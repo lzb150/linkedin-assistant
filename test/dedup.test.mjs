@@ -287,3 +287,29 @@ test("dedupeJobs records a link-joined copy's own key and source; a canonical me
   dedupeJobs([dou, { source: "djinni", company: "Acme", title: "SDET", url: "https://djinni.co/jobs/1/", text: "t" }]);
   assert.equal(dou.mergedKeys, undefined, "same key: nothing more to look up");
 });
+
+test("canonicalKey folds 'Quality Assurance' into 'QA' and the long SDET spelling into 'SDET'", () => {
+  assert.equal(
+    canonicalKey({ company: "madappgang", title: "Quality Assurance Automation Engineer" }),
+    canonicalKey({ company: "madappgang", title: "QA Automation Engineer" }),
+  );
+  assert.equal(
+    canonicalKey({ company: "Indigo", title: "SDET (Software Development Engineer in Test)" }),
+    canonicalKey({ company: "Indigo", title: "SDET" }),
+  );
+  assert.notEqual(
+    canonicalKey({ company: "madappgang", title: "Senior QA Automation Engineer" }),
+    canonicalKey({ company: "madappgang", title: "QA Automation Engineer" }),
+    "seniority still separates",
+  );
+});
+
+test("dedupeJobs keeps the earliest `posted` of a merged group on the keeper", () => {
+  const { deduped } = dedupeJobs([
+    { source: "dou", company: "Acme", title: "SDET", url: "u1", text: "x".repeat(50), posted: "2026-10-20T00:00:00.000Z" },
+    { source: "djinni", company: "Acme", title: "SDET", url: "u2", text: "x".repeat(10), posted: "2026-10-18T00:00:00.000Z" },
+    { source: "himalayas", company: "Acme", title: "SDET", url: "u3", text: "x".repeat(5) },
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0].posted, "2026-10-18T00:00:00.000Z");
+});

@@ -41,7 +41,19 @@ back with a visible browser.
   `alt_links` in the package and shown as an "also on:" row on the dashboard.
   A Telegram post that links a board's own page (a Djinni vacancy reposted under a
   title of its own) is the same vacancy too: it joins the board's record in the
-  run, or counts as already packaged when that page has a package.
+  run, or counts as already packaged when that page has a package. Title
+  spellings fold too: "Quality Assurance" reads as "QA", the long SDET expansion
+  as "SDET", so a weekly re-listing under a reworded title is the same key.
+- **Reposts** — a board that closed a listing and lists the same vacancy again
+  under a new url (LinkedIn does this weekly for some employers) is judged
+  afresh, once per new url, instead of being buried by the seen store: the new
+  package carries `reposts: N` and `reposted_from`, the dashboard and the
+  Telegram alert say **reposted ×N**. Only the board that closed it counts;
+  the same url is still the same listing, another board is still a dup.
+- **Posted date** — every source keeps the board's own stamp (`posted` in the
+  package: DOU `pubDate`, Himalayas `pubDate`, Djinni's listing tooltip, a
+  Telegram post's time, a LinkedIn card's `<time>` when rendered); the
+  dashboard shows it as "posted 3 d ago", the Telegram alert likewise.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
   regardless of which source it came from. Entries carry a last-seen date and

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { keywordGate, titleExcluder, legacyIdOf } from "../lib/keyword-gate.mjs";
+import { keywordGate, titleExcluder, legacyIdOf, findRepost } from "../lib/keyword-gate.mjs";
 import { identityKey, canonicalKey } from "../lib/dedup.mjs";
 
 const LONG = "x".repeat(400);
@@ -100,4 +100,31 @@ test("keywordGate: a folded copy's key finds a package from another board, judge
   assert.equal(keywordGate(keeper, ctx({ packageIndex: otherReq })).kind, "match");
   const sameReq = new Map([[canonicalKey(djinni), [{ file: "d.md", source: "djinni", url: djinni.url }]]]);
   assert.deepEqual(keywordGate(keeper, ctx({ packageIndex: sameReq })), { id: identityKey(keeper), kind: "packaged", file: "d.md" });
+});
+
+test("keywordGate: a same-board re-listing of a CLOSED package under a new url is a repost, judged past the seen store once", () => {
+  const prior = { file: "old.md", source: "dou", url: "https://jobs.dou.ua/1/", generated: "2026-10-01T00:00:00Z", reposts: 1 };
+  const j = job({ url: "https://jobs.dou.ua/9/" });
+  const packageIndex = new Map([[canonicalKey(j), [prior]]]);
+  const seen = new Set([identityKey(j)]);   // the title was seen with the old listing
+  const closed = ctx({ packageIndex, seen, closedFiles: new Set(["old.md"]) });
+  const g = keywordGate(j, closed);
+  assert.equal(g.kind, "match");
+  assert.deepEqual(g.repost, { file: "old.md", url: "https://jobs.dou.ua/1/", reposts: 2 }, "counts on from the prior package");
+  // Not closed: the old rules — a seen identity stays seen.
+  assert.equal(keywordGate(j, ctx({ packageIndex, seen })).kind, "seen");
+  assert.equal(keywordGate(j, ctx({ packageIndex, seen, closedFiles: new Set(["other.md"]) })).kind, "seen");
+  // The very same url is the package itself, closed or not; another board is a dup
+  // (a fresh seen store: the seen check still comes first for anything but a repost).
+  const fresh = ctx({ packageIndex, closedFiles: new Set(["old.md"]) });
+  assert.equal(keywordGate(job({ url: prior.url }), fresh).kind, "packaged");
+  assert.equal(keywordGate(job({ source: "djinni", url: "https://djinni.co/jobs/5-x/" }), fresh).kind, "dup");
+  // Once jobs.mjs stamps the new url, the repost is not re-judged every run.
+  seen.add("repost:jobs.dou.ua/9");
+  assert.equal(keywordGate(j, closed).kind, "seen");
+  // excluded/low carry the repost too, so the stamp lands with the outcome.
+  const low = keywordGate(job({ url: "https://jobs.dou.ua/10/" }), ctx({ packageIndex, closedFiles: new Set(["old.md"]), minScore: 99 }));
+  assert.equal(low.kind, "low");
+  assert.equal(low.repost.reposts, 2);
+  assert.equal(findRepost(j, { packageIndex, closedFiles: new Set() }), null);
 });

@@ -200,3 +200,11 @@ test("alertMessage: bold title, escaped text and an optional link", () => {
   assert.equal(alertMessage("Djinni", "Profile bumped"), "<b>Djinni</b>\nProfile bumped");
   assert.equal(alertMessage("Djinni", "x", "file:///etc/passwd"), "<b>Djinni</b>\nx", "only http(s) links");
 });
+
+test("jobMessage: the posting's age joins the company line and a repost gets its own line", () => {
+  const posted = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const html = jobMessage({ title: "SDET", company: "Acme", source: "djinni", url: "https://djinni.co/jobs/1-x/", score: 40, llmScore: 80, posted, reposts: 2 });
+  assert.equal(html.split("\n")[1], "Acme · Djinni · posted 3 d ago");
+  assert.equal(html.split("\n")[2], "🔁 reposted ×2 — the board closed the earlier listing");
+  assert.doesNotMatch(jobMessage({ title: "SDET", company: "Acme", source: "djinni", url: "https://djinni.co/jobs/1-x/", score: 40, llmScore: null, posted: "garbage", reposts: 0 }), /posted|reposted/);
+});

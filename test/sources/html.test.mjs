@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assertLinear } from "../helpers/linear.mjs";
-import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody, oneLine } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody, oneLine, isoDate } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -298,4 +298,15 @@ test("orderedPool returns items and replays log lines in input order, whatever o
   }, (l) => logged.push(l));
   assert.deepEqual(out, [30, 31, 0, 1]);
   assert.deepEqual(logged, ["line 30", "line 0", "line 10"]);
+});
+
+test("isoDate: RSS, ISO, unix seconds and Djinni's tooltip become ISO; garbage, the past and the far future do not", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  assert.equal(isoDate("Sat, 13 Jun 2026 10:45:36 +0300", now), "2026-06-13T07:45:36.000Z");
+  assert.equal(isoDate("2026-09-27T06:25:00+00:00", now), "2026-09-27T06:25:00.000Z");
+  assert.equal(isoDate(1791658143, now), new Date(1791658143 * 1000).toISOString(), "unix seconds");
+  assert.equal(isoDate(1791658143000, now), new Date(1791658143000).toISOString(), "unix ms");
+  assert.equal(isoDate("12:37 12.06.2026", now), "2026-06-12T10:37:00.000Z", "Djinni tooltip, Kyiv time");
+  assert.equal(isoDate("2026-10-29T11:00:00Z", now), "2026-10-29T11:00:00.000Z", "a day ahead is clock skew, kept");
+  for (const bad of ["", "yesterday", "1999-12-31", "2026-10-30T12:00:01Z", null, undefined, NaN, {}]) assert.equal(isoDate(bad, now), undefined, String(bad));
 });
