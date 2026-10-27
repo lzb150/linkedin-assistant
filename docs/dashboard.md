@@ -93,8 +93,11 @@ auto-reopened by clicking them. Closed packages are moved to
 `applications/archive/` after a 14-day grace period, Viewed packages you have not
 touched for 30 days go the same way, and nothing reads that folder. `run.sh`
 deletes archived packages older than 180 days. It never posts a banner — closures show up as the muted
-"· closed" cue on the dashboard. Install like the weekly report below, with
-`com.example.closed-check.plist.example`.
+"· closed" cue on the dashboard. While the state server answers, closures and
+prunes go through it (`POST /state`, the same payload a dashboard click sends),
+so a click landing mid-run is never overwritten; with the server down the
+script writes `job-state.json` directly, as before. Install like the weekly
+report below, with `com.example.closed-check.plist.example`.
 
 **Weekly report (`report.mjs`)** — the weekly debrief, one command that sums up the last 7 days:
 runs and new vacancies considered, packages written per source, LLM verdicts

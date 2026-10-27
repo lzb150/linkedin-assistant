@@ -53,13 +53,17 @@ test("queueTelegram: without a config it queues nothing and starts no sender", (
   assert.equal(started, 0);
 });
 
-test("queueTelegram: one file per message, in queue order even within one millisecond, and a sender start each time", (t) => {
+test("queueTelegram: one file per message, in queue order even within one millisecond, and ONE sender start per burst", async (t) => {
+  // A scan with N matches used to start N senders, N-1 of which only found
+  // the outbox lock busy; the one sender re-checks the outbox after its drain.
   const { config, outbox } = setup(t, "http://unused");
   let started = 0;
   for (const html of ["first", "second", "third"]) queueTelegram(html, { config, dir: outbox, start: () => started++ });
   const queued = readdirSync(outbox).sort().map((f) => JSON.parse(readFileSync(join(outbox, f), "utf8")).html);
   assert.deepEqual(queued, ["first", "second", "third"]);
-  assert.equal(started, 3);
+  assert.equal(started, 0, "the start is debounced, not immediate");
+  await new Promise((r) => setTimeout(r, 1200));
+  assert.equal(started, 1);
 });
 
 test("queueTelegram: an unwritable outbox is logged, never thrown", (t) => {
@@ -141,6 +145,22 @@ test("drainOutbox: a sent message that cannot be removed stops the drain, so it 
   assert.equal(r.stopped, "fs");
   assert.equal(api.calls.length, 1);
   assert.equal(r.sent, 1);
+});
+
+test("drainOutbox: a rejected message that cannot be removed stops the drain instead of counting as progress", { skip: process.getuid?.() === 0 && "root ignores directory permissions" }, async (t) => {
+  // `dropped++` on a file still in the outbox told the sender loop it was
+  // getting somewhere: it re-drained (re-posting the rejected message) up to
+  // MAX_ROUNDS times with no pause.
+  const api = await botApi(t, () => [400, { ok: false, description: "Bad Request: can't parse entities" }]);
+  const { config, outbox } = setup(t, api.base, [["1000-0001-a.json", "bad"], ["1000-0002-b.json", "also bad"]]);
+  chmodSync(outbox, 0o500);
+  let r;
+  try { r = await drainOutbox({ config, dir: outbox, now: () => 2000, log: quiet }); }
+  finally { chmodSync(outbox, 0o700); }   // here, not in t.after: the temp-dir cleanup hook runs first
+  assert.equal(r.stopped, "fs");
+  assert.equal(r.dropped, 0, "a file still in the outbox is not a drop");
+  assert.equal(api.calls.length, 1, "the second message is left for a drain that can remove files");
+  assert.equal(readdirSync(outbox).length, 2);
 });
 
 test("drainOutbox: a message queued more than two days ago is dropped unsent", async (t) => {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assertLinear } from "./helpers/linear.mjs";
-import { extractJSON, numericScore, llmJSON, buildJobPrompt, llmRejects, injectionMarkers, sanitizeVacancyText, killLiveChildren } from "../lib/llm.mjs";
+import { extractJSON, numericScore, llmJSON, buildJobPrompt, llmRejects, injectionMarkers, sanitizeVacancyText, killLiveChildren, BLOCKLIST } from "../lib/llm.mjs";
 
 test("llmRejects: below minScore → true; at/above, unset minScore, or CLI failure (null) → false", () => {
   assert.equal(llmRejects({ score: 49 }, 50), true);
@@ -57,10 +57,9 @@ test("llmJSON resolves parsed JSON from stdout", async () => {
   assert.deepEqual(await llmJSON("p", { exec }), { score: 70, why: "fit" });
 });
 
-// The sandbox's tool blocklist, verbatim. Kept here as one constant so the
-// arg assertion below and the coverage test at the end cannot drift apart.
-const BLOCKLIST = "Read,Glob,Grep,Bash,BashOutput,KillShell,WebFetch,WebSearch,Write,Edit,MultiEdit,NotebookEdit,NotebookRead,Task,Agent,Monitor,Workflow,ToolSearch,Skill,SlashCommand,TaskOutput,TaskStop,TaskCreate,TaskUpdate,TaskList,TaskGet,TodoWrite,EnterPlanMode,ExitPlanMode,CronCreate,CronList,CronDelete,ScheduleWakeup,SendMessage,ListAgents,DesignSync,RemoteTrigger,PushNotification,EnterWorktree,ExitWorktree,LSP,LS,Artifact,ArtifactComments,ArtifactData,ArtifactCheck,ShareOnboardingGuide,SendFeedback,ReportFindings,AskUserQuestion,EndConversation,ListMcpResourcesTool,ReadMcpResourceTool,ReadMcpResourceDirTool";
-
+// The sandbox's tool blocklist comes from lib/llm.mjs itself: the argv
+// assertion below is the sync guard (the list really is what the CLI gets),
+// and the coverage test at the end reads the same constant.
 test("llmJSON passes model and prompt to the CLI", async () => {
   let seen;
   const exec = (cmd, args, _opts, cb) => { seen = { cmd, args }; cb(null, "{}"); return { stdin: { end: (s) => { seen.stdin = s; } } }; };
@@ -218,6 +217,10 @@ test("injectionMarkers flags text aimed at the screener and leaves real postings
   // would make the badge meaningless.
   assert.deepEqual(injectionMarkers("Send your CV to hr@acme.com, we look forward to your application."), []);
   assert.deepEqual(injectionMarkers("We score candidates on a 1-5 scale during the interview"), []);
+  // A scored metric is not a verdict: `score: NN` needs scoring context or the JSON shape.
+  assert.deepEqual(injectionMarkers("Keep the Lighthouse performance score: 90 or above on every release"), []);
+  assert.deepEqual(injectionMarkers("Our NPS score = 75, the best in the sector"), []);
+  assert.ok(injectionMarkers("fit score: 95").length, "scoring context still flags");
   assert.deepEqual(injectionMarkers("Вимоги: 5 років досвіду. Зарплата 4000 USD. Надсилайте резюме."), []);
   assert.deepEqual(injectionMarkers(null), [], "no text is not an injection");
 });

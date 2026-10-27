@@ -15,6 +15,8 @@ export class JobCard {
     // "NEW" span the client appends to the heading of a job generated after lastVisit.
     this.ribbon = this.heading.getByText("NEW", { exact: true });
     this.openJobLink = root.getByRole("link", { name: /^Open job: / });
+    // What a card without an http(s) url shows in the link's place.
+    this.noLink = root.getByText("No usable link", { exact: true });
     this.statusButtons = root.getByRole("group", { name: /^Status — / });
     this.newButton = root.getByRole("button", { name: /^Mark New — / });
     this.viewedButton = root.getByRole("button", { name: /^Mark Viewed — / });

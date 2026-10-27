@@ -11,7 +11,7 @@
 import { runScan } from "./lib/scan-run.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { writeState } from "./lib/notify-state.mjs";
+import { updateState } from "./lib/notify-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, freshThreads } from "./lib/djinni-bump.mjs";
@@ -134,11 +134,13 @@ function finish() {
   try {
     // Persist the unread threads (id + label) too, so Jobs.app can open the
     // conversation on a Dock click: a single unread opens that thread, several
-    // open the unread bucket.
-    writeState(STATE_FILE, {
+    // open the unread bucket. Under `<path>.lock/` — the lock Jobs.app
+    // clearBadge takes for its own rewrite of this file — so a Dock click and
+    // this write never interleave; the previous state is not consulted.
+    updateState(STATE_FILE, () => ({
       count: unreadThreads.length,
       pending: unreadThreads,
-    });
+    }));
   } catch (e) {
     log("notify: writeState failed:", e?.message);
   }

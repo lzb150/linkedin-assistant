@@ -227,10 +227,21 @@ test("the LLM cover is capped at 4000 chars — the only other bound on that fie
 });
 
 test("a flagged posting carries llm_suspect into the package frontmatter", () => {
-  const { markdown } = buildApplication(job, scored, { score: 95, model: "sonnet", suspect: "injection (2 markers)" });
+  // `suspect` is passed explicitly, as lib/llm-gate.mjs does: the verdict object
+  // is an allow-list that never carries one, so a `suspect` key on it is ignored.
+  const { markdown } = buildApplication(job, scored, { score: 95, model: "sonnet" }, { suspect: "injection (2 markers)" });
   assert.match(markdown, /^llm_suspect: injection \(2 markers\)$/m);
   const clean = buildApplication(job, scored, { score: 95, model: "sonnet" });
   assert.doesNotMatch(clean.markdown, /llm_suspect/, "no key at all when the posting reads normally");
+  const forged = buildApplication(job, scored, { score: 95, model: "sonnet", suspect: "verified clean" });
+  assert.doesNotMatch(forged.markdown, /llm_suspect/, "a suspect value on the verdict itself is never read");
+});
+
+test("buildApplication returns the salary it wrote so the Telegram message reuses it", () => {
+  const { markdown, salary } = buildApplication({ ...job, text: "Pay: $3000–$5000 / month. Playwright." }, scored);
+  assert.equal(salary, "$3000–$5000 / month");
+  assert.match(markdown, /^salary: \$3000–\$5000 \/ month$/m);
+  assert.equal(buildApplication(job, scored).salary, null, "no salary in the text → null, no salary line");
 });
 
 test("llm_suspect is written without a verdict too (the LLM failed on a flagged posting)", () => {

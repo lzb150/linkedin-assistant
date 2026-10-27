@@ -93,8 +93,27 @@ test("toJob: the Apply link, not a company name Telegram auto-linked earlier in 
     `<b>Job description</b>: See <a href="https://acme.example/about">https://acme.example/about</a><br/><br/>` +
     `<a href="https://www.getonbrd.com/jobs/qa-automation" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);"><i class="emoji"><b>👉</b></i> ( Job Description &amp; Apply ) <i class="emoji"><b>👈️</b></i></a>`;
   assert.equal(toJob("c", 1, text).url, "https://www.getonbrd.com/jobs/qa-automation");
-  assert.equal(toJob("c", 2, post({ Title: "SDET", "Job description": "<a href=\"https://acme.example/about\">site</a>" }).replace(/👉 \( Job Description &amp; Apply \) 👈️/, "here")).url,
-    "https://acme.example/about", "no Apply link: the first real one, as before");
+  // No Apply link: the first real one is still fetched for the description,
+  // but the post keeps its permalink as identity (see the test below).
+  const fallback = toJob("c", 2, post({ Title: "SDET", "Job description": "<a href=\"https://acme.example/about\">site</a>" }).replace(/👉 \( Job Description &amp; Apply \) 👈️/, "here"));
+  assert.equal(fallback.apply, "https://acme.example/about");
+  assert.equal(fallback.url, "https://t.me/c/2");
+});
+
+test("fetchTgChannels: two posts sharing a fallback link stay two jobs — the permalink is the identity, the link only the page to read", async () => {
+  // Without an Apply link the first link in the post — a company domain, say —
+  // became the url, so two vacancies of that company shared one: uniqueByUrl
+  // kept the first and the seen store hid every later post for good.
+  const site = "https://acme.example/careers";
+  const noApply = (fields) => post(fields, site).replace(/👉 \( Job Description &amp; Apply \) 👈️/, "see the site");
+  const { urls, doFetch } = web({
+    channel: { "": page([wrap(1, noApply({ Title: "SDET", "Company name": "Acme" })), wrap(2, noApply({ Title: "QA Lead", "Company name": "Acme" }))]) },
+    pages: { [site]: ld({ "@type": "JobPosting", description: "Careers page" }) },
+  });
+  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"] }, () => {}, { doFetch });
+  assert.deepEqual(jobs.map((j) => [j.title, j.url]), [["QA Lead", "https://t.me/c/2"], ["SDET", "https://t.me/c/1"]], "distinct urls, newest first");
+  assert.deepEqual(urls.filter((u) => !u.includes("t.me")), [site, site], "the shared link is still read for each post's description");
+  assert.ok(jobs.every((j) => j.text.endsWith("Careers page")));
 });
 
 test("placeOf: format words go, so the place names its countries; Anywhere: Yes keeps the countries a post names", () => {

@@ -15,8 +15,13 @@ async function server404(t) {
   return `http://127.0.0.1:${srv.address().port}`;
 }
 const quiet = QUIET_BINS;
-// The fixture board lives on loopback; the host allowlist must be told so.
-const LOCAL = { CLOSED_HOSTS: JSON.stringify({ dou: "127.0.0.1" }) };
+// No state server: a port nothing listens on, so the script takes the direct
+// write path these tests exercise — and a local run never POSTs a fixture
+// closure into the live :7777 server's real job-state.json.
+const OFF = { STATE_SERVER: "http://127.0.0.1:1" };
+// The fixture board lives on loopback; the host allowlist must be told so
+// (host AND port: a board on another port is not the board).
+const hosts = (url) => ({ ...OFF, CLOSED_HOSTS: JSON.stringify({ dou: new URL(url).host }) });
 
 test("closed-check: edits landing during the run win — another url's status survives, and a status set on the probed url beats the closure", async (t) => {
   const U = `${await server404(t)}/vacancies/1/`;
@@ -31,7 +36,7 @@ test("closed-check: edits landing during the run win — another url's status su
   // shows `probing`) and before its 1 s post-probe sleep. Triggering on output,
   // not a timer: a timer could fire before the read on a slow runner and the
   // test would pass without racing anything.
-  const run = spawnScript(p, "closed-check.mjs", LOCAL);
+  const run = spawnScript(p, "closed-check.mjs", hosts(U));
   await run.output(/probing \d+ of/);
   const now = new Date().toISOString();   // a fresh closure: not yet due for archiving
   writeFileSync(p.path("job-state.json"), JSON.stringify({ _meta: {},
@@ -56,14 +61,50 @@ test("closed-check: a rate-limited probe is not stamped, so the next run retries
   t.after(() => srv.close());
   const U = `http://127.0.0.1:${srv.address().port}/vacancies/3/`;
   const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "c.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });
-  assert.match(await runScript(p, "closed-check.mjs", LOCAL), /0 closed, 1 probed/);
+  assert.match(await runScript(p, "closed-check.mjs", hosts(U)), /0 closed, 1 probed/);
   assert.ok(!Object.keys(p.json("closed-check-state.json")).includes(U), "no stamp for an inconclusive answer");
+});
+
+// The dashboard writes the store through the state server; a direct write
+// from here raced its read-modify-write (the comment in closed-check.mjs
+// admitted it). With the server up, a closure is POSTed as a click would be
+// and job-state.json is never written by the script itself.
+test("closed-check: with the state server up, closures go through POST /state and the file is left to the server", async (t) => {
+  const posts = [];
+  let store = { _meta: {} };
+  const stub = createServer((req, res) => {
+    const reply = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (req.method === "GET" && req.url === "/health") return reply(200, { ok: true });
+    if (req.method === "GET" && req.url === "/state") return reply(200, store);
+    if (req.method === "POST" && req.url === "/state") {
+      let body = "";
+      req.on("data", (c) => { body += c; });
+      req.on("end", () => {
+        const { url, patch } = JSON.parse(body);
+        posts.push({ url, patch, type: req.headers["content-type"] });
+        store = { ...store, [url]: { ...patch, updatedAt: new Date().toISOString() } };
+        reply(200, store);
+      });
+      return;
+    }
+    reply(404, { error: "not found" });
+  });
+  await new Promise((r) => stub.listen(0, "127.0.0.1", r));
+  t.after(() => stub.close());
+
+  const U = `${await server404(t)}/vacancies/4/`;
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "d.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });
+  const out = await runScript(p, "closed-check.mjs", { ...hosts(U), STATE_SERVER: `http://127.0.0.1:${stub.address().port}` });
+  assert.match(out, /1 closed, 1 probed/);
+  assert.deepEqual(posts, [{ url: U, patch: { status: "closed" }, type: "application/json" }], "one POST, the payload a dashboard click sends");
+  assert.equal(p.read("job-state.json"), JSON.stringify({ _meta: {} }), "the file is untouched: only the server writes it");
+  assert.ok(Object.keys(p.json("closed-check-state.json")).includes(U), "check stamp still written");
 });
 
 test("closed-check: with no concurrent edit the closure is recorded", async (t) => {
   const U = `${await server404(t)}/vacancies/2/`;
   const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "b.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });
-  assert.match(await runScript(p, "closed-check.mjs", LOCAL), /1 closed, 1 probed/);
+  assert.match(await runScript(p, "closed-check.mjs", hosts(U)), /1 closed, 1 probed/);
   assert.equal(p.json("job-state.json")[U].status, "closed");
 });
 
@@ -81,14 +122,14 @@ test("closed-check: archived and orphaned state entries are dropped; an empty ap
     state: { _meta: { lastVisit: "2026-09-01T00:00:00Z" }, [live]: { status: "viewed", updatedAt: new Date().toISOString() }, [gone]: { status: "viewed", updatedAt: old }, [orphan]: { status: "closed", updatedAt: old }, [fresh]: { status: "viewed", updatedAt: new Date().toISOString() } },
     bins: quiet,
   });
-  const out = await runScript(p, "closed-check.mjs");
+  const out = await runScript(p, "closed-check.mjs", OFF);
   assert.match(out, /1 package\(s\) archived .*2 stale state entries dropped/);
   const state = p.json("job-state.json");
   assert.deepEqual(Object.keys(state).sort(), ["_meta", live, fresh].sort(), "gone (archived now) and orphan removed; live, a fresh no-package entry (clicked during the probe) and _meta kept");
   assert.equal(state._meta.lastVisit, "2026-09-01T00:00:00Z", "_meta untouched");
 
   const empty = makeProject(t, { scripts: ["closed-check.mjs"], packages: {}, state: { _meta: {}, [orphan]: { status: "closed" } }, bins: quiet });
-  await runScript(empty, "closed-check.mjs");
+  await runScript(empty, "closed-check.mjs", OFF);
   assert.ok(empty.json("job-state.json")[orphan], "an empty applications/ must not wipe the store");
 });
 
@@ -103,7 +144,7 @@ test("closed-check: a legacy entry with no updatedAt is pruned, not kept forever
     state: { _meta: {}, [legacy]: { status: "closed" } },   // no updatedAt at all
     bins: quiet,
   });
-  await runScript(p, "closed-check.mjs");
+  await runScript(p, "closed-check.mjs", OFF);
   assert.equal(p.json("job-state.json")[legacy], undefined, "orphaned legacy entry dropped");
 });
 
@@ -121,7 +162,7 @@ test("closed-check: a package that cannot be read prunes nothing", async (t) => 
     bins: quiet,
   });
   mkdirSync(p.path("applications/broken.md"));   // a directory reads as EISDIR
-  const out = await runScript(p, "closed-check.mjs");
+  const out = await runScript(p, "closed-check.mjs", OFF);
   assert.match(out, /could not read broken\.md/, "the skip is reported, not silent");
   assert.match(out, /0 stale state entries dropped/);
   assert.ok(p.json("job-state.json")[unreadable], "a partial read of applications/ must not prune");
@@ -134,7 +175,7 @@ test("closed-check: a package whose archive rename fails keeps its state entry",
   const gone = "https://example.com/v/8/";
   const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "gone.md": pkg({ url: gone }) }, state: { _meta: {}, [gone]: { status: "viewed", updatedAt: old } }, bins: quiet });
   mkdirSync(p.path("applications", "archive", "gone.md"), { recursive: true });   // a file cannot be renamed onto a directory
-  const out = await runScript(p, "closed-check.mjs");
+  const out = await runScript(p, "closed-check.mjs", OFF);
   assert.match(out, /could not archive gone\.md, keeping it/);
   assert.match(out, /0 package\(s\) archived .*0 stale state entries dropped/);
   assert.equal(p.json("job-state.json")[gone].status, "viewed", "entry kept with the package");
@@ -154,7 +195,7 @@ test("closed-check: an unreadable closed-check-state.json is reported and left u
   });
   const corrupt = '{"https://example.com/v/1/": "2026-09-01T00:00:00.000Z"';   // truncated
   writeFileSync(p.path("closed-check-state.json"), corrupt);
-  const out = await runScript(p, "closed-check.mjs", LOCAL);
+  const out = await runScript(p, "closed-check.mjs", hosts(U));
   assert.match(out, /closed-check-state\.json unreadable/, "the run says stamps are not being updated");
   assert.equal(p.read("closed-check-state.json"), corrupt, "the stamp file is left byte-identical");
   // The run still does its real job — closures are independent of the stamps.
@@ -179,7 +220,7 @@ test("closed-check: a second overlapping run exits quietly instead of clobbering
   mkdirSync(p.path("closed-check.lock"), { recursive: true });
   writeFileSync(p.path("closed-check.lock", "pid"), String(process.pid));
 
-  const out = await runScript(p, "closed-check.mjs", LOCAL);   // resolves ⇒ exit 0
+  const out = await runScript(p, "closed-check.mjs", hosts(U));   // resolves ⇒ exit 0
   assert.match(out, /another closed-check\.mjs run is active — exiting/);
   assert.doesNotMatch(out, /closed-check: probing/, "it stopped before touching anything");
   assert.equal(p.json("job-state.json")[U].status, "new", "the other run's state is untouched");

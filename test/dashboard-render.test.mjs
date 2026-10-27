@@ -49,7 +49,12 @@ test("renderCard: injection note is visible text, not a hover title; a bad url r
   assert.match(html, /data-url="https:\/\/a\/1"/);
   const ro = renderCard(toItem({ fm: { ...fm, url: "javascript:alert(1)" }, cover: "" }), 1);
   assert.doesNotMatch(ro, /data-url=|status-seg|note-wrap/);
-  assert.match(ro, /href="#"/);
+  // No link at all: an href="#" anchor named "Open job" opened the dashboard itself.
+  assert.doesNotMatch(ro, /href="#"|Open job/);
+  assert.match(ro, /<span class="apply" aria-disabled="true">No usable link<\/span>/);
+  const alt = renderCard(toItem({ fm: { ...fm, alt_links: "djinni|javascript:alert(1), dou|https://b/2" }, cover: "" }), 2);
+  assert.doesNotMatch(alt, /href="#"/);
+  assert.match(alt, /href="https:\/\/b\/2"/);
 });
 
 test("renderCard: a flagged package without an LLM score still shows the injection note", () => {

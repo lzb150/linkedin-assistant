@@ -199,6 +199,11 @@ test("jobUrlFrom keeps LinkedIn urls and drops an absolute href pointing anywher
   assert.equal(jobUrlFrom("https://evil.example/jobs/view/4/"), "", "off-site absolute href is refused");
   assert.equal(jobUrlFrom("https://notlinkedin.com/x"), "", "suffix must sit on a dot boundary");
   assert.equal(jobUrlFrom(""), "", "no href at all");
+  // Any href not starting with "http" was prefixed with the host, so a
+  // placeholder card became "https://www.linkedin.comjavascript:void(0)".
+  assert.equal(jobUrlFrom("javascript:void(0)"), "", "a relative href must be a path");
+  assert.equal(jobUrlFrom("mailto:jobs@example.com"), "");
+  assert.equal(jobUrlFrom("jobs/view/5/"), "", "no leading slash: not a path LinkedIn emits");
 });
 
 test("fetchLinkedInJobs scrubs control characters out of scraped card text and skips off-site cards", async () => {

@@ -61,9 +61,17 @@ test("check.mjs: a launch failure reports FAILED, not Done", async (t) => {
 // `linkless`: today's card (live DOM 2026-10-07) — no <a>, no thread id; its link
 // div only gains the --active class once the click opened its thread.
 // `stallItemsMs`: the message-list read hangs that long (a stuck renderer).
-const scanningPlaywright = (bubbles, { close = "async () => {}", items = bubbles.map((text) => ({ incoming: true, text })), linkless = false, stallItemsMs = 0 } = {}) => `
+// `autoOpened`: LinkedIn opened the thread on load and the filtered list no
+// longer lists it (no card, no active card). Its pane has no header; in
+// document order the first message group is your own, the `--other` one theirs
+// — page.$ answers a selector list the way querySelector does, first match in
+// document order, so the name selector's choice of group is what gets tested.
+const scanningPlaywright = (bubbles, { close = "async () => {}", items = bubbles.map((text) => ({ incoming: true, text })), linkless = false, stallItemsMs = 0, autoOpened = false } = {}) => `
 const threadUrl = "https://www.linkedin.com/messaging/thread/2-abc/";
-let current = "https://www.linkedin.com/messaging/?filter=unread";
+let current = ${autoOpened} ? threadUrl : "https://www.linkedin.com/messaging/?filter=unread";
+const pane = [{ name: "Eugene Owner", other: false }, { name: "Jane Recruiter", other: true }];
+const matches = (g, s) => s === ".msg-s-message-group__name" || (g.other && s.includes("--other") && s.endsWith("__name"));
+const nameIn = (sel) => pane.find((g) => sel.split(",").some((s) => matches(g, s.trim())));
 const el = (text, attrs = {}) => ({
   innerText: async () => text,
   getAttribute: async (n) => attrs[n] ?? null,
@@ -85,13 +93,13 @@ const page = {
   waitForFunction: async () => ({ jsonValue: async () => "cards" }),
   waitForURL: async () => {},
   waitForTimeout: async () => {},
-  $$: async (sel) => (sel.includes("msg-s-event-listitem") ? ${JSON.stringify(bubbles)}.map((t) => el(t)) : [card]),
+  $$: async (sel) => (sel.includes("msg-s-event-listitem") ? ${JSON.stringify(bubbles)}.map((t) => el(t)) : ${autoOpened} ? [] : [card]),
   $$eval: async (sel) => {
-    if (sel.includes("thread")) return linkless ? [] : ["https://www.linkedin.com/messaging/thread/2-abc/"];
+    if (sel.includes("thread")) return linkless || ${autoOpened} ? [] : ["https://www.linkedin.com/messaging/thread/2-abc/"];
     await new Promise((r) => setTimeout(r, ${stallItemsMs}));
     return ${JSON.stringify(items)};
   },
-  $: async () => el("Jane Recruiter"),
+  $: async (sel) => (!${autoOpened} ? el("Jane Recruiter") : sel.includes("--active") ? null : nameIn(sel) ? el(nameIn(sel).name) : null),
 };
 export const chromium = {
   launchPersistentContext: async () => ({ pages: () => [page], newPage: async () => page, close: ${close} }),
@@ -223,6 +231,19 @@ test("check.mjs: a thread opened before the run deadline is still bannered and k
   assert.deepEqual(state.pending, [{ id: "2-abc", label: "Jane Recruiter" }], "the Dock click still opens it");
   assert.deepEqual(readdirSync(p.path("drafts")).filter((f) => f.endsWith(".md")), [], "no draft seen.json cannot record");
   assert.deepEqual(JSON.parse(readFileSync(p.path("seen.json"), "utf8")), SEEN, "seen.json as finish() left it");
+});
+
+test("check.mjs: the auto-opened thread the list dropped is named after THEIR first message group, not yours", async (t) => {
+  // No card to read the name from, and no thread header: the fallback used to
+  // be the first message group of all — your own when you wrote first — so
+  // the banner, the draft and the badge entry carried your name as the recruiter's.
+  const p = project(t, scanningPlaywright([JOB], { autoOpened: true }), { bins: {} });
+  const out = await spawnScript(p, "check.mjs").done;
+  assert.match(out, /auto-opened thread not in list — scanning it first/);
+  assert.match(out, /· Jane Recruiter: score=\d+ verdict=relevant/);
+  assert.doesNotMatch(out, /Eugene Owner/);
+  assert.match(await waitFor(p.path("notify.log"), /: Hi! We have/), /Jane Recruiter: Hi! We have a Senior QA/);
+  assert.deepEqual(JSON.parse(readFileSync(p.path("notify-state.json"), "utf8")).pending, [{ id: "2-abc", label: "Jane Recruiter" }]);
 });
 
 test("check.mjs: SCAN_ALL posts no banner", async (t) => {
