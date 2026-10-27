@@ -11,7 +11,7 @@ import { createServer } from "node:http";
 import { makeProject, runScript, SKILLS_FIXTURE } from "./e2e.mjs";
 
 export const rss = (items) => `<?xml version="1.0"?><rss><channel>${items.map((i) =>
-  `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link><description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
+  `<item><title><![CDATA[${i.title}]]></title><link>${i.link}</link>${i.pubDate ? `<pubDate>${i.pubDate}</pubDate>` : ""}<description><![CDATA[${i.desc}]]></description></item>`).join("")}</channel></rss>`;
 
 // Over 300 characters, like a real posting: a shorter text is "no description
 // yet" to the keyword gate and stays unseen when the LLM turns it down.

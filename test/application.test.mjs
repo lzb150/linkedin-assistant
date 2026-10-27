@@ -315,3 +315,12 @@ test("alt-link source is escaped in the BODY as well as the frontmatter", () => 
   assert.equal((markdown.match(/^## Cover note/gm) || []).length, 1, "no second Cover note heading was planted");
   assert.equal((markdown.match(/^## Action$/gm) || []).length, 1);
 });
+
+test("posted and a repost reach the frontmatter; neither key appears otherwise", () => {
+  const { markdown } = buildApplication({ ...job, posted: "2026-10-27T10:00:00.000Z" }, scored, null, { repost: { url: "https://example.com/j/0", reposts: 2 } });
+  assert.match(markdown, /^posted: 2026-10-27T10:00:00\.000Z$/m);
+  assert.match(markdown, /^reposts: 2$/m);
+  assert.match(markdown, /^reposted_from: https:\/\/example\.com\/j\/0$/m);
+  const plain = buildApplication(job, scored).markdown;
+  assert.doesNotMatch(plain, /^(posted|reposts|reposted_from):/m);
+});

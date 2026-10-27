@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips } from "../lib/dashboard-render.mjs";
+import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, postedLabel } from "../lib/dashboard-render.mjs";
 
 const md = (fm, body = "# x\n") => `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n${body}`;
 
@@ -115,4 +115,20 @@ test("sourceChips lists each source on disk once, sorted, with its label", () =>
   assert.deepEqual([...html.matchAll(/data-src="([^"]+)"/g)].map((m) => m[1]), ["dou", "linkedin", "newboard"]);
   assert.match(html, />LinkedIn</);
   assert.match(html, />newboard</);
+});
+
+test("postedLabel and the card's posted / reposted cues", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  assert.equal(postedLabel("2026-10-28T01:00:00Z", now), "posted today");
+  assert.equal(postedLabel("2026-10-25T12:00:00Z", now), "posted 3 d ago");
+  assert.equal(postedLabel("2026-09-01T12:00:00Z", now), "posted 8 w ago");
+  assert.equal(postedLabel("nope", now), "");
+  const it = toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", posted: "2026-10-25T12:00:00Z", reposts: "2" }, cover: "" });
+  assert.equal(it.posted, "2026-10-25T12:00:00.000Z");
+  assert.equal(it.reposts, 2);
+  const html = renderCard(it, 0, { now });
+  assert.match(html, /<time datetime="2026-10-25T12:00:00\.000Z">posted 3 d ago<\/time>/);
+  assert.match(html, /<span class="repost"[^>]*>reposted ×2<\/span>/);
+  const bare = renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30", posted: "soon", reposts: "x" }, cover: "" }), 0, { now });
+  assert.doesNotMatch(bare, /class="posted"|class="repost"/, "garbage frontmatter renders nothing");
 });

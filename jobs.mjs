@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { keywordGate, titleExcluder, seenEither } from "./lib/keyword-gate.mjs";
+import { keywordGate, titleExcluder, seenEither, findRepost } from "./lib/keyword-gate.mjs";
 import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
@@ -154,11 +154,47 @@ const skippedSources = [];   // left out of this run on purpose — not "absent"
 // throw here, before a single job was gathered.
 const excludedByTitle = titleExcluder(excludeList(config.excludeTitle));
 
+// Canonical-key index of existing packages (cross-run dedup): the same vacancy
+// resurfacing on ANOTHER board must not spawn a second package — its link is
+// appended to the existing one instead. Same source = a distinct req, allowed.
+// Built before gathering: knownJob below asks it about reposts.
+const packageIndex = new Map();
+const packageLinks = new Map();
+for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable package skipped: ${f} (${e?.message})`) })) {
+  // "—" is the blank-company placeholder; canonicalKey scopes those by url,
+  // so pass the url along instead of filtering on a truthy company.
+  // The url is carried too: "same source = a distinct req" is only true when
+  // the URL differs. After a seen-store quarantine every live vacancy looks new
+  // again, and without the url check each one got re-scored (a paid LLM call)
+  // and written a SECOND time — the filename embeds a fresh minute stamp, so it
+  // could never collide and the duplicate was invisible.
+  // A list per key: two same-source reqs can share one, and keeping only the
+  // last one read lost the other's url — the same-url guard below then missed it.
+  if (!fm.title) continue;
+  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
+  if (!packageIndex.has(key)) packageIndex.set(key, []);
+  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "", generated: fm.generated || "", reposts: Number(fm.reposts) || 0 });
+  // By link too: a channel's repost of this vacancy carries a title of its own.
+  const link = linkKey(fm.url);
+  if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
+}
+// Packages whose vacancy the board reported inactive (closed-check.mjs): a
+// same-board re-listing of one of these under a new url is a repost, judged
+// afresh (lib/keyword-gate.mjs findRepost). An unreadable store just means no
+// reposts this run — the dashboard and closed-check own that file's errors.
+const closedFiles = new Set();
+try {
+  const state = readJson(join(__dir, "job-state.json"), {});
+  const closedUrls = new Set(Object.entries(state || {}).filter(([u, e]) => u !== "_meta" && e?.status === "closed").map(([u]) => u));
+  for (const list of packageIndex.values()) for (const p of list) if (closedUrls.has(p.url)) closedFiles.add(p.file);
+} catch (e) { log(`  · job-state.json unreadable (${e.message}) — no repost detection this run`); }
+
 // Known before it is opened: already in the seen store (either key spelling) or
 // excluded by title. LinkedIn skips the click + 1.8 s and Djinni the detail-page
 // fetch for such jobs (most of every run); the scoring loop still re-stamps
-// the seen entry because the job is returned from its list fields.
-const knownJob = (job) => seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title));
+// the seen entry because the job is returned from its list fields. A repost of
+// a closed package is not known: it needs its description read again.
+const knownJob = (job) => !findRepost(job, { packageIndex, closedFiles }) && (seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title)));
 
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
 // Himalayas (public JSON API, remote jobs open to candidateCountry), Telegram
@@ -293,29 +329,6 @@ recordMerged(summary, mergedCount);
 log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length} unique`);
 
 
-// Canonical-key index of existing packages (cross-run dedup): the same vacancy
-// resurfacing on ANOTHER board must not spawn a second package — its link is
-// appended to the existing one instead. Same source = a distinct req, allowed.
-const packageIndex = new Map();
-const packageLinks = new Map();
-for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable package skipped: ${f} (${e?.message})`) })) {
-  // "—" is the blank-company placeholder; canonicalKey scopes those by url,
-  // so pass the url along instead of filtering on a truthy company.
-  // The url is carried too: "same source = a distinct req" is only true when
-  // the URL differs. After a seen-store quarantine every live vacancy looks new
-  // again, and without the url check each one got re-scored (a paid LLM call)
-  // and written a SECOND time — the filename embeds a fresh minute stamp, so it
-  // could never collide and the duplicate was invisible.
-  // A list per key: two same-source reqs can share one, and keeping only the
-  // last one read lost the other's url — the same-url guard below then missed it.
-  if (!fm.title) continue;
-  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
-  if (!packageIndex.has(key)) packageIndex.set(key, []);
-  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "" });
-  // By link too: a channel's repost of this vacancy carries a title of its own.
-  const link = linkKey(fm.url);
-  if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
-}
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
@@ -323,7 +336,7 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
 let considered = 0;
 const matches = [];
 // Stamp a job seen together with the copies dedupeJobs folded into it.
-const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); };
+const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); if (job.repostKey) seen.add(job.repostKey); };
 // A job turned down on its title alone (no description yet) stays unseen so
 // the next run re-reads it — once. The second title-only "no" stamps it seen:
 // a description that never loads (a short posting, selector drift) used to be
@@ -336,12 +349,19 @@ function titleOnlyNo(job, id, gate) {
 }
 for (const job of jobs) {
   const g = keywordGate(job, {
-    seen, packageIndex, packageLinks, excludedByTitle,
+    seen, packageIndex, packageLinks, closedFiles, excludedByTitle,
     minScore: SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE,
     requireRole: config.requireRole,
   });
   const { id } = g;
   if (g.considered) considered++;
+  if (g.repost) {
+    // Judged afresh, but this new url only once: stamped with the final outcome
+    // (excluded/low here, drop or package in the LLM gate) — never on a deferral.
+    job.repostKey = `repost:${linkKey(job.url)}`;
+    job.repost = g.repost;
+    log(`  · repost ×${g.repost.reposts} of closed ${g.repost.file}: ${job.source}: ${job.title}`);
+  }
   switch (g.kind) {
     case "seen": break;   // re-stamped below: the TTL is "last seen", so a vacancy still live after 90 days never resurfaces
     case "packaged": log(`  · already packaged (${g.file}) ${job.source}: ${job.title}`); break;

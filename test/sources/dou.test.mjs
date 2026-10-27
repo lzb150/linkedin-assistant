@@ -170,3 +170,9 @@ test("a location part whose digits are glued to letters survives the salary filt
   assert.match(item("Acme, \u041a\u0438\u0457\u0432, \u0411\u0426 101A").location, /101A/, "a building number is location, not pay");
   assert.doesNotMatch(item("Acme, \u041a\u0438\u0457\u0432, 20000").location, /20000/, "a bare figure is still dropped");
 });
+
+test("parseRss keeps the item's pubDate as an ISO `posted`", () => {
+  const [first] = parseRss(fixture);
+  assert.equal(first.posted, "2026-06-13T07:45:36.000Z");
+  assert.equal(parseRss(fixture.replace(/<pubDate>[^<]*<\/pubDate>/, "<pubDate>soon</pubDate>"))[0].posted, undefined, "an unparseable date is simply absent");
+});

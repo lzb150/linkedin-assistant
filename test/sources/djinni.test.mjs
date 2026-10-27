@@ -160,3 +160,9 @@ test("fetchDjinni stops when a later page redirects to the unfiltered /jobs/ lis
   assert.ok(!urls.some((u) => u.endsWith("page=3")), "no page after the end");
   assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
 });
+
+test("parseCard reads the absolute stamp from the listing's tooltip as `posted`", () => {
+  const job = parseCard(splitCards(listing)[0]);
+  assert.equal(job.posted, "2026-06-12T10:37:00.000Z");
+  assert.equal("posted" in parseCard(splitCards(listing)[0].replace(/title=["']\d{2}:\d{2} [\d.]+["']/g, "")), false);
+});

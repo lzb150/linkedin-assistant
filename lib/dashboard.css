@@ -131,6 +131,8 @@ main { max-width: 920px; margin: 22px auto; padding: 0 14px; }
    badge reads as a gap in the data and not as a score. */
 .llm.unverified { background: var(--warn-text); color: var(--hot-ink); }
 .llm-why { color: var(--muted); }
+/* Re-listed after the board closed it: the hazard colour, same vacancy again. */
+.repost { color: var(--warn-text); font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 /* Borderline tier: the verdict fell short of llm.minScore (or the LLM failed
    twice). Muted like a closed card, with a dashed tag instead of the hot badge. */
 .tier { display: inline-block; margin-right: 6px; padding: 3px 7px; border: 1px dashed var(--border-hi); color: var(--muted); font: 600 10.5px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; vertical-align: 1px; }

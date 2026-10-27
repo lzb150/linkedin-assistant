@@ -225,3 +225,9 @@ test("fetchTgChannels: off unless enabled, and no channels means no requests", a
   assert.deepEqual(await fetchTgChannels({ enabled: true }, () => {}, { doFetch }), []);
   assert.equal(urls.length, 0);
 });
+
+test("parseChannel keeps each post's <time datetime> as `posted`", () => {
+  const { jobs } = parseChannel(fixture, "remote_qa_jobs");
+  for (const j of jobs) assert.match(j.posted, /^2026-(09|10)-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/, j.title);
+  assert.ok(jobs[0].posted > jobs.at(-1).posted, "newest first, by stamp too");
+});

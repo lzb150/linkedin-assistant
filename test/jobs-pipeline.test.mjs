@@ -225,3 +225,28 @@ test("jobs.mjs: two same-source packages sharing a key both guard against a rewr
   const files = readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).sort();
   assert.deepEqual(files, ["a.md", "b.md"], "no third package");
 });
+
+test("jobs.mjs: a same-board re-listing of a closed package under a new url is judged again as a repost", async (t) => {
+  const again = { ...ACME, link: "https://jobs.dou.ua/companies/acme/vacancies/9/", pubDate: "Sat, 13 Jun 2026 10:45:36 +0300" };
+  let feed = rss([ACME]);
+  const p = setupProject(t, await serveFeed(t, () => feed));
+  assert.match(await runJobs(p), /wrote 1 application package/);
+  // The board closed the first listing (closed-check.mjs) and lists it anew.
+  writeFileSync(p.path("job-state.json"), JSON.stringify({ [ACME.link]: { status: "closed", updatedAt: new Date().toISOString() } }));
+  feed = rss([again]);
+  const out = await runJobs(p);
+  assert.match(out, /· repost ×1 of closed \S+\.md: dou: Senior SDET \(Playwright\)/);
+  assert.match(out, /✓ MATCH \[\d+ \/ llm 85\] dou: Senior SDET \(Playwright\) @ Acme \(repost ×1\)/);
+  const files = mdFiles(p);
+  assert.equal(files.length, 2);
+  const repost = files.map((f) => p.read("applications", f)).find((md) => /^reposts: 1$/m.test(md));
+  assert.ok(repost, "the new package says it is a repost");
+  assert.match(repost, new RegExp(`^reposted_from: ${ACME.link.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}$`, "m"));
+  assert.match(repost, /^posted: 2026-06-13T07:45:36\.000Z$/m, "the feed's pubDate rides along");
+  assert.match(p.read("applications", "index.html"), /reposted ×1/);
+  // Judged once: the next run knows the new url.
+  const out3 = await runJobs(p);
+  assert.match(out3, /Considered 0 new/, "seen again under its identity, like any judged vacancy");
+  assert.doesNotMatch(out3, /repost ×/);
+  assert.equal(mdFiles(p).length, 2);
+});
