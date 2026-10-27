@@ -180,7 +180,7 @@ for (const { url, patch } of closing) stateMap = mergeEntry(stateMap, url, patch
 // Archive BEFORE pruning, and prune by what actually moved: a package whose
 // rename failed is still in applications/ and needs its state entry, or it
 // reappears as New on the dashboard.
-const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap }), { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ days
+const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap }), { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ / borderline 30+ days
 // State entries for urls with no live package (archived now or earlier, pruned,
 // or never had one) are dropped — if untouched for a day: a package jobs.mjs
 // wrote during the probe, already clicked on the dashboard, is not in our
@@ -213,5 +213,5 @@ if (savedNow || wouldPrune) {
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 saveChecked();
-log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
+log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
 heartbeat(HEARTBEAT_FILE, "closed-check", { log, alert: (m) => notify("Job assistant", m) });

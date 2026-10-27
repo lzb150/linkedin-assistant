@@ -18,14 +18,15 @@
     "Грузія", "Georgia", "Тбілісі", "Tbilisi"
   ],
 
-  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). Keyword minScore/requireRole decide what reaches the LLM; when the LLM answers with a fit score below llm.minScore (0–100) the job is dropped as low instead of getting a package. A failed or timed-out verdict defers the job to the next run; a second failure writes a keyword-only package (never lose a match to an outage). Set minScore to 0 to make the LLM advisory-only. maxPerRun caps CLI calls per run. `model` is the claude CLI alias (sonnet by default: stricter on weak fits and ~2x faster than haiku); `concurrency` = parallel CLI calls per run (default 3); `timeoutSec` (default 60, min 30) kills a call that runs longer; good calls take ~8 s (p50) and the log line `llm: verdict in N s` shows yours, so a hung call is given up after one minute instead of three.",
+  "_llmComment": "LLM re-scoring + tailored cover letters via the local Claude CLI (claude -p). Keyword minScore/requireRole decide what reaches the LLM; when the LLM answers with a fit score below llm.minScore (0–100) the job is dropped as low instead of getting a package. A verdict below minScore but at or above borderlineMin (default 50; 0 turns the band off) is written as a `tier: borderline` package — a muted Borderline tab on the dashboard, no Telegram message — because the cutoff is noisy by about ±12 points. A failed or timed-out verdict defers the job to the next run; a second failure writes a keyword-only package into the same Borderline tab (never lose a match to an outage). Set minScore to 0 to make the LLM advisory-only. maxPerRun caps CLI calls per run. `model` is the claude CLI alias (sonnet by default: stricter on weak fits and ~2x faster than haiku); `concurrency` = parallel CLI calls per run (default 3); `timeoutSec` (default 60, min 30) kills a call that runs longer; good calls take ~8 s (p50) and the log line `llm: verdict in N s` shows yours, so a hung call is given up after one minute instead of three.",
   "llm": {
     "enabled": true,
     "model": "sonnet",
     "maxPerRun": 15,
     "concurrency": 3,
     "timeoutSec": 60,
-    "minScore": 70
+    "minScore": 70,
+    "borderlineMin": 50
   },
 
   "dou": {

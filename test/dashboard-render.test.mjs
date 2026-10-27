@@ -20,6 +20,18 @@ test("toItem defaults the source, parses scores once, and rejects a non-numeric 
   assert.equal(toItem({ fm: { source: "djinni", score: "41", llm_score: "77" } }).llm, 77);
 });
 
+test("toItem/renderCard: tier borderline → data-tier + a tag; anything else is a match", () => {
+  const b = toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", llm_score: "62", tier: "borderline" }, cover: "" });
+  assert.equal(b.tier, "borderline");
+  assert.equal(toItem({ fm: { tier: "gold" }, cover: "" }).tier, "match");
+  const html = renderCard(b, 0, { llmInUse: true });
+  assert.match(html, /<article class="card"[^>]* data-tier="borderline"/);
+  assert.match(html, /<span class="tier"><span class="sr-only">tier <\/span>borderline<\/span> <span class="llm">/);
+  const kw = renderCard(toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", tier: "borderline" }, cover: "" }), 0, { llmInUse: true });
+  assert.match(kw, /class="tier">.*borderline.*<span class="llm unverified">/, "no verdict: the tag sits next to the AI ? badge");
+  assert.doesNotMatch(renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30" }, cover: "" }), 0, {}), /data-tier|class="tier"/);
+});
+
 test("collapseItems keeps the newest package per identity and sorts llm desc, then score desc", () => {
   const it = (fm) => toItem({ fm, cover: "" });
   const out = collapseItems([

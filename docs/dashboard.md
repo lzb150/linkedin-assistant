@@ -61,7 +61,12 @@ and Viewed views (deselect both tabs to see everything). That is the whole model
 there is no applied/answered/interview pipeline (the few real applications live
 in your mailbox, not here). You can attach private notes to any card; they are
 saved to disk via the state server. The header shows New / Viewed with live
-counts, both selected by default.
+counts, both selected by default. A third **Borderline** tab appears only while
+there are borderline packages — LLM verdicts just under `llm.minScore`, or
+packages the LLM failed to judge twice (see [Job discovery](job-discovery.md)).
+It is off by default; a borderline card shows under that tab alone, whatever its
+status, with a dashed `borderline` tag, and is archived 30 days after it was
+written unless the vacancy closed first.
 
 ![Card expanded in the Night City skin — cover letter, private note](card.png)
 

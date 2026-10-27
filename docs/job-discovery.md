@@ -58,9 +58,14 @@ back with a visible browser.
 The strongest keyword matches get a
 second look from a local `claude -p` call (sonnet by default — measured stricter on weak fits and ~2× faster than haiku): a 0–100 verdict,
 a one-line "why", and a tailored cover letter. A fit below `llm.minScore` drops
-the job instead of writing a package (see the gates above). A CLI failure (a timeout on a busy Mac, a crash) is not a verdict: the job is
-deferred to the next run, like a match past `maxPerRun`; only a second failure writes a keyword-only package, so an outage never loses a match.
-Such a package shows an **AI ?** badge on the dashboard (see [Dashboard](dashboard.md)).
+the job instead of writing a package (see the gates above) — unless it is at or
+above `llm.borderlineMin` (default 50; 0 turns the band off): then the package is
+written as `tier: borderline` and waits under the dashboard's muted **Borderline**
+tab, with no banner name and no Telegram message. The cutoff is noisy by about
+±12 points (the same vacancy scored 80 via one board and 68 via another), and 40
+of 93 rejects in a fortnight sat in 50–69. A CLI failure (a timeout on a busy Mac, a crash) is not a verdict: the job is
+deferred to the next run, like a match past `maxPerRun`; only a second failure writes a keyword-only package, so an outage never loses a match —
+into the same Borderline tab, since an unjudged package is not a match either. Such a package shows an **AI ?** badge on the dashboard (see [Dashboard](dashboard.md)).
 Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
 `model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `timeoutSec` (default 60, floor 30 — a good verdict takes ~8 s, so a hung CLI call is given up after a minute; every verdict logs `llm: verdict in N s`, and the weekly report shows the average), `minScore` — 0 makes the LLM advisory-only, which is also what a missing key means). Matches past
 the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
