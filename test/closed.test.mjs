@@ -14,6 +14,14 @@ test("onBoardHost: only the board's own host (or a subdomain) is probed", () => 
   assert.equal(onBoardHost("jooble", "https://jooble.org/x"), false);
 });
 
+test("onBoardHost: a board on another port is another service, not the board", () => {
+  // Scheme + hostname let a redirect hop to https://djinni.co:8443/ through,
+  // although the apply-link check in tgchannels.mjs bans an explicit port.
+  assert.equal(onBoardHost("djinni", "https://djinni.co:8443/jobs/1-x/"), false);
+  assert.equal(onBoardHost("dou", "http://jobs.dou.ua:8080/x"), false);
+  assert.equal(onBoardHost("djinni", "https://djinni.co:443/jobs/1-x/"), true, "the default port written out is the same port");
+});
+
 test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not closed)", () => {
   assert.equal(isClosed({ source: "dou", status: 404, html: "" }), true);
   assert.equal(isClosed({ source: "djinni", status: 410, html: "" }), true);

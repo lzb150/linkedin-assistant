@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "../lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict, listSettled } from "../lib/inbox.mjs";
 
 test("threadIdFrom: the /thread/<id> segment, query and hash never leak; url-less falls back to name + OLDEST bubble hash", () => {
   assert.equal(threadIdFrom("https://www.linkedin.com/messaging/thread/2-abc==/?x=1#y", "Anna", "hi"), "2-abc==");
@@ -75,4 +75,23 @@ test("threadState: only THEIR messages identify the state; an empty follow-up st
   assert.equal(image.snippet, "We have a role", "the snippet is the newest message with text");
   assert.deepEqual(threadState([mine]), { state: "1\nThanks!", snippet: "Thanks!" }, "no incoming items (selector drift) → every item");
   assert.deepEqual(threadState([]), { state: "0\n", snippet: "" });
+});
+
+test("listSettled: a rendered list container with text but no row is the empty state in any UI language; a skeleton keeps waiting; rows without the card class are drift", () => {
+  const S = { conversationList: ".list", conversationCard: "li.card", emptyUnread: "No unread messages" };
+  const el = (text, { li = false } = {}) => ({ innerText: text, querySelector: (sel) => (sel === "li" && li ? {} : null) });
+  const dom = (lists, { card = false, thread = false } = {}) => ({
+    document: { querySelector: (sel) => (sel === S.conversationCard && card ? {} : null), querySelectorAll: () => lists },
+    location: { pathname: thread ? "/messaging/thread/2-abc/" : "/messaging/" },
+  });
+  assert.equal(listSettled(S, dom([el("")], { thread: true })), "thread", "an auto-opened thread before the list rendered");
+  assert.equal(listSettled({ ...S, ignoreThread: true }, dom([el("")], { thread: true })), null, "the follow-up wait looks past the url");
+  assert.equal(listSettled(S, dom([el("Jane · Hi")], { card: true, thread: true })), "thread", "the url wins while it counts");
+  assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })], { card: true })), "cards");
+  assert.equal(listSettled(S, dom([el("No unread messages")])), "empty", "the English text");
+  assert.equal(listSettled(S, dom([el("Немає непрочитаних повідомлень")])), "empty", "any other language: text, no row");
+  assert.equal(listSettled(S, dom([el("")])), null, "a blank container is still rendering");
+  assert.equal(listSettled(S, dom([el(" \n ")])), null, "whitespace-only (a skeleton) too");
+  assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })])), null, "rows without the card class: not the empty state (drift, badge kept)");
+  assert.equal(listSettled(S, dom([])), null, "no container at all");
 });

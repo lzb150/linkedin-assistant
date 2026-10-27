@@ -77,7 +77,7 @@ try {
 }
 const {
   config, minScore: MIN_SCORE, sourceMinScore: SOURCE_MIN_SCORE,
-  llmMinScore: LLM_MIN_SCORE, llmMaxPerRun: LLM_MAX_PER_RUN, llmConcurrency: LLM_CONCURRENCY, llmTimeoutMs: LLM_TIMEOUT_MS,
+  llmMinScore: LLM_MIN_SCORE, llmMaxPerRun: LLM_MAX_PER_RUN, llmConcurrency: LLM_CONCURRENCY, llmTimeoutMs: LLM_TIMEOUT_MS, llmModel: LLM_MODEL,
   candidateCountry: CANDIDATE_COUNTRY, countryOnly: COUNTRY_ONLY,
 } = normalizeJobsConfig(rawConfig, { log });
 const LLM = config.llm || {};
@@ -360,7 +360,7 @@ for (const job of jobs) {
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
 // per run), then the package write — lib/llm-gate.mjs.
 const { written, writtenList, llmFailed, llmDropped, llmDeferred, llmFallback, llmCalls, llmMs } = await judgeMatches(matches, {
-  llm: { on: llmOn, minScore: LLM_MIN_SCORE, maxPerRun: LLM_MAX_PER_RUN, concurrency: LLM_CONCURRENCY, model: LLM.model || "sonnet", resume: RESUME_TXT, country: CANDIDATE_COUNTRY[0], timeoutMs: LLM_TIMEOUT_MS },
+  llm: { on: llmOn, minScore: LLM_MIN_SCORE, maxPerRun: LLM_MAX_PER_RUN, concurrency: LLM_CONCURRENCY, model: LLM_MODEL, resume: RESUME_TXT, country: CANDIDATE_COUNTRY[0], timeoutMs: LLM_TIMEOUT_MS },
   seen, stamp, titleOnlyNo, summary, appsDir: APPS, log,
 });
 
@@ -400,10 +400,12 @@ if (healthReadable) {
 }
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
+// stderr is piped, not ignored: e.message alone was "Command failed: …", with
+// the actual stack from dashboard.mjs thrown away.
 try {
-  execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: "ignore", timeout: 60_000 });
+  execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: ["ignore", "ignore", "pipe"], timeout: 60_000 });
 } catch (e) {
-  log("dashboard refresh skipped:", e.message);
+  log("dashboard refresh skipped:", e.message, String(e.stderr || "").trim().slice(-300));
 }
 
 // One banner per run: breakage alerts + the new packages. Silent when neither.

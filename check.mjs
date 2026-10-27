@@ -18,7 +18,8 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
-import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict } from "./lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict, listSettled } from "./lib/inbox.mjs";
+import { clip } from "./lib/telegram.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { updateState, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
@@ -45,12 +46,16 @@ const SEL = {
   // card is no <a>: no href, no thread id anywhere in it (live DOM 2026-10-07),
   // so this class is the only tie between a card and the open thread.
   activeCardLink: ".msg-conversations-container__convo-item-link--active",
-  // Rendered inside the list container when ?filter=unread has nothing to show.
+  // Rendered inside the list container when ?filter=unread has nothing to show
+  // — in the English UI; listSettled (lib/inbox.mjs) also reads a rendered
+  // container with text but no row as the empty state, whatever the language.
   emptyUnread: "No unread messages",
   participantName: ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names, [class*='participant-names']",
   // The open thread's own header title (no card to read when LinkedIn auto-opened it);
-  // the first message group's sender name is the fallback.
-  threadParticipantName: ".msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-s-message-group__name",
+  // the fallback is the first INCOMING message group's sender name — the first
+  // group of all is your own when you wrote first, and the banner, draft and
+  // badge then carried your name as the recruiter's.
+  threadParticipantName: ".msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-s-event-listitem--other .msg-s-message-group__name",
   messageBubble: ".msg-s-event-listitem__body, .msg-s-message-group__content",
   // One per message; `--other` marks the ones THEY sent (checked on the live DOM
   // 2026-09-28: 19 items, 7 incoming, the newest two your own replies).
@@ -100,17 +105,13 @@ async function scan(page, ctx, signal) {
   if (!listFound) log("⚠️  Conversation list selector not found — LinkedIn DOM may have changed. Run with HEADFUL=1 to inspect.");
   // The list container renders before its cards: a manual run at 15:18 (2026-09-14)
   // found 0 cards and no empty-state text while one unread thread was there.
-  // Wait for a card, the empty-state text, or an auto-opened thread url (the
+  // Wait for a card, the empty state, or an auto-opened thread url (the
   // filtered list may have dropped that thread already, so no card ever comes).
-  // The predicate names what it saw, so the empty-state check runs in one place.
-  const settled = listFound && await page.waitForFunction((S) =>
-    (location.pathname.includes("/messaging/thread/") && "thread")
-    || (document.querySelector(S.conversationCard) && "cards")
-    || ([...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)) && "empty"),
-  SEL, { timeout: 15000 }).then((h) => h.jsonValue(), () => null);
+  // The predicate (listSettled) names what it saw, so the empty-state check runs in one place.
+  const settled = listFound && await page.waitForFunction(listSettled, SEL, { timeout: 15000 }).then((h) => h.jsonValue(), () => null);
   // The url flips to the thread before the list renders: give the cards (or the
-  // empty-state text) up to 3 s more, else the count below reads a list that is not there yet.
-  if (settled === "thread") await page.waitForFunction((S) => document.querySelector(S.conversationCard) || [...document.querySelectorAll(S.conversationList)].some((e) => e.innerText.includes(S.emptyUnread)), SEL, { timeout: 3000 }).catch(() => {});
+  // empty state) up to 3 s more, else the count below reads a list that is not there yet.
+  if (settled === "thread") await page.waitForFunction(listSettled, { ...SEL, ignoreThread: true }, { timeout: 3000 }).catch(() => {});
 
   // Collect candidate conversation cards.
   const cards = await page.$$(SEL.conversationCard);
@@ -125,7 +126,7 @@ async function scan(page, ctx, signal) {
   // unread an empty-list check missed it, so it was never scanned and the badge
   // showed N−1. Do not read an empty list as drift then. A rendered list with
   // zero cards and no thread is either LinkedIn's empty state (honest 0) or the
-  // card selector drifting (must not zero the badge) — the text decides.
+  // card selector drifting (must not zero the badge) — listSettled decides.
   const autoOpened = /\/messaging\/thread\//.test(page.url());
   const openId = autoOpened ? threadIdFrom(page.url()) : null;
   const ids = await page.$$eval(`${SEL.conversationCard} a[href*='/messaging/thread/']`, (as) => as.map((a) => a.href)).then((hrefs) => hrefs.map((h) => threadIdFrom(h)), () => []);
@@ -233,7 +234,8 @@ async function scan(page, ctx, signal) {
     // so a thread we could not read would otherwise vanish with a log line.
     if (!SCAN_ALL) {
       remember({ id: threadId, label: name });   // before the banner: a click on it reads this state
-      notify("LinkedIn", `${name}: ${snippet.replace(/\s+/g, " ").slice(0, 140) || "new message (could not read it — open LinkedIn)"}`, { link: url });
+      // Both halves are scraped text: the name is clipped like the snippet.
+      notify("LinkedIn", `${clip(name, 80)}: ${clip(snippet, 140) || "new message (could not read it — open LinkedIn)"}`, { link: url });
     }
     // Past the run deadline finish() has already saved seen.json: stop before a
     // draft this run could not record (a SCAN_ALL rerun would draft it again

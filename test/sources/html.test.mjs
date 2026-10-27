@@ -258,6 +258,20 @@ test("sameSite refuses a scheme downgrade and non-http(s) schemes, not just a fo
   });
 });
 
+test("sameSite refuses a redirect to another port of the same host", async () => {
+  // Scheme + hostname passed a hop to https://djinni.co:8443/ — another
+  // service on that machine — although isPublicHttps (tgchannels.mjs) bans an
+  // explicit port on the apply link itself. The default port still matches.
+  const follow = (start, to) => fetchFollow(start, {}, {
+    doFetch: async (u) => (u === start
+      ? { status: 302, headers: { get: (h) => (h.toLowerCase() === "location" ? to : null) } }
+      : { status: 200, headers: { get: () => null }, text: async () => "body" }),
+  });
+  await assert.rejects(() => follow("https://djinni.co/jobs/1", "https://djinni.co:8443/jobs/1"), /off the allowed host/);
+  await assert.rejects(() => follow("https://djinni.co/jobs/1", "https://www.djinni.co:8443/jobs/1"), /off the allowed host/, "a subdomain on another port is no better");
+  assert.equal(await bodyText(await follow("https://djinni.co/jobs/1", "https://djinni.co:443/jobs/2")), "body", "the default port written out is the same port");
+});
+
 test("bodyText honours the charset from the BYTES when a response has no stream", async () => {
   // The old branch did Buffer.from(await res.text(), "binary") — but text() has
   // already decoded as UTF-8, so every replacement char it produced collapsed to

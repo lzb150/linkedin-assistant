@@ -18,9 +18,10 @@ cd "$(dirname "$0")"
 mkdir -p -m 700 logs   # fresh clones lack logs/; set -e would kill the run on the redirect. 700: logs quote job/recruiter text (mode applies only when this call creates it)
 find "$PWD/logs" -name '*.log' ! -name 'state-server.log' ! -name 'jobs-badge.*.log' -mtime +30 -delete 2>/dev/null || true   # log rotation (launchd holds the server's and the badge daemon's logs open)
 # The two logs the rotation above must skip are the two launchd holds open, and
-# nothing else bounded them: state-server exits on EADDRINUSE and KeepAlive
-# restarts it, so its log grew forever. Truncate in place — deleting an open
-# file would leave the daemon writing to an unlinked inode.
+# nothing else bounded them: state-server used to exit on EADDRINUSE and
+# KeepAlive restarted it, so its log grew forever (it retries in-process now,
+# but a crash loop on a bad node path still respawns). Truncate in place —
+# deleting an open file would leave the daemon writing to an unlinked inode.
 for f in "$PWD/logs/state-server.log" "$PWD"/logs/jobs-badge.*.log; do
   if [[ -f "$f" ]] && [[ "$(stat -f%z "$f" 2>/dev/null || echo 0)" -gt 10485760 ]]; then
     : > "$f"

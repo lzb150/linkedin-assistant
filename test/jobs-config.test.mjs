@@ -87,6 +87,32 @@ test("normalizeJobsConfig: flags, country and countryOnly come out normalized; d
   assert.deepEqual([...bare.countryOnly], []);
 });
 
+test("normalizeJobsConfig: a top-level list given as a bare string is reported, not silently emptied", () => {
+  // lib/filters.mjs degraded "excludeTitle": "junior" to [] so the run survived,
+  // but nothing said the exclude was never applied.
+  const { lines, log } = collect();
+  const cfg = shipped();
+  cfg.excludeTitle = "junior";
+  const { config } = normalizeJobsConfig(cfg, { log });
+  assert.deepEqual(config.excludeTitle, [], "still ignored");
+  assert.ok(lines.some((l) => /excludeTitle is "junior", not a list — ignored/.test(l)), lines.join("\n"));
+  assert.ok(!lines.some((l) => /excludeLocation|candidateCountry/.test(l)), "a well-formed list is quiet");
+});
+
+test("normalizeJobsConfig: llm.model must be a model name; anything else is sonnet, reported", () => {
+  const { lines, log } = collect();
+  const cfg = shipped();
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmModel, "haiku");
+  cfg.llm.model = 5;
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmModel, "sonnet", "a number must never reach the CLI argv");
+  assert.ok(lines.some((l) => /llm.model is 5, not a model name — using sonnet/.test(l)), lines.join("\n"));
+  cfg.llm.model = " opus ";
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmModel, "opus", "trimmed");
+  delete cfg.llm.model;
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmModel, "sonnet");
+  assert.equal(lines.length, 1, "an absent or valid model is quiet");
+});
+
 test("normalizeJobsConfig: llm.timeoutSec is a knob (seconds in the file, ms for the wrapper), bounded and reported like the others", () => {
   const { lines, log } = collect();
   const cfg = shipped();

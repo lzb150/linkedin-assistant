@@ -149,6 +149,7 @@ main { max-width: 920px; margin: 22px auto; padding: 0 14px; }
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%);
 }
 .apply:hover { background: var(--cta-hover); }
+.apply[aria-disabled="true"] { background: transparent; color: var(--muted); border: 1px solid var(--border-hi); clip-path: none; }
 .status-seg { display: flex; border: 1px solid var(--border-hi); }
 .status-seg button { flex: 1; background: transparent; color: var(--muted); border: 0; border-left: 1px solid var(--border-hi); padding: 7px 8px; font: 600 11px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
 .status-seg button:first-child { border-left: 0; }

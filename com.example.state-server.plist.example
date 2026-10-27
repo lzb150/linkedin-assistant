@@ -22,6 +22,9 @@
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <!-- A crash loop (bad node path, permissions) respawns at most once a minute. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/state-server.log</string>
   <key>StandardErrorPath</key>

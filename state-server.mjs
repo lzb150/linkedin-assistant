@@ -105,9 +105,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     statePath: join(dir, "job-state.json"),
     indexPath: join(dir, "applications", "index.html"),
   });
+  // EADDRINUSE used to exit(1): under launchd KeepAlive that meant a respawn
+  // every ~10 s, each one logging a line, for as long as the port was held.
+  // Retry in-process instead (one log line), exit only on other errors.
+  const RETRY_MS = 30_000;
+  let busyLogged = false;
   server.on("error", (e) => {
-    console.error(e.code === "EADDRINUSE" ? `state-server: port ${PORT} already in use (another instance running?)` : `state-server: ${e.message}`);
-    process.exit(1);
+    if (e.code !== "EADDRINUSE") { console.error(`state-server: ${e.message}`); process.exit(1); }
+    if (!busyLogged) { busyLogged = true; console.error(`state-server: port ${PORT} already in use (another instance running?) — retrying every ${RETRY_MS / 1000} s`); }
+    setTimeout(() => server.listen(PORT, HOST), RETRY_MS);
   });
   server.listen(PORT, HOST, () => console.log(`state-server: http://${HOST}:${PORT}/`));
 }

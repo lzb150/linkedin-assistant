@@ -107,7 +107,10 @@ test.describe("status buttons", () => {
     const broken = dashboard.card(JOBS.nowhere.title);
     await expect(broken.heading).toBeVisible();
 
-    await expect(broken.openJobLink).toHaveAttribute("href", "#");
+    // No "Open job" link at all: an href="#" one used to reopen the dashboard.
+    await expect(broken.openJobLink).toHaveCount(0);
+    await expect(broken.noLink).toBeVisible();
+    await expect(broken.noLink).toHaveAttribute("aria-disabled", "true");
     await expect(broken.statusButtons).toHaveCount(0);
     await expect(broken.noteToggle).toHaveCount(0);
   });
