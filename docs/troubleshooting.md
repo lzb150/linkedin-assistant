@@ -25,3 +25,12 @@ asleep, not a broken scraper: launchd starts jobs during the short maintenance
 wakes and they only progress in those windows. Check with
 `pmset -g log | grep -E "Sleep|Wake"` before touching selectors. Normal figures:
 one LinkedIn search ≈ 40 s, a full run 2–5 min plus ~20 s per three LLM calls.
+
+A banner saying `<job>: no successful run for N h while M other runs finished
+— is its launchd job loaded?` is the watchdog (`last-success.json`, see
+docs/setup.md → "Schedule it"): that job has not finished cleanly for a long
+time while its siblings kept running. `launchctl list | grep <label>` shows
+whether it is loaded and its last exit code; `logs/<job>.err.log` says why it
+died (a node path `nvm` removed is the classic). The Dock badge daemon's own
+log is `logs/jobs-badge.app-err.log` (`jobs:` lines: badge changes, Dock
+clicks, crashes); `logs/jobs-badge.err.log` only ever holds `open(1)` errors.

@@ -25,6 +25,7 @@ import { updateState, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
+import { heartbeat } from "./lib/heartbeat.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -32,6 +33,7 @@ const DRAFTS = join(__dir, "drafts");
 mkdirSync(DRAFTS, { recursive: true, mode: 0o700 }); // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
+const HEARTBEAT_FILE = join(__dir, "last-success.json");
 // Digits-only guard: a garbage MAX would parse to NaN and every `>= MAX`
 // comparison would be false, silently disabling the cap.
 const MAX = /^\d+$/.test(process.env.MAX || "") ? Number(process.env.MAX) : 12;
@@ -296,4 +298,6 @@ if (outcome === "failed") {
   process.exit(1);
 }
 log(`${outcome === "busy" ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
+// A busy profile is not a finished scan: only a real pass stamps the heartbeat.
+if (outcome !== "busy") heartbeat(HEARTBEAT_FILE, "check", { log, alert: (m) => notify("Job assistant", m) });
 process.exit(0);

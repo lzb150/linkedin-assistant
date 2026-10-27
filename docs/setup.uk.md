@@ -82,6 +82,7 @@ node dashboard.mjs   # зібрати applications/index.html і подивит�
 | Дозапуск LinkedIn після DarkWake (`linkedin-catchup`) | кожні 15 хв (нічого не робить без маркера) |
 | Перевірка закритих + архів (`closed-check`)           | щодня 08:30            |
 | Тижневий звіт (`jobs-report`)                         | понеділок 09:00        |
+| Нічна резервна копія (`backup`)                       | щодня 21:00            |
 | Демон бейджа в Dock (`jobs-badge`)                    | постійно (KeepAlive)   |
 | Сервер стану дашборда (`state-server`)               | постійно (KeepAlive)   |
 
@@ -115,6 +116,38 @@ DarkWake — фоновому пробудженні на 5–10 с, — а на
 застав профіль браузера або блокування запуску зайнятими (паралельний
 `check.mjs` чи `jobs.mjs`), лишає той самий маркер, тож LinkedIn повторюється
 протягом 15 хвилин, а не в наступному 3-годинному слоті.
+
+**Сторож.** Кожне завдання ставить позначку про чисте завершення в
+`last-success.json` (у gitignore) і дивиться на інші: завдання, яке давно не
+завершувалось за годинником *і* яке встигли обігнати достатньо інших завдань
+(тобто Mac не спав), дає один банер + сповіщення в Telegram — `check: no
+successful run for 14 h while 15 other runs finished — is its launchd job
+loaded?` — і нагадування через добу, якщо воно й далі лежить. Звичні причини:
+plist не завантажили після перевстановлення або шлях до node у `run.sh` вказує
+на версію, яку `nvm` уже видалив.
+
+## Резервна копія (і відновлення)
+
+Git тримає лише код. Пакети для відгуку, чернетки, усі файли стану,
+`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh` і живі
+plist-и існують тільки на цьому диску, тож `backup.mjs` щоночі архівує їх
+(`com.example.backup.plist.example`, 21:00) в iCloud Drive —
+`~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, по
+одному `.tgz` на день, зберігаються 14 найновіших, ~5 МБ кожен. `BACKUP_DIR`
+перенаправляє в інше місце (зовнішній диск, синхронізована тека); `BACKUP_KEEP`
+змінює кількість. Два профілі браузера не входять: 1,4 ГБ кешу Chromium, які
+відтворюють два запуски `node login.mjs`.
+
+Відновлення на новому Mac:
+
+```bash
+git clone git@github.com:lzb150/linkedin-assistant.git && cd linkedin-assistant
+npm ci && npx playwright install chromium
+tar -xzf ~/Library/Mobile\ Documents/com~apple~CloudDocs/linkedin-assistant-backup/linkedin-assistant-YYYY-MM-DD.tgz
+node login.mjs && node login.mjs djinni      # дві сесії в архіві відсутні
+./build-jobs.sh                              # Jobs.app
+cp com.*.plist ~/Library/LaunchAgents/ && for p in com.*.plist; do launchctl load ~/Library/LaunchAgents/$p; done
+```
 
 ## Mac не спить із закритою кришкою (необов'язково)
 

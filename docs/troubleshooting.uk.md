@@ -27,3 +27,12 @@ chromium…`, скачує збірку (~100 МБ, до 5 хвилин) і ст
 `pmset -g log | grep -E "Sleep|Wake"`, перш ніж чіпати селектори. Нормальні
 цифри: один пошук LinkedIn ≈ 40 с, повний запуск 2–5 хв плюс ~20 с на кожні
 три виклики LLM.
+
+Банер `<job>: no successful run for N h while M other runs finished — is its
+launchd job loaded?` — це сторож (`last-success.json`, див. docs/setup.uk.md →
+«Розклад»): це завдання давно не завершувалось чисто, тоді як сусідні
+працювали. `launchctl list | grep <label>` показує, чи воно завантажене, і
+останній код виходу; `logs/<job>.err.log` каже, чому воно впало (класика —
+шлях до node, який видалив `nvm`). Власний лог демона бейджа в Dock —
+`logs/jobs-badge.app-err.log` (рядки `jobs:`: зміни бейджа, кліки в Dock,
+падіння); `logs/jobs-badge.err.log` містить лише помилки `open(1)`.

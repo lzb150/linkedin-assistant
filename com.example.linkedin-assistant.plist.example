@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  LinkedIn inbox check (run.sh check.mjs), hourly at :00.
+  LinkedIn inbox check (run.sh check.mjs), hourly at :10 — ten minutes after the 3-hourly LinkedIn discovery run at :45 can still be holding the browser profile (an LLM-heavy run lasts up to 17 min); at :00 the inbox check used to find it busy and skip.
   Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
@@ -16,9 +16,9 @@
     <string>check.mjs</string>
   </array>
 
-  <!-- Runs every hour at minute 0 (00:00, 01:00, 02:00 ... 23:00). -->
+  <!-- Runs every hour at minute 10 (00:10, 01:10, 02:10 ... 23:10). -->
   <key>StartCalendarInterval</key>
-  <dict><key>Minute</key><integer>0</integer></dict>
+  <dict><key>Minute</key><integer>10</integer></dict>
 
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/launchd.out.log</string>

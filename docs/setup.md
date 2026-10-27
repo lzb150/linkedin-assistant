@@ -81,6 +81,7 @@ What the daemons run, and when:
 | LinkedIn catch-up after a DarkWake (`linkedin-catchup`) | every 15 min (no-op unless pending) |
 | Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
 | Weekly report (`jobs-report`)                    | Monday 09:00           |
+| Nightly backup (`backup`)                        | daily 21:00            |
 | Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |
 | Dashboard state server (`state-server`)         | always on (KeepAlive)  |
 
@@ -112,6 +113,37 @@ fully awake it scrapes LinkedIn only and removes the marker. On AC power nothing
 is deferred. A LinkedIn run that finds the browser profile or the run lock busy
 (an overlapping `check.mjs` or `jobs.mjs`) leaves the same marker, so LinkedIn
 is retried within 15 minutes instead of at the next 3-hour slot.
+
+**Watchdog.** Every job stamps its clean finish in `last-success.json`
+(gitignored) and looks at the others: a job that is old by the clock *and* has
+been out-run by enough other jobs (so the Mac was awake, not asleep) raises one
+banner + Telegram alert — `check: no successful run for 14 h while 15 other
+runs finished — is its launchd job loaded?` — and a reminder a day later if it
+is still down. The usual causes: the plist was never loaded after a reinstall,
+or the node path in `run.sh` points at a version `nvm` has since removed.
+
+## Back up (and restore)
+
+Git holds the code only. The application packages, drafts, every state file,
+`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh` and the
+live plists exist on this disk alone, so `backup.mjs` archives them nightly
+(`com.example.backup.plist.example`, 21:00) into iCloud Drive —
+`~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, one
+`.tgz` per day, newest 14 kept, ~5 MB each. `BACKUP_DIR` points it elsewhere
+(an external disk, a synced folder); `BACKUP_KEEP` changes the count. The two
+browser profiles are left out: 1.4 GB of Chromium cache that two `node login.mjs`
+runs recreate.
+
+Restore on a fresh Mac:
+
+```bash
+git clone git@github.com:lzb150/linkedin-assistant.git && cd linkedin-assistant
+npm ci && npx playwright install chromium
+tar -xzf ~/Library/Mobile\ Documents/com~apple~CloudDocs/linkedin-assistant-backup/linkedin-assistant-YYYY-MM-DD.tgz
+node login.mjs && node login.mjs djinni      # the two sessions are not in the archive
+./build-jobs.sh                              # Jobs.app
+cp com.*.plist ~/Library/LaunchAgents/ && for p in com.*.plist; do launchctl load ~/Library/LaunchAgents/$p; done
+```
 
 ## Keep the Mac awake with the lid closed (optional)
 

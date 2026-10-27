@@ -35,6 +35,7 @@ import { loadSeenStore } from "./lib/seen-store.mjs";
 import { judgeMatches } from "./lib/llm-gate.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { darkWakeOnBattery } from "./lib/wake.mjs";
+import { heartbeat } from "./lib/heartbeat.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -58,6 +59,7 @@ const APPS = join(__dir, "applications");
 mkdirSync(APPS, { recursive: true, mode: 0o700 });   // packages quote recruiter/job text — owner-only (mode applies at creation; existing dirs keep theirs)
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
+const HEARTBEAT_FILE = join(__dir, "last-success.json");   // last clean finish per launchd job (lib/heartbeat.mjs)
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
 // Hand-edited like skills.json, and parsed just as early: one trailing comma
@@ -221,6 +223,7 @@ if (CATCHUP && !LINKEDIN_ON) rmSync(PENDING, { force: true });   // turned off s
 // out and reported LinkedIn as 0 found. Defer it and leave it out of health
 // monitoring: it was not tried, so it did not break.
 const LINKEDIN_DEFERRED = LINKEDIN_ON && darkWakeOnBattery();
+let linkedinRan = false;   // the feed was actually read this run (heartbeat "jobs-linkedin")
 if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); }
 else if (!config.linkedin?.enabled) {
   log("linkedin: disabled in config — skipped");
@@ -241,6 +244,7 @@ if (LINKEDIN_ON && !LINKEDIN_DEFERRED) {
     try {
       const found = await fetchLinkedInChecked(page, config.linkedin);
       recordFound(summary, "linkedin", found.length);
+      linkedinRan = true;
       jobs.push(...found);
     } catch (e) { sourcesFailed++; log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
   } catch (e) {
@@ -391,6 +395,18 @@ if (llmFailed > 2) {
   const fate = [llmDeferred && `${llmDeferred} deferred to the next run`, llmFallback && `${llmFallback} keyword-only`].filter(Boolean).join(", ");
   alerts.push(`⚠️ LLM failed ${llmFailed}× — ${fate}`);
 }
+// launchd must see a failed run as failed (the convention djinni-check.mjs:144
+// already follows). "Failed" is only "every source we tried threw" — a quiet
+// run that gathered nothing because there was nothing new stays 0.
+const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
+// Heartbeat: stamp what this run actually completed (the hourly boards, the
+// LinkedIn feed, or both), and shout once for any sibling launchd job that has
+// stopped finishing — an unloaded plist or a broken node path was silent until
+// someone noticed the Monday digest missing.
+if (!runFailed) {
+  const stamped = [...(!CATCHUP ? ["jobs-dou"] : []), ...(linkedinRan ? ["jobs-linkedin"] : [])];
+  for (const job of stamped) heartbeat(HEARTBEAT_FILE, job, { log, alert: (m) => alerts.push(m) });
+}
 // Never write back a baseline we could not read: that is the silent reset.
 // Guarded like the package write: an ENOSPC/EACCES here used to take down the
 // dashboard refresh, the banner and the exit code below with it.
@@ -413,9 +429,5 @@ try {
 const bannerText = formatRunBanner(writtenList, alerts);
 if (bannerText) notify(bannerText, { toTelegram: false });
 if (alerts.length) queueTelegram(alertMessage("Job assistant", alerts.join("\n")));
-// launchd must see a failed run as failed (the convention djinni-check.mjs:144
-// already follows). "Failed" is only "every source we tried threw" — a quiet
-// run that gathered nothing because there was nothing new stays 0.
-const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
 if (runFailed) log(`All ${sourcesTried} source(s) failed — exiting 1 so the scheduler sees it`);
 process.exit(runFailed ? 1 : 0);

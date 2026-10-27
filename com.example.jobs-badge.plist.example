@@ -21,7 +21,7 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>while pgrep -qf '/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app/Contents/MacOS/job[s]'; do sleep 10; done; exec /usr/bin/open -W -g -a /Users/YOUR_USERNAME/linkedin-assistant/Jobs.app --args --background</string>
+    <string>while pgrep -qf '/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app/Contents/MacOS/job[s]'; do sleep 10; done; exec /usr/bin/open -W -g --stdout /Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.app-out.log --stderr /Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.app-err.log --env JOBS_DEBUG=1 -a /Users/YOUR_USERNAME/linkedin-assistant/Jobs.app --args --background</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -32,6 +32,10 @@
   <key>KeepAlive</key>
   <true/>
 
+  <!-- `open` detaches the app from launchd's stdio, so these two files only ever hold
+       open(1)'s own errors (a wrong path). The app's log (`jobs:` lines — badge changes,
+       Dock clicks, crashes) is logs/jobs-badge.app-{out,err}.log via `open --stdout/--stderr`;
+       run.sh truncates both at 10 MB. -->
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.out.log</string>
   <key>StandardErrorPath</key>

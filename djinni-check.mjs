@@ -14,11 +14,13 @@ import { dirname, join } from "node:path";
 import { updateState } from "./lib/notify-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
+import { heartbeat } from "./lib/heartbeat.mjs";
 import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, freshThreads } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
 const STATE_FILE = join(__dir, "djinni-notify-state.json");
+const HEARTBEAT_FILE = join(__dir, "last-success.json");
 // Thread ids we have already posted a banner for. Persisted across runs so a
 // given unread conversation only notifies once. A network error never touches
 // this file, so a transient blip can't trigger a spurious re-notification.
@@ -152,4 +154,5 @@ else log(
     ? `Done. Djinni unread: ${unreadThreads.length} -> ${STATE_FILE}`
     : `Scan failed; badge left unchanged.`,
 );
+if (outcome === "ok" && scanned) heartbeat(HEARTBEAT_FILE, "djinni-check", { log, alert: (m) => notify("Job assistant", m) });
 process.exit(outcome === "failed" ? 1 : 0);   // launchd must see a failed run as failed; a busy profile is a benign overlap

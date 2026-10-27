@@ -16,6 +16,7 @@
 ├── make-skills.mjs    generate skills.json from resume.txt (one-time setup)
 ├── telegram-setup.mjs one-time setup of the optional Telegram alerts → telegram.json
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
+├── backup.mjs         nightly .tgz of packages, drafts, state and config into iCloud Drive (launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Himalayas/Telegram/LinkedIn sources)
 ├── docs/              these pages, their headers/ bars + README images (HTML sources and render.mjs in docs/src/)
@@ -24,6 +25,7 @@
 ├── skills.json        skill profile + weights
 ├── jobs.config.json   what and where to search
 ├── job-state.json     per-card state (status, notes, last-visit) — gitignored
+├── last-success.json  last clean finish per launchd job; the watchdog that alerts on a job that stopped — gitignored
 ├── drafts/            reply drafts
 ├── applications/      application packages + index.html
 └── Jobs.app           Dock shortcut 💼
@@ -41,6 +43,7 @@
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
+| `backup.mjs`          | Archive everything git does not hold (packages, drafts, state, config, plists) to iCloud Drive; keep the newest 14. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, open browser. |
 | `telegram-setup.mjs`  | One-time setup of the optional Telegram alerts: finds your chat, writes `telegram.json`. |
 | `lib/telegram.mjs`    | Telegram copy of the alerts: message format, `telegram-outbox/` queue, sender. |
