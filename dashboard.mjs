@@ -68,6 +68,7 @@ ${css}</style></head>
     <div class="filter-seg" role="group" aria-label="Filter by status">
       <button data-filter="new" class="active" aria-pressed="true" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" class="active" aria-pressed="true" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      ${items.some((it) => it.tier === "borderline") ? `<button data-filter="borderline" aria-pressed="false" onclick="setFilter('borderline')">Borderline <span class="cnt" id="cnt-borderline">0</span></button>` : ""}
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">

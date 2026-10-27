@@ -92,6 +92,20 @@ test("planArchive: closed past the grace period and viewed untouched for viewedD
   assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14, viewedDays: 365 }), ["old-closed.md", "no-stamp.md"], "a long viewedDays keeps viewed cards");
 });
 
+test("planArchive: a borderline package ages out by its generated date, status or not", () => {
+  const now = new Date("2026-10-28T12:00:00Z");
+  const packages = [
+    { file: "old-border.md", url: "https://jobs.dou.ua/v/1/", tier: "borderline", generated: "2026-09-20T00:00:00Z" },
+    { file: "fresh-border.md", url: "https://jobs.dou.ua/v/2/", tier: "borderline", generated: "2026-10-20T00:00:00Z" },
+    { file: "old-border-viewed.md", url: "https://jobs.dou.ua/v/3/", tier: "borderline", generated: "2026-09-20T00:00:00Z" },
+    { file: "no-date-border.md", url: "https://jobs.dou.ua/v/4/", tier: "borderline" },
+    { file: "old-match-new.md", url: "https://jobs.dou.ua/v/5/", generated: "2026-09-01T00:00:00Z" },
+  ];
+  const stateMap = { "https://jobs.dou.ua/v/3/": { status: "viewed", updatedAt: "2026-10-27T00:00:00Z" } };
+  assert.deepEqual(planArchive({ packages, stateMap, now }), ["old-border.md", "old-border-viewed.md", "no-date-border.md"]);
+  assert.deepEqual(planArchive({ packages, stateMap, now, borderlineDays: 60 }), ["no-date-border.md"]);
+});
+
 // job-state.json is hand-editable and keeps unknown statuses verbatim; a status
 // that happens to name an Object.prototype member must not read as a cutoff.
 test("planArchive: a status inherited from Object.prototype is not a cutoff", () => {
