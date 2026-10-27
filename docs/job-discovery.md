@@ -62,7 +62,7 @@ the job instead of writing a package (see the gates above). A CLI failure (a tim
 deferred to the next run, like a match past `maxPerRun`; only a second failure writes a keyword-only package, so an outage never loses a match.
 Such a package shows an **AI ?** badge on the dashboard (see [Dashboard](dashboard.md)).
 Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
-`model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `timeoutSec` (default 180, floor 30; every verdict logs `llm: verdict in N s`, and the weekly report shows the average), `minScore` — 0 makes the LLM advisory-only, which is also what a missing key means). Matches past
+`model`, `maxPerRun`, `concurrency` (parallel CLI calls, default 3), `timeoutSec` (default 60, floor 30 — a good verdict takes ~8 s, so a hung CLI call is given up after a minute; every verdict logs `llm: verdict in N s`, and the weekly report shows the average), `minScore` — 0 makes the LLM advisory-only, which is also what a missing key means). Matches past
 the `maxPerRun` cap are deferred to the next run rather than written unscored. The wrapper
 script must have the `claude` binary on `PATH` (`~/.local/bin`, see
 `run.sh.example`), otherwise every package silently degrades to keyword-only. LLM-scored cards show an **AI** badge on the dashboard. The `claude`

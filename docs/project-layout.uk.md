@@ -16,6 +16,7 @@
 ├── make-skills.mjs    згенерувати skills.json з resume.txt (одноразове налаштування)
 ├── telegram-setup.mjs одноразове налаштування необов'язкових сповіщень у Telegram → telegram.json
 ├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
+├── backup.mjs         нічний .tgz пакетів, чернеток, стану і конфігу в iCloud Drive (launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → відкрити браузер
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/Himalayas/Telegram/LinkedIn)
 ├── docs/              ці сторінки, їхні шапки headers/ + картинки README (HTML-джерела і render.mjs у docs/src/)
@@ -24,6 +25,7 @@
 ├── skills.json        профіль навичок + ваги
 ├── jobs.config.json   що і де шукати
 ├── job-state.json     стан карток (статус, нотатки, останній візит) — у gitignore
+├── last-success.json  останнє чисте завершення кожного launchd-завдання; сторож, що сповіщає про зупинене — у gitignore
 ├── drafts/            чернетки відповідей
 ├── applications/      пакети для відгуку + index.html
 └── Jobs.app           ярлик у Dock 💼
@@ -41,6 +43,7 @@
 | `state-server.mjs`    | Локальний HTTP-сервер на 127.0.0.1:7777; зберігає стан у `job-state.json`. |
 | `report.mjs`          | Тижневий звіт: запуски, пакети за джерелами, вердикти LLM, вихід джерел. |
 | `closed-check.mjs`    | Опитати New/Viewed адреси DOU, Djinni і LinkedIn; позначити неактивні вакансії Closed. |
+| `backup.mjs`          | Архівувати все, чого немає в git (пакети, чернетки, стан, конфіг, plist-и), в iCloud Drive; зберігати 14 найновіших. |
 | `open-dashboard.sh`   | Помічник кліку в Dock: перегенерувати дашборд, відкрити браузер. |
 | `telegram-setup.mjs`  | Одноразове налаштування необов'язкових сповіщень у Telegram: знаходить ваш чат, записує `telegram.json`. |
 | `lib/telegram.mjs`    | Копія сповіщень у Telegram: формат повідомлень, черга `telegram-outbox/`, відправник. |

@@ -90,3 +90,6 @@ playwright-report/
 telegram.json
 telegram-outbox/
 telegram-outbox.lock/
+
+# Last clean finish per launchd job (lib/heartbeat.mjs watchdog)
+last-success.json

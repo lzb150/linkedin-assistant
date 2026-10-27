@@ -14,6 +14,7 @@ import { notify } from "./lib/notify.mjs";
 import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
 import { buildReport } from "./lib/report.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
+import { heartbeat } from "./lib/heartbeat.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const envDays = Number(process.env.REPORT_DAYS);
@@ -50,4 +51,6 @@ console.log(text);
 if (process.argv.includes("--notify")) {
   notify("Weekly job report", notification, { toTelegram: false });
   queueTelegram(alertMessage("Weekly job report", text));
+  // Only the scheduled run counts as the weekly job finishing; a digest run by hand does not.
+  heartbeat(join(dir, "last-success.json"), "report", { log: console.error, alert: (m) => notify("Job assistant", m) });
 }

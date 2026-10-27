@@ -11,7 +11,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
-import { log } from "./lib/notify.mjs";
+import { log, notify } from "./lib/notify.mjs";
+import { heartbeat } from "./lib/heartbeat.mjs";
 import { isClosed, selectCandidates, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
 import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
@@ -37,6 +38,7 @@ try {
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
 const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }
+const HEARTBEAT_FILE = join(dir, "last-success.json");
 
 // A package readPackages could not read is absent from `packages`, so it looks
 // dead to both prunes below and its card would come back as New with its
@@ -212,3 +214,4 @@ if (savedNow || wouldPrune) {
 if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
 saveChecked();
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
+heartbeat(HEARTBEAT_FILE, "closed-check", { log, alert: (m) => notify("Job assistant", m) });

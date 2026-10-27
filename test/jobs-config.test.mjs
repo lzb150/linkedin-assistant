@@ -120,10 +120,10 @@ test("normalizeJobsConfig: llm.timeoutSec is a knob (seconds in the file, ms for
   assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 300_000);
   assert.ok(!lines.some((l) => /unknown llm\.timeoutSec/.test(l)), "a known key");
   cfg.llm.timeoutSec = "long";
-  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 180_000, "the default");
-  assert.ok(lines.some((l) => /llm.timeoutSec is "long", not a number — using 180/.test(l)), lines.join("\n"));
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 60_000, "the default");
+  assert.ok(lines.some((l) => /llm.timeoutSec is "long", not a number — using 60/.test(l)), lines.join("\n"));
   cfg.llm.timeoutSec = 5;
   assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 30_000, "clamped: 5 s would time out every real call");
   delete cfg.llm.timeoutSec;
-  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 180_000);
+  assert.equal(normalizeJobsConfig(cfg, { log }).llmTimeoutMs, 60_000);
 });
