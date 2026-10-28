@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { keywordGate, titleExcluder, seenEither, findRepost } from "./lib/keyword-gate.mjs";
+import { keywordGate, titleExcluder, seenEither, freshRepost } from "./lib/keyword-gate.mjs";
 import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
@@ -193,8 +193,9 @@ try {
 // excluded by title. LinkedIn skips the click + 1.8 s and Djinni the detail-page
 // fetch for such jobs (most of every run); the scoring loop still re-stamps
 // the seen entry because the job is returned from its list fields. A repost of
-// a closed package is not known: it needs its description read again.
-const knownJob = (job) => !findRepost(job, { packageIndex, closedFiles }) && (seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title)));
+// a closed package is not known: it needs its description read again — once,
+// until its `repost:<link>` stamp, like the gate.
+const knownJob = (job) => !freshRepost(job, { seen, packageIndex, closedFiles }) && (seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title)));
 
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
 // Himalayas (public JSON API, remote jobs open to candidateCountry), Telegram
@@ -420,11 +421,13 @@ if (llmFailed > 2) {
 // run that gathered nothing because there was nothing new stays 0.
 const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
 // Heartbeat: stamp what this run actually completed (the hourly boards, the
-// LinkedIn feed, or both), and shout once for any sibling launchd job that has
+// LinkedIn feed), and shout once for any sibling launchd job that has
 // stopped finishing — an unloaded plist or a broken node path was silent until
-// someone noticed the Monday digest missing.
+// someone noticed the Monday digest missing. `jobs-dou` is the hourly DOU_ONLY
+// job's alone: the 3-hourly full run reads the boards too, and stamping it there
+// kept a dead hourly plist looking alive.
 if (!runFailed) {
-  const stamped = [...(!CATCHUP ? ["jobs-dou"] : []), ...(linkedinRan ? ["jobs-linkedin"] : [])];
+  const stamped = [...(DOU_ONLY ? ["jobs-dou"] : []), ...(linkedinRan ? ["jobs-linkedin"] : [])];
   for (const job of stamped) heartbeat(HEARTBEAT_FILE, job, { log, alert: (m) => alerts.push(m) });
 }
 // Never write back a baseline we could not read: that is the silent reset.

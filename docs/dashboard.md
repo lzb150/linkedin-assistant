@@ -66,7 +66,7 @@ there are borderline packages — LLM verdicts just under `llm.minScore`, or
 packages the LLM failed to judge twice (see [Job discovery](job-discovery.md)).
 It is off by default; a borderline card shows under that tab alone, whatever its
 status, with a dashed `borderline` tag, and is archived 30 days after it was
-written unless the vacancy closed first.
+written — closed or not (the 14-day rule for closed cards does not apply to it).
 
 ![Card expanded in the Night City skin — cover letter, private note](card.png)
 

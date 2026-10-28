@@ -350,6 +350,8 @@ if (outcome === "failed") {
   process.exit(1);
 }
 log(`${outcome === "busy" ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
-// A busy profile is not a finished scan: only a real pass stamps the heartbeat.
-if (outcome !== "busy") heartbeat(HEARTBEAT_FILE, "check", { log, alert: (m) => notify("Job assistant", m) });
+// Only a real pass stamps the heartbeat: not a busy profile, not a list that
+// never loaded (selector drift) — the watchdog is what notices a permanent one,
+// as djinni-check.mjs does with `scanned`. A SCAN_ALL rerun by hand counts nothing.
+if (counted) heartbeat(HEARTBEAT_FILE, "check", { log, alert: (m) => notify("Job assistant", m) });
 process.exit(0);
