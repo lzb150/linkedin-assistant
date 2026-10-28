@@ -39,63 +39,74 @@ export function createServer({ statePath, indexPath }) {
   // Any throw (corrupt state file, unwritable dir) → 500. Never let a failed
   // read turn into a truncating write, and never let it crash the server.
   return http.createServer(async (req, res) => {
-    try { await handle(req, res); }
+    try { await handle(req, res, { statePath, indexPath }); }
     catch (e) { console.error("state-server:", e?.message || e); send(res, 500, { error: "state unavailable" }); }
   });
+}
 
-  async function handle(req, res) {
-    // Loopback-only guard: a browser on this machine can be induced to hit
-    // 127.0.0.1 from any website (CSRF via no-preflight POST, DNS rebinding
-    // with a foreign Host). Reject anything not addressed to loopback.
-    const hostname = (req.headers.host || "").replace(/:\d+$/, "");
-    if (hostname !== "127.0.0.1" && hostname !== "localhost") {
-      return send(res, 403, { error: "forbidden host" });
-    }
+// "<method> <exact url>" → handler(req, res, { statePath, indexPath }).
+const ROUTES = new Map([
+  ["GET /health", (req, res) => send(res, 200, { ok: true })],
+  ["GET /state", (req, res, { statePath }) => send(res, 200, readStore(statePath))],
+  ["POST /state", postState],
+  ["GET /", serveIndex],
+  ["GET /index.html", serveIndex],
+]);
 
-    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true });
-
-    if (req.method === "GET" && req.url === "/state") return send(res, 200, readStore(statePath));
-
-    if (req.method === "POST" && req.url === "/state") {
-      // Require a JSON content-type: cross-origin JSON POSTs then need a CORS
-      // preflight, which this server never approves.
-      if (!/^application\/json/i.test(req.headers["content-type"] || "")) {
-        return send(res, 415, { error: "content-type must be application/json" });
-      }
-      const body = await readBody(req);
-      if (!body || typeof body !== "object") return send(res, 400, { error: "bad body" });
-      let map = readStore(statePath);
-      if (body._meta && typeof body._meta === "object") {
-        // Only the one known key, canonicalized (normalizeMeta). Keys already on
-        // disk are preserved as-is by normalize() — this branch adds none.
-        const meta = normalizeMeta(body._meta);
-        if (!meta) return send(res, 400, { error: "invalid _meta" });
-        map = { ...map, _meta: { ...map._meta, ...meta } };
-      } else if (typeof body.url === "string" && body.url.length <= MAX_URL_LENGTH && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
-        map = mergeEntry(map, body.url, body.patch);
-      } else {
-        return send(res, 400, { error: "invalid patch" });
-      }
-      return send(res, 200, writeStore(statePath, map));
-    }
-
-    if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-      // Framing is forbidden above, but any site could still open the page in
-      // a popup on one click, and its lastVisit POST 4 s later clears every NEW
-      // ribbon. The Dock, a bookmark or a typed address send "none", a reload
-      // or in-page link "same-origin". Rejecting only "cross-site" let in any
-      // page on another 127.0.0.1 port (a dev server): a site ignores the port,
-      // so it is "same-site". No header = an old browser or a non-browser client.
-      const site = req.headers["sec-fetch-site"];
-      if (site && site !== "none" && site !== "same-origin") {
-        return send(res, 403, "Open the dashboard from the Dock or the address bar.", "text/plain");
-      }
-      try { return send(res, 200, readFileSync(indexPath, "utf8"), "text/html; charset=utf-8"); }
-      catch { return send(res, 404, "Dashboard not generated yet. Run: node dashboard.mjs", "text/plain"); }
-    }
-
-    send(res, 404, { error: "not found" });
+async function handle(req, res, paths) {
+  // Loopback-only guard: a browser on this machine can be induced to hit
+  // 127.0.0.1 from any website (CSRF via no-preflight POST, DNS rebinding
+  // with a foreign Host). Reject anything not addressed to loopback.
+  const hostname = (req.headers.host || "").replace(/:\d+$/, "");
+  if (hostname !== "127.0.0.1" && hostname !== "localhost") {
+    return send(res, 403, { error: "forbidden host" });
   }
+  const route = ROUTES.get(`${req.method} ${req.url}`);
+  if (route) return route(req, res, paths);
+  send(res, 404, { error: "not found" });
+}
+
+async function postState(req, res, { statePath }) {
+  // Require a JSON content-type: cross-origin JSON POSTs then need a CORS
+  // preflight, which this server never approves.
+  if (!/^application\/json/i.test(req.headers["content-type"] || "")) {
+    return send(res, 415, { error: "content-type must be application/json" });
+  }
+  const body = await readBody(req);
+  if (!body || typeof body !== "object") return send(res, 400, { error: "bad body" });
+  const { map, error } = applyUpdate(readStore(statePath), body);
+  if (error) return send(res, 400, { error });
+  return send(res, 200, writeStore(statePath, map));
+}
+
+// The store with `body` applied ({ map }), or the 400 message ({ error }).
+function applyUpdate(map, body) {
+  if (body._meta && typeof body._meta === "object") {
+    // Only the one known key, canonicalized (normalizeMeta). Keys already on
+    // disk are preserved as-is by normalize() — this branch adds none.
+    const meta = normalizeMeta(body._meta);
+    if (!meta) return { error: "invalid _meta" };
+    return { map: { ...map, _meta: { ...map._meta, ...meta } } };
+  }
+  if (typeof body.url === "string" && body.url.length <= MAX_URL_LENGTH && /^https?:\/\//i.test(body.url) && validatePatch(body.patch)) {
+    return { map: mergeEntry(map, body.url, body.patch) };
+  }
+  return { error: "invalid patch" };
+}
+
+function serveIndex(req, res, { indexPath }) {
+  // Framing is forbidden in send(), but any site could still open the page in
+  // a popup on one click, and its lastVisit POST 4 s later clears every NEW
+  // ribbon. The Dock, a bookmark or a typed address send "none", a reload
+  // or in-page link "same-origin". Rejecting only "cross-site" let in any
+  // page on another 127.0.0.1 port (a dev server): a site ignores the port,
+  // so it is "same-site". No header = an old browser or a non-browser client.
+  const site = req.headers["sec-fetch-site"];
+  if (site && site !== "none" && site !== "same-origin") {
+    return send(res, 403, "Open the dashboard from the Dock or the address bar.", "text/plain");
+  }
+  try { return send(res, 200, readFileSync(indexPath, "utf8"), "text/html; charset=utf-8"); }
+  catch { return send(res, 404, "Dashboard not generated yet. Run: node dashboard.mjs", "text/plain"); }
 }
 
 // Run directly: start the long-lived server on 127.0.0.1:7777.
