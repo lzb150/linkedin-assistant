@@ -3,7 +3,7 @@
 // test/helpers/jobs-pipeline.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, writeFileSync, rmSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { makeProject, runScript, waitFor, SKILLS_FIXTURE } from "./helpers/e2e.mjs";
 import { rss, FEED, serveFeed, setupProject, runJobs } from "./helpers/jobs-pipeline.mjs";
 
@@ -164,4 +164,15 @@ test("jobs.mjs: a DOU_ONLY run does not report the LinkedIn it skipped as absent
   writeFileSync(r.path("jobs.config.json"), JSON.stringify(cfg));
   await runScript(r, "jobs.mjs");
   assert.match(await waitFor(r.path("notify.log"), /not run at all/), /linkedin: not run at all \(recent median 26\)/);
+});
+
+test("jobs.mjs: only the hourly DOU_ONLY run stamps the jobs-dou heartbeat, so the full run cannot hide a dead hourly plist", async (t) => {
+  // The 3-hourly full run reads the boards too. When it stamped jobs-dou, an
+  // unloaded hourly plist never reached the 12 h limit and the watchdog stayed silent.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  const stamps = () => (existsSync(p.path("last-success.json")) ? Object.keys(p.json("last-success.json").jobs) : []);
+  await runScript(p, "jobs.mjs");   // the full run (LinkedIn disabled in this config)
+  assert.ok(!stamps().includes("jobs-dou"), "the full run does not stamp the hourly job");
+  await runJobs(p);                 // DOU_ONLY=1, the hourly job itself
+  assert.ok(stamps().includes("jobs-dou"), "the hourly run stamps itself");
 });

@@ -163,7 +163,7 @@ test("fetchDjinni stops when a later page redirects to the unfiltered /jobs/ lis
 
 test("parseCard reads the absolute stamp from the listing's tooltip as `posted`", () => {
   const job = parseCard(splitCards(listing)[0]);
-  assert.equal(job.posted, "2026-06-12T10:37:00.000Z");
+  assert.equal(job.posted, "2026-06-12T09:37:00.000Z");   // 12:37 Kyiv summer time = UTC+3
   assert.equal("posted" in parseCard(splitCards(listing)[0].replace(/title=["']\d{2}:\d{2} [\d.]+["']/g, "")), false);
 });
 

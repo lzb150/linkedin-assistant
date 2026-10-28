@@ -306,7 +306,8 @@ test("isoDate: RSS, ISO, unix seconds and Djinni's tooltip become ISO; garbage, 
   assert.equal(isoDate("2026-09-27T06:25:00+00:00", now), "2026-09-27T06:25:00.000Z");
   assert.equal(isoDate(1791658143, now), new Date(1791658143 * 1000).toISOString(), "unix seconds");
   assert.equal(isoDate(1791658143000, now), new Date(1791658143000).toISOString(), "unix ms");
-  assert.equal(isoDate("12:37 12.06.2026", now), "2026-06-12T10:37:00.000Z", "Djinni tooltip, Kyiv time");
+  assert.equal(isoDate("12:37 12.06.2026", now), "2026-06-12T09:37:00.000Z", "Djinni tooltip, Kyiv summer time (UTC+3)");
+  assert.equal(isoDate("12:37 12.01.2026", now), "2026-01-12T10:37:00.000Z", "Djinni tooltip, Kyiv winter time (UTC+2)");
   assert.equal(isoDate("2026-10-29T11:00:00Z", now), "2026-10-29T11:00:00.000Z", "a day ahead is clock skew, kept");
   for (const bad of ["", "yesterday", "1999-12-31", "2026-10-30T12:00:01Z", null, undefined, NaN, {}]) assert.equal(isoDate(bad, now), undefined, String(bad));
 });
