@@ -118,3 +118,12 @@ test("toJob keeps the API's pubDate (unix seconds) as an ISO `posted`", () => {
   const [first] = parseResponse(fixture);
   assert.match(first.posted, /^\d{4}-\d{2}-\d{2}T/);
 });
+
+test("toJob scores the full description; the excerpt only stands in when there is none", () => {
+  // The text is what the keyword gate and the LLM judge, and the excerpt is a
+  // one-sentence teaser: it must not replace a description that is there.
+  const job = (fields) => toJob({ title: "SDET", companyName: "Acme", guid: "https://himalayas.app/companies/acme/jobs/1", ...fields });
+  assert.match(job({ description: "<p>Playwright and k6</p>", excerpt: "Teaser" }).text, /\. Playwright and k6$/);
+  assert.match(job({ excerpt: "Teaser with Cypress" }).text, /\. Teaser with Cypress$/);
+  assert.equal(job({}).text, "SDET at Acme. Remote · Worldwide.");
+});

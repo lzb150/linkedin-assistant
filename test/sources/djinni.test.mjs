@@ -166,3 +166,20 @@ test("parseCard reads the absolute stamp from the listing's tooltip as `posted`"
   assert.equal(job.posted, "2026-06-12T10:37:00.000Z");
   assert.equal("posted" in parseCard(splitCards(listing)[0].replace(/title=["']\d{2}:\d{2} [\d.]+["']/g, "")), false);
 });
+
+test("fetchDjinni follows a redirect on a search's first page: only a later page's redirect is the end", async (t) => {
+  // A first page that redirects (a renamed keyword, a canonical url) is still
+  // this search; reading it as the end would drop every job of it in silence.
+  const cards = splitCards(listing);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (url === "https://djinni.co/jobs/?keywords=SDET") return { ok: false, status: 301, headers: { get: (h) => (h === "location" ? "/jobs/?primary_keyword=SDET" : null) }, body: null };
+    if (url === "https://djinni.co/jobs/?primary_keyword=SDET") return { ok: true, status: 200, text: async () => `<html>${cards[0]}${cards[1]}</html>` };
+    return { ok: true, status: 200, text: async () => "<html></html>" };
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  const jobs = await fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?keywords=SDET"], pages: 1, fullDescription: false }, (l) => lines.push(l));
+  assert.equal(jobs.length, 2);
+  assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
+});
