@@ -324,3 +324,13 @@ test("posted and a repost reach the frontmatter; neither key appears otherwise",
   const plain = buildApplication(job, scored).markdown;
   assert.doesNotMatch(plain, /^(posted|reposts|reposted_from):/m);
 });
+
+test("a job with no company or location and a bare score still writes every frontmatter key, the heading and a title-based filename", () => {
+  const bare = { source: "dou", title: "Senior AQA", url: "https://example.com/j/2", text: "QA role." };
+  const { markdown, filename } = buildApplication(bare, { score: 5, matchedSkills: [], matchedRole: "", penalties: [] });
+  for (const key of ["company", "location", "matched_role", "matched_skills", "penalties"]) {
+    assert.match(markdown, new RegExp(`^${key}: —$`, "m"), `${key} falls back to —`);
+  }
+  assert.match(markdown, /^# Senior AQA — \? \(dou, score 5\)$/m);
+  assert.match(filename, /_dou_Senior_AQA_[0-9a-f]{6}\.md$/, "no company: the slug falls back to the title");
+});
