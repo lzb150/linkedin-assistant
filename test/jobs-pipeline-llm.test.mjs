@@ -203,3 +203,39 @@ echo '{"score": "high", "why": "x"}'`,
   assert.match(md, /^llm_suspect: injection \(\d+ marker/m);
   assert.doesNotMatch(md, /^llm_score:/m, "no verdict to report");
 });
+
+test("jobs.mjs: with the LLM off every keyword match is written keyword-only and announced as a match, no CLI call", async (t) => {
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME, BETA])), { llm: { enabled: false } });
+  const out = await runJobs(p);
+  assert.match(out, /✓ MATCH \[\d+\] dou: Senior SDET \(Playwright\) @ Acme/);
+  assert.match(out, /✓ MATCH \[\d+\] dou: SDET Automation Engineer @ Beta/);
+  assert.match(out, /wrote 2 application package/);
+  assert.equal(claudeCalls(p), 0);
+  for (const f of mdFiles(p)) assert.doesNotMatch(p.read("applications", f), /^(llm_score|tier):/m, `${f} is a keyword-only match`);
+});
+
+test("jobs.mjs: under an advisory gate (llm.minScore 0) a match whose verdict failed twice is written as a match, not parked as borderline", async (t) => {
+  const claude = `#!/bin/sh\necho "args=$*" >> "$(dirname "$0")/../claude.log"; exit 1\n`;
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME])), { claude, llm: { minScore: 0 } });
+  assert.match(await runJobs(p), /llm failed for: .* — deferred, next run/);
+  const out = await runJobs(p);
+  assert.match(out, /llm failed again for: .* — keyword-only package$/m);
+  assert.match(out, /✓ MATCH \[\d+\] dou: Senior SDET \(Playwright\) @ Acme/);
+  assert.doesNotMatch(p.read("applications", mdFiles(p)[0]), /^tier:/m);
+});
+
+test("the model's verdict is bounded on its way into the package: score 0–100, ten red flags of 200 characters, missing fields empty", async (t) => {
+  const first = "EU residents only " + "x".repeat(300);
+  const flags = [first, ...Array.from({ length: 11 }, (_, i) => `flag ${i + 1}`)];
+  const claude = `#!/bin/sh
+PROMPT="$(cat)"
+case "$PROMPT" in *Beta*) echo '{"score": -5, "red_flags": "none", "cover": 5}' ;;
+  *) echo '{"score": 85, "red_flags": ${JSON.stringify(flags)}}' ;; esac
+`;
+  const p = setupProject(t, await serveFeed(t, () => rss([ACME, BETA])), { claude });
+  const out = await runJobs(p);
+  assert.match(out, /· skip \[\d+ \/ llm 0\] dou: SDET Automation Engineer @ Beta/, "a negative score is clamped to 0");
+  const md = p.read("applications", mdFiles(p)[0]);
+  assert.match(md, /^llm_score: 85$/m);
+  assert.ok(md.includes(`\nllm_why: ⚠ ${first.slice(0, 200)}; ${flags.slice(1, 10).join("; ")}\n`), "no why: the line is the first ten flags, each cut at 200");
+});
