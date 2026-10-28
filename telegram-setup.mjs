@@ -19,6 +19,14 @@ const fail = (msg) => { console.error(`✗ ${msg}`); process.exit(1); };
 if (!/^\d+:[\w-]+$/.test(token)) fail("usage: node telegram-setup.mjs <bot token from @BotFather> (it looks like 123456789:AAH…)");
 
 async function call(method, body = {}) {
+  const { res, json } = await post(method, body);
+  if (!res.ok || !json.ok) fail(`${method}: ${res.status} ${json.description || ""}`.trim());
+  return json.result;
+}
+
+// One request with this token: the response and its JSON body ({} when it has
+// none). Telegram out of reach, or refusing the token itself, ends the setup.
+async function post(method, body) {
   let res, json;
   try {
     res = await fetch(`${API}/bot${token}/${method}`, {
@@ -32,8 +40,7 @@ async function call(method, body = {}) {
     fail(`could not reach Telegram (${e?.cause?.message || e?.message})`);
   }
   if (res.status === 401) fail("Telegram rejected the token — copy it again from @BotFather");
-  if (!res.ok || !json.ok) fail(`${method}: ${res.status} ${json.description || ""}`.trim());
-  return json.result;
+  return { res, json };
 }
 
 const me = await call("getMe");
