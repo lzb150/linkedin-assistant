@@ -45,6 +45,11 @@ test("unreadVerdict: cards count; an auto-opened thread the list dropped (decide
   assert.deepEqual(unreadVerdict({ ...base, cards: 5, autoOpened: true, openListed: false, scanAll: true }), { unreadCount: 0, counted: false, drift: false, scanOpenFirst: false });
 });
 
+test("unreadVerdict: a single unread card is counted, so the badge is written for one message too", () => {
+  assert.deepEqual(unreadVerdict({ cards: 1, autoOpened: false, emptyState: false, listFound: true, scanAll: false }),
+    { unreadCount: 1, counted: true, drift: false, scanOpenFirst: false });
+});
+
 test("unreadVerdict: an omitted openListed is not silently treated as listed", () => {
   // The default used to be `true`, so a caller that forgot the field got
   // openDropped: false — the answer that skips the one thread opening it made
