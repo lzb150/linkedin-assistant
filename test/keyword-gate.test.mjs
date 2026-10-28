@@ -128,3 +128,29 @@ test("keywordGate: a same-board re-listing of a CLOSED package under a new url i
   assert.equal(low.repost.reposts, 2);
   assert.equal(findRepost(j, { packageIndex, closedFiles: new Set() }), null);
 });
+
+test("keywordGate: a score exactly at minScore matches, and a 300-char description is not a retry", () => {
+  const at = keywordGate(job({ text: "x".repeat(300) }), ctx({ minScore: 20 }));
+  assert.equal(at.kind, "match");
+  assert.equal(at.retry, false);
+  assert.equal(keywordGate(job({ text: "x".repeat(299) }), ctx({ minScore: 21 })).retry, true);
+  assert.equal(keywordGate(job(), ctx({ minScore: 21 })).kind, "low");
+});
+
+test("findRepost: a closed prior with no reposts count makes this the first repost", () => {
+  const j = job({ url: "https://jobs.dou.ua/9/" });
+  const prior = { file: "a.md", source: "dou", url: "https://jobs.dou.ua/1/", generated: "2026-09-01T00:00:00Z" };
+  const packageIndex = new Map([[canonicalKey(j), [prior]]]);
+  assert.equal(findRepost(j, { packageIndex, closedFiles: new Set(["a.md"]) }).reposts, 1);
+});
+
+test("findRepost: of several closed priors the newest counts on, whatever their index order", () => {
+  const j = job({ url: "https://jobs.dou.ua/9/" });
+  const older = { file: "a.md", source: "dou", url: "https://jobs.dou.ua/1/", generated: "2026-09-01T00:00:00Z", reposts: 5 };
+  const newest = { file: "b.md", source: "dou", url: "https://jobs.dou.ua/2/", generated: "2026-10-01T00:00:00Z", reposts: 1 };
+  const closedFiles = new Set(["a.md", "b.md"]);
+  for (const priors of [[older, newest], [newest, older]]) {
+    const packageIndex = new Map([[canonicalKey(j), priors]]);
+    assert.deepEqual(findRepost(j, { packageIndex, closedFiles }), { file: "b.md", url: newest.url, reposts: 2 });
+  }
+});
