@@ -45,6 +45,10 @@ test("extractJSON escapes raw control characters inside strings (multi-line cove
   assert.equal(extractJSON('{"score": 28, "cover": "cut off'), null);   // truncated output stays null
 });
 
+test("extractJSON keeps empty strings: an empty why or cover is still a verdict", () => {
+  assert.deepEqual(extractJSON('{"score": 70, "why": "", "red_flags": [""], "cover": ""}'), { score: 70, why: "", red_flags: [""], cover: "" });
+});
+
 test("extractJSON returns null on missing or broken JSON", () => {
   assert.equal(extractJSON("no json here"), null);
   assert.equal(extractJSON('{"score": }'), null);
@@ -166,6 +170,15 @@ test("buildJobPrompt embeds resume, vacancy and language, truncates long text", 
   assert.match(p, /lives in Ukraine[\s\S]*residents of other countries[\s\S]*at\s+most 10/, "country-eligibility hard rule, default country");
   assert.match(buildJobPrompt("R", job, "en", { country: "Poland" }), /lives in Poland and works remotely from Poland/, "candidateCountry drives the rule");
   assert.ok(p.length < 8_500); // 10k description was truncated to 6k
+});
+
+test("buildJobPrompt keeps a long title whole up to 200 characters and names a missing company or location 'unknown'", () => {
+  const title = "Senior QA Automation Engineer (Playwright, TypeScript, REST API) — fully remote, B2B contract, Ukraine OK";
+  const p = buildJobPrompt("R", { title: title + " " + "x".repeat(200), text: "We test things." }, "de");
+  assert.ok(p.includes(`Title: ${title} ${"x".repeat(200 - title.length - 1)}\n`), "cut at 200, not before");
+  assert.match(p, /^Company: unknown$/m);
+  assert.match(p, /^Location: unknown$/m);
+  assert.match(p, /in English\.$/m, "a language without a name falls back to English");
 });
 
 test("buildJobPrompt strips a literal </vacancy> from board text so it cannot close the data block", () => {

@@ -150,6 +150,10 @@ test("maybe stays strictly looser than relevant, including at the bottom of the 
   }
 });
 
+test("maybe floors at 1: a maybe of 0 would make every scored message a maybe", () => {
+  assert.deepEqual(normalizeProfile({ thresholds: { relevant: 8, maybe: 0 } }).thresholds, { relevant: 8, maybe: 1 });
+});
+
 test("normalizeProfile reports a clamped or unusable weight to `warn` (the hand-edited skills.json case)", () => {
   const lines = [];
   const p = normalizeProfile({ skills: { playwright: 10, cypress: true, api: 3 }, antiKeywords: { php: -50 } }, { warn: (m) => lines.push(m) });

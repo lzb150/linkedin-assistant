@@ -96,15 +96,20 @@ async function scan(page, ctx, signal) {
   for (const card of targets) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
     if (scanned >= MAX || signal?.aborted) break;
-
-    const name = await readName(page, card);
-    // The auto-opened thread is already open: nothing to click or verify.
-    if (card && !(await openCard(page, card))) { log(`· could not open thread, skipping: ${name}`); continue; }
-    const url = page.url();
-    scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
-
-    if (handleThread({ url, name, ...await readThread(page) }, signal)) break;
+    if (await scanThread(page, card, signal)) break;
   }
+}
+
+// Open one target (`null` card = the auto-opened thread) and handle it;
+// true = stop the scan (run deadline).
+async function scanThread(page, card, signal) {
+  const name = await readName(page, card);
+  // The auto-opened thread is already open: nothing to click or verify.
+  if (card && !(await openCard(page, card))) { log(`· could not open thread, skipping: ${name}`); return false; }
+  const url = page.url();
+  scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
+
+  return handleThread({ url, name, ...await readThread(page) }, signal);
 }
 
 async function openInbox(page, ctx) {
@@ -224,11 +229,14 @@ async function readThread(page) {
       if (t) bubbles.push(t);
     }
   } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
-  const fullText = bubbles.join("\n");
+  return { fullText: bubbles.join("\n"), ...threadSummary(items, bubbles), oldest, bubbleCount, extractFailed };
+}
+
+// The thread's state and its banner snippet (THEIR newest message, else the last bubble).
+function threadSummary(items, bubbles) {
   // No list items (item selector drift): the bubbles stand in, direction unknown.
   const { state, snippet: newest } = threadState(items.length ? items : bubbles.map((text) => ({ incoming: false, text })));
-  const snippet = newest || bubbles.slice(-1)[0] || "";
-  return { fullText, state, snippet, oldest, bubbleCount, extractFailed };
+  return { state, snippet: newest || bubbles.slice(-1)[0] || "" };
 }
 
 // The pane fills in after the url flips (live DOM 2026-09-28: 1 bubble at
@@ -252,15 +260,7 @@ function handleThread({ url, name, fullText, state, snippet, oldest, bubbleCount
   const alreadySeen = seen.has(seenKey) || (SCAN_ALL && seen.has(threadId));
   const { action, markSeen } = threadOutcome({ bubbleCount, text: fullText, extractFailed, alreadySeen, isJob: looksLikeJobMessage(fullText) });
   if (markSeen) seen.add(seenKey);   // "already" re-stamps so the TTL is "last seen"
-  if (action === "already") {
-    // On the unread filter with nothing new since we last saw it: the owner
-    // marked it unread in LinkedIn. Opening it just marked it read again, and
-    // `opened` subtracts it from the count — so keep it on the badge until a
-    // Dock click. No banner: there is nothing new to announce.
-    if (!SCAN_ALL) remember({ id: threadId, label: name });
-    log(`· already processed: ${name}`);
-    return false;
-  }
+  if (action === "already") { alreadyProcessed(threadId, name); return false; }
   // Opening the thread just marked it read, so the Dock badge drops it on the
   // next scan: a banner is the only lasting signal of a new message. Posted
   // before the retry skip: the unread filter never lists a read thread again,
@@ -272,10 +272,25 @@ function handleThread({ url, name, fullText, state, snippet, oldest, bubbleCount
   // in LinkedIn, and the unread filter never lists it again: the banner and
   // badge entry just above (both written synchronously) are all that is left.
   if (signal?.aborted) { log(`· run deadline passed — ${name} ${SCAN_ALL ? "left undrafted" : "bannered, not drafted"}`); return true; }
-  if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${name}`); return false; }
-  if (action === "not-job") { log(`· not a job message, skipping: ${name}`); return false; }
-  draftReply({ name, url, snippet, fullText }, seenKey);
+  draftOrSkip(action, { name, url, snippet, fullText }, bubbleCount, seenKey);
   return false;
+}
+
+// On the unread filter with nothing new since we last saw it: the owner
+// marked it unread in LinkedIn. Opening it just marked it read again, and
+// `opened` subtracts it from the count — so keep it on the badge until a
+// Dock click. No banner: there is nothing new to announce.
+function alreadyProcessed(threadId, name) {
+  if (!SCAN_ALL) remember({ id: threadId, label: name });
+  log(`· already processed: ${name}`);
+}
+
+// A new message, already bannered: drafted unless it could not be read
+// ("retry" — not marked seen, so the next run reads it again) or is not about a job.
+function draftOrSkip(action, thread, bubbleCount, seenKey) {
+  if (action === "retry") { log(`· ${bubbleCount ? "extraction failed" : "no message bubbles (selector drift?)"} — skipping without marking seen: ${thread.name}`); return; }
+  if (action === "not-job") { log(`· not a job message, skipping: ${thread.name}`); return; }
+  draftReply(thread, seenKey);
 }
 
 function announce({ id, name, snippet, url }) {
