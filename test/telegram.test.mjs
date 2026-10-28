@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startBotApi as botApi } from "./helpers/e2e.mjs";
-import { readTelegramConfig, queueTelegram, drainOutbox, jobMessage, alertMessage } from "../lib/telegram.mjs";
+import { readTelegramConfig, queueTelegram, drainOutbox, jobMessage, alertMessage, startSender } from "../lib/telegram.mjs";
+import { localDay } from "../lib/local-day.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 const quiet = () => {};
@@ -207,4 +208,43 @@ test("jobMessage: the posting's age joins the company line and a repost gets its
   assert.equal(html.split("\n")[1], "Acme · Djinni · posted 3 d ago");
   assert.equal(html.split("\n")[2], "🔁 reposted ×2 — the board closed the earlier listing");
   assert.doesNotMatch(jobMessage({ title: "SDET", company: "Acme", source: "djinni", url: "https://djinni.co/jobs/1-x/", score: 40, llmScore: null, posted: "garbage", reposts: 0 }), /posted|reposted/);
+});
+
+// The sender is a detached `node lib/telegram-send.mjs` writing into the day's
+// telegram log. A root without that script makes the child fail at once, and
+// its "Cannot find module" lands in the log — proof the child really started
+// with the log as its stdout/stderr.
+async function senderLog(root, before) {
+  const names = [before, localDay()].map((d) => `telegram_${d.replaceAll("-", "")}.log`);
+  for (let i = 0; i < 60; i++) {
+    for (const n of names) {
+      const file = join(root, "logs", n);
+      if (existsSync(file) && readFileSync(file, "utf8").includes("Cannot find module")) return n;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return null;
+}
+
+test("startSender: starts the detached sender with the day's telegram log as its output, creating logs/ on a fresh root", async (t) => {
+  const root = join(tmp(t), "fresh", "root"), logs = [], before = localDay();   // nothing exists yet: logs/ needs a recursive mkdir
+  startSender({ root, platform: "linux", log: (...a) => logs.push(a.join(" ")) });
+  assert.match(await senderLog(root, before) || "", /^telegram_\d{8}\.log$/, "the child wrote into logs/telegram_YYYYMMDD.log");
+  assert.deepEqual(logs, [], "no start failure reported");
+});
+
+test("startSender: on macOS the sender runs under caffeinate so a DarkWake run does not sleep mid-send", { skip: !existsSync("/usr/bin/caffeinate") && "no /usr/bin/caffeinate here" }, async (t) => {
+  const root = tmp(t), logs = [], before = localDay();
+  startSender({ root, platform: "darwin", log: (...a) => logs.push(a.join(" ")) });
+  assert.ok(await senderLog(root, before), "caffeinate ran the sender, whose error reached the log");
+  assert.deepEqual(logs, []);
+});
+
+test("startSender: a logs dir it cannot create is reported, never thrown", (t) => {
+  const root = join(tmp(t), "not-a-dir");
+  writeFileSync(root, "");   // logs/ under a regular file: ENOTDIR
+  const logs = [];
+  assert.doesNotThrow(() => startSender({ root, platform: "linux", log: (...a) => logs.push(a.join(" ")) }));
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /^telegram: sender failed to start: ENOTDIR/);
 });
