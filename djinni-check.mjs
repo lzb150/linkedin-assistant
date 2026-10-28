@@ -39,9 +39,25 @@ let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan, finish });
 
 async function scan(page, ctx) {
+  await openUnread(page, ctx);
+  // Keep the Dock-badge daemon (Jobs.app) alive.
+  ensureJobsApp();
+  const { threads, bucketEmpty } = await listUnread(page);
+  unreadThreads = threads;
+  // An unexplained empty list (selector drift, or a list still rendering) is not
+  // a count: zeroing the badge on it hid a real unread thread for an hour. Same
+  // rule as the seen-store write in bannerFresh and check.mjs's drift verdict.
+  scanned = threads.length > 0 || bucketEmpty;
+  log(`Djinni unread threads: ${threads.length}`);
+  if (!scanned) log("⚠️  Empty list without .threads-empty — selector may have drifted; badge left unchanged.");
+  bannerFresh(threads, bucketEmpty);
+  await bumpIfDue(page);
+}
+
+async function openUnread(page, ctx) {
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   // Wait for the list or Djinni's empty-state block, not a fixed 1.5 s: a list
-  // that rendered later read as an unexplained zero (and, below, no badge write).
+  // that rendered later read as an unexplained zero (and, in scan, no badge write).
   await page.waitForSelector("a[href*='/my/inbox/'], .threads-empty", { timeout: 10000 }).catch(() => {});
 
   if (!(await djinniLoggedIn(page))) {
@@ -53,10 +69,9 @@ async function scan(page, ctx) {
     await ctx.close();
     process.exit(2);
   }
+}
 
-  // Keep the Dock-badge daemon (Jobs.app) alive.
-  ensureJobsApp();
-
+async function listUnread(page) {
   // Collect distinct unread conversation threads. Each thread in the unread
   // bucket is one or more links of the form /my/inbox/<id>/...; dedupe by the
   // numeric id and keep the first non-empty link label (recruiter/company name).
@@ -75,15 +90,11 @@ async function scan(page, ctx) {
   // with an illustration and "Nothing found"). A class, not the text: the UI
   // also ships in Ukrainian. Tells a truly empty bucket from a selector drift.
   const bucketEmpty = !threads.length && (await page.$(".threads-empty").then(Boolean));
-  unreadThreads = threads;
-  // An unexplained empty list (selector drift, or a list still rendering) is not
-  // a count: zeroing the badge on it hid a real unread thread for an hour. Same
-  // rule as the seen-store write below and check.mjs's drift verdict.
-  scanned = threads.length > 0 || bucketEmpty;
-  log(`Djinni unread threads: ${threads.length}`);
-  if (!scanned) log("⚠️  Empty list without .threads-empty — selector may have drifted; badge left unchanged.");
+  return { threads, bucketEmpty };
+}
 
-  // Banner only for threads we have not already notified about (see freshThreads).
+// Banner only for threads we have not already notified about (see freshThreads).
+function bannerFresh(threads, bucketEmpty) {
   // A corrupt seen file reads as "nothing known", which re-banners every open
   // thread once. That is noisy but harmless, and the write below replaces the
   // file anyway — so recover, but do not do it silently.
@@ -112,10 +123,12 @@ async function scan(page, ctx) {
     notify("Djinni", message, { link: fresh.length === 1 ? `https://djinni.co/my/inbox/${fresh[0].id}/` : UNREAD_URL });
     log(`notify: banner for ${fresh.length} new thread(s)`);
   }
+}
 
-  // Profile bump: Djinni allows one per 7 days (button state is the truth). One
-  // /my/profile/ visit a day, hourly around the expected cooldown end
-  // (state-throttled); a bump failure never breaks the unread scan above.
+// Profile bump: Djinni allows one per 7 days (button state is the truth). One
+// /my/profile/ visit a day, hourly around the expected cooldown end
+// (state-throttled); a bump failure never breaks the unread scan above.
+async function bumpIfDue(page) {
   try {
     const bumpState = readBumpState(BUMP_STATE_FILE);
     if (dueForCheck(bumpState)) {
