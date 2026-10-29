@@ -132,6 +132,17 @@ test("parseCard strips control characters and bidi overrides from title, company
   assert.equal(job.location, "Remote · Ukraine");
 });
 
+test("fetchDjinni: a page whose cards split but none parse is a cut (markup drift), not the end of the results", async (t) => {
+  // Every card with its title tag renamed: parseCard returns null for all of them.
+  const drifted = `<html>${splitCards(listing).map((c) => c.replace(/job-item__position/g, "job-item__headline")).join("")}</html>`;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => drifted });
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1"] }, (l) => lines.push(l)), /all 1 Djinni search\(es\) failed/, "cut on page 1 of every search is the outage");
+  assert.match(lines.join("\n"), /Djinni search partial \(0 over 0 pages\).*no parsable cards/);
+});
+
 test("fetchDjinni throws when every search failed to load its first page (an outage, not a quiet run)", async (t) => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 503, text: async () => "" });

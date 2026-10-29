@@ -125,6 +125,15 @@ successful run for 14 h while 15 other runs finished — is its launchd job
 loaded?` — і нагадування через добу, якщо воно й далі лежить. Звичні причини:
 plist не завантажили після перевстановлення або шлях до node у `run.sh` вказує
 на версію, яку `nvm` уже видалив.
+Ідентифікатори завдань у цьому сповіщенні, за plist-ами: `jobs-dou` =
+`job-discovery-dou` (щогодинний запуск із `DOU_ONLY=1`, і лише він),
+`jobs-linkedin` = `job-discovery-linkedin` (повний запуск кожні 3 години;
+позначка ставиться незалежно від того, чи читався сам LinkedIn; агент
+надолуження теж ставить її, коли сканував), `check` = `linkedin-assistant`,
+`djinni-check` = `djinni-inbox`, `closed-check`, `report` = `jobs-report`,
+`backup`. Позначка ставиться лише після виконаної роботи: `check` і
+`djinni-check` — не при зайнятому профілі чи списку, що не завантажився,
+`jobs.mjs` — не тоді, коли впали всі джерела, які він пробував.
 
 ## Резервна копія (і відновлення)
 

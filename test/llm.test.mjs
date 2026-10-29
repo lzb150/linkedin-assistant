@@ -270,6 +270,8 @@ test("the sandbox blocklist names the whole Task family, not just the two it sta
   for (const t of ["Task", "Agent", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TaskOutput", "TaskStop"]) {
     assert.ok(blocked.has(t), `${t} must be in --disallowedTools`);
   }
+  // 2.1.312's init message listed PublishPlugin as the one tool the child still held.
+  assert.ok(blocked.has("PublishPlugin"), "PublishPlugin must be in --disallowedTools");
 });
 
 test("killLiveChildren SIGKILLs each tracked process group and forgets it", () => {

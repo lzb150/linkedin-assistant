@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict, listSettled } from "../lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadText, threadOutcome, threadOpened, unreadVerdict, listSettled } from "../lib/inbox.mjs";
 
 test("threadIdFrom: the /thread/<id> segment, query and hash never leak; url-less falls back to name + OLDEST bubble hash", () => {
   assert.equal(threadIdFrom("https://www.linkedin.com/messaging/thread/2-abc==/?x=1#y", "Anna", "hi"), "2-abc==");
@@ -99,4 +99,16 @@ test("listSettled: a rendered list container with text but no row is the empty s
   assert.equal(listSettled(S, dom([el(" \n ")])), null, "whitespace-only (a skeleton) too");
   assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })])), null, "rows without the card class: not the empty state (drift, badge kept)");
   assert.equal(listSettled(S, dom([])), null, "no container at all");
+});
+
+test("threadText: only THEIR messages are scored and quoted — your own reply must not make a courtesy follow-up a job message", () => {
+  const items = [
+    { incoming: true, text: "We are hiring an SDET, Playwright + TypeScript" },
+    { incoming: false, text: "Attached my resume; rate $40/h; Playwright/TypeScript/Java" },
+    { incoming: true, text: "Thanks, I will get back to you" },
+  ];
+  assert.equal(threadText(items), "We are hiring an SDET, Playwright + TypeScript\nThanks, I will get back to you");
+  assert.equal(threadText(items.map((i) => ({ ...i, incoming: false }))), items.map((i) => i.text).join("\n"), "no incoming item at all (selector drift): every item");
+  assert.equal(threadText(Array.from({ length: 20 }, (_, n) => ({ incoming: true, text: `m${n}` }))).split("\n").length, 12, "their last 12");
+  assert.equal(threadText([{ incoming: true, text: "" }, { incoming: true, text: "x" }]), "x", "image-only messages add no line");
 });

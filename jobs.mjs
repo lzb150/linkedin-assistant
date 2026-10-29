@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { keywordGate, titleExcluder, seenEither, freshRepost } from "./lib/keyword-gate.mjs";
+import { keywordGate, titleExcluder, seenEither, freshRepost, marker, firstTime, stampKeys } from "./lib/keyword-gate.mjs";
 import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
@@ -195,7 +195,7 @@ try {
 // the seen entry because the job is returned from its list fields. A repost of
 // a closed package is not known: it needs its description read again — once,
 // until its `repost:<link>` stamp, like the gate.
-const knownJob = (job) => !freshRepost(job, { seen, packageIndex, closedFiles }) && (seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title)));
+const knownJob = (job) => (seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title))) && !freshRepost(job, { seen, packageIndex, closedFiles });
 
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
 // Himalayas (public JSON API, remote jobs open to candidateCountry), Telegram
@@ -254,12 +254,13 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
-const LINKEDIN_ON = LINKEDIN_DUE;
-if (CATCHUP && !LINKEDIN_ON) rmSync(PENDING, { force: true });   // turned off since it was deferred: nothing to catch up
+if (CATCHUP && !LINKEDIN_DUE) rmSync(PENDING, { force: true });   // turned off since it was deferred: nothing to catch up
 // The feed needs more than a DarkWake's 5–10 s, so a run here only ever timed
 // out and reported LinkedIn as 0 found. Defer it and leave it out of health
-// monitoring: it was not tried, so it did not break.
-const LINKEDIN_DEFERRED = LINKEDIN_ON && darkWakeOnBattery();
+// monitoring: it was not tried, so it did not break. Asked here, after the
+// boards, so a Mac that woke fully meanwhile is not deferred on a stale answer;
+// the catch-up agent asked at its start (and exited on a DarkWake) seconds ago.
+const LINKEDIN_DEFERRED = LINKEDIN_DUE && !CATCHUP && darkWakeOnBattery();
 let linkedinRan = false;   // the feed was actually read this run (heartbeat "jobs-linkedin")
 if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); }
 else if (!config.linkedin?.enabled) {
@@ -267,11 +268,10 @@ else if (!config.linkedin?.enabled) {
   if (config.linkedin?.enabled === false) skippedSources.push("linkedin");   // see the browserless loop above
 }
 else if (LINKEDIN_DEFERRED) {
-  log("linkedin: deferred — the Mac is in a DarkWake on battery; the catch-up agent runs it after the next full wake");
   skippedSources.push("linkedin");
-  try { writeFileSync(PENDING, `${new Date().toISOString()}\n`); } catch (e) { log("linkedin: pending marker not written:", e.message); }
+  markLinkedInPending("deferred (the Mac is in a DarkWake on battery)");
 }
-if (LINKEDIN_ON && !LINKEDIN_DEFERRED) {
+if (LINKEDIN_DUE && !LINKEDIN_DEFERRED) {
   let ctx, busy = false;
   try {
     sourcesTried++;
@@ -337,16 +337,14 @@ log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length}
 let considered = 0;
 const matches = [];
 // Stamp a job seen together with the copies dedupeJobs folded into it.
-const stamp = (job, id) => { seen.add(id); for (const m of job.mergedIds || []) seen.add(m); if (job.repostKey) seen.add(job.repostKey); };
+const stamp = (job, id) => { for (const k of stampKeys(job, id, seen)) seen.add(k); };
 // A job turned down on its title alone (no description yet) stays unseen so
 // the next run re-reads it — once. The second title-only "no" stamps it seen:
 // a description that never loads (a short posting, selector drift) used to be
 // re-scraped, and re-judged by the paid LLM, every run forever. `gate` keeps
 // the keyword and LLM markers apart; neither key reads as seen.
 function titleOnlyNo(job, id, gate) {
-  const key = `title-only-${gate}:${id}`;
-  if (!seen.has(key)) { seen.add(key); return; }
-  stamp(job, id);
+  if (!firstTime(seen, marker.titleOnly(gate, id))) stamp(job, id);
 }
 for (const job of jobs) {
   const g = keywordGate(job, {
@@ -357,9 +355,9 @@ for (const job of jobs) {
   const { id } = g;
   if (g.considered) considered++;
   if (g.repost) {
-    // Judged afresh, but this new url only once: stamped with the final outcome
-    // (excluded/low here, drop or package in the LLM gate) — never on a deferral.
-    job.repostKey = `repost:${linkKey(job.url)}`;
+    // Judged afresh, but this new url only once: its marker is stamped with the
+    // final outcome (excluded/low here, drop or package in the LLM gate) — never
+    // on a deferral — and re-stamped by every later run that lists it (stampKeys).
     job.repost = g.repost;
     log(`  · repost ×${g.repost.reposts} of closed ${g.repost.file}: ${job.source}: ${job.title}`);
   }
@@ -420,16 +418,18 @@ if (llmFailed > 2) {
 // already follows). "Failed" is only "every source we tried threw" — a quiet
 // run that gathered nothing because there was nothing new stays 0.
 const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
-// Heartbeat: stamp what this run actually completed (the hourly boards, the
-// LinkedIn feed), and shout once for any sibling launchd job that has
-// stopped finishing — an unloaded plist or a broken node path was silent until
-// someone noticed the Monday digest missing. `jobs-dou` is the hourly DOU_ONLY
-// job's alone: the 3-hourly full run reads the boards too, and stamping it there
-// kept a dead hourly plist looking alive.
-if (!runFailed) {
-  const stamped = [...(DOU_ONLY ? ["jobs-dou"] : []), ...(linkedinRan ? ["jobs-linkedin"] : [])];
-  for (const job of stamped) heartbeat(HEARTBEAT_FILE, job, { log, alert: (m) => alerts.push(m) });
-}
+// Heartbeat: one stamp per launchd plist, and a shout once for any sibling
+// job that has stopped finishing — an unloaded plist or a broken node path was
+// silent until someone noticed the Monday digest missing. `jobs-dou` is the
+// hourly DOU_ONLY plist's alone: the 3-hourly full run reads the boards too,
+// and stamping it there kept a dead hourly plist looking alive. The full run
+// is `jobs-linkedin` whether or not LinkedIn itself ran (disabled in config,
+// deferred to the catch-up agent): the stamp says the plist fired and
+// finished, source health says what it read — with LinkedIn disabled the full
+// run used to stamp nothing, so its own dead plist went unnoticed. The
+// catch-up agent (every 15 min) stamps only when it scraped.
+const heartbeatJob = DOU_ONLY ? "jobs-dou" : (!CATCHUP || linkedinRan) ? "jobs-linkedin" : null;
+if (!runFailed && heartbeatJob) heartbeat(HEARTBEAT_FILE, heartbeatJob, { log, alert: (m) => alerts.push(m) });
 // Never write back a baseline we could not read: that is the silent reset.
 // Guarded like the package write: an ENOSPC/EACCES here used to take down the
 // dashboard refresh, the banner and the exit code below with it.

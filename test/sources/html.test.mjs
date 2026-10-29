@@ -310,4 +310,6 @@ test("isoDate: RSS, ISO, unix seconds and Djinni's tooltip become ISO; garbage, 
   assert.equal(isoDate("12:37 12.01.2026", now), "2026-01-12T10:37:00.000Z", "Djinni tooltip, Kyiv winter time (UTC+2)");
   assert.equal(isoDate("2026-10-29T11:00:00Z", now), "2026-10-29T11:00:00.000Z", "a day ahead is clock skew, kept");
   for (const bad of ["", "yesterday", "1999-12-31", "2026-10-30T12:00:01Z", null, undefined, NaN, {}]) assert.equal(isoDate(bad, now), undefined, String(bad));
+  // A garbled tooltip must not roll over into a plausible date (Date.UTC alone made "00.13.2026" the 31st of December).
+  for (const bad of ["12:37 00.13.2026", "12:37 31.02.2026", "24:00 12.06.2026", "12:60 12.06.2026", "12:37 00.00.2026"]) assert.equal(isoDate(bad, now), undefined, bad);
 });

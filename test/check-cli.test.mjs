@@ -97,7 +97,7 @@ const page = {
   $$eval: async (sel) => {
     if (sel.includes("thread")) return linkless || ${autoOpened} ? [] : ["https://www.linkedin.com/messaging/thread/2-abc/"];
     await new Promise((r) => setTimeout(r, ${stallItemsMs}));
-    return ${JSON.stringify(items)};
+    return ${JSON.stringify(items)}.map((i) => ({ hasBubble: true, ...i }));   // every item renders a bubble, as the real $$eval reports
   },
   $: async (sel) => (!${autoOpened} ? el("Jane Recruiter") : sel.includes("--active") ? null : nameIn(sel) ? el(nameIn(sel).name) : null),
 };
@@ -303,4 +303,13 @@ test("check.mjs: an unread thread with nothing new (marked unread by hand) stays
   assert.deepEqual(state.pending, [{ id: "2-abc", label: "Jane Recruiter" }]);
   await new Promise((r) => setTimeout(r, 500));   // notify children are fire-and-forget
   assert.throws(() => readFileSync(p.path("notify.log"), "utf8"), /ENOENT/, "nothing new to banner");
+});
+
+test("check.mjs: a logged-out LinkedIn exits 2 after the normal finish, with the banner and no badge rewrite", async (t) => {
+  const p = project(t, scanningPlaywright([]).replace('let current = false ? threadUrl : "https://www.linkedin.com/messaging/?filter=unread";', 'let current = "https://www.linkedin.com/login?session_redirect=1";'), { bins: {} });
+  const prev = { count: 1, pending: [{ id: "2-old", label: "Maria" }], updatedAt: new Date().toISOString() };
+  writeFileSync(p.path("notify-state.json"), JSON.stringify(prev));
+  await assert.rejects(spawnScript(p, "check.mjs").done, /check\.mjs exit 2/);
+  assert.deepEqual(JSON.parse(readFileSync(p.path("notify-state.json"), "utf8")), prev, "the badge keeps its last known state");
+  assert.match(await waitFor(p.path("notify.log"), /Session expired/), /Session expired — run `node login\.mjs`/);
 });
