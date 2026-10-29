@@ -172,7 +172,9 @@ test("jobs.mjs: only the hourly DOU_ONLY run stamps the jobs-dou heartbeat, so t
   const p = setupProject(t, await serveFeed(t, () => FEED));
   const stamps = () => (existsSync(p.path("last-success.json")) ? Object.keys(p.json("last-success.json").jobs) : []);
   await runScript(p, "jobs.mjs");   // the full run (LinkedIn disabled in this config)
-  assert.ok(!stamps().includes("jobs-dou"), "the full run does not stamp the hourly job");
+  // Its own plist's stamp, and only that: a positive assertion, so a run that
+  // died before the heartbeat (no file at all) cannot pass as "did not stamp".
+  assert.deepEqual(stamps(), ["jobs-linkedin"], "the full run stamps its own plist even with LinkedIn disabled, never the hourly one");
   await runJobs(p);                 // DOU_ONLY=1, the hourly job itself
-  assert.ok(stamps().includes("jobs-dou"), "the hourly run stamps itself");
+  assert.deepEqual(stamps().sort(), ["jobs-dou", "jobs-linkedin"], "the hourly run stamps itself");
 });

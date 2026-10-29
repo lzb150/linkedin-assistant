@@ -114,13 +114,21 @@ is deferred. A LinkedIn run that finds the browser profile or the run lock busy
 (an overlapping `check.mjs` or `jobs.mjs`) leaves the same marker, so LinkedIn
 is retried within 15 minutes instead of at the next 3-hour slot.
 
-**Watchdog.** Every job stamps its clean finish in `last-success.json`
+**Watchdog.** Every launchd job stamps its clean finish in `last-success.json`
 (gitignored) and looks at the others: a job that is old by the clock *and* has
 been out-run by enough other jobs (so the Mac was awake, not asleep) raises one
 banner + Telegram alert — `check: no successful run for 14 h while 15 other
 runs finished — is its launchd job loaded?` — and a reminder a day later if it
 is still down. The usual causes: the plist was never loaded after a reinstall,
 or the node path in `run.sh` points at a version `nvm` has since removed.
+The job ids in that alert, per plist: `jobs-dou` = `job-discovery-dou` (the
+hourly `DOU_ONLY=1` run, and only it), `jobs-linkedin` = `job-discovery-linkedin`
+(the 3-hourly full run, stamped whether or not LinkedIn itself ran; the
+catch-up agent stamps it too when it scraped), `check` = `linkedin-assistant`,
+`djinni-check` = `djinni-inbox`, `closed-check`, `report` = `jobs-report`,
+`backup`. A job only stamps when it did its work: `check` and `djinni-check`
+not on a busy profile or a list that never loaded, `jobs.mjs` not when every
+source it tried failed.
 
 ## Back up (and restore)
 

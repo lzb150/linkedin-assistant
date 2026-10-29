@@ -4,7 +4,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
-import { makeProject, spawnScript, QUIET_BINS, startBotApi, waitForBotText } from "./helpers/e2e.mjs";
+import { makeProject, spawnScript, waitFor, QUIET_BINS, startBotApi, waitForBotText } from "./helpers/e2e.mjs";
+
+const waitForBanner = (p) => waitFor(p.path("notify.log"), /Session expired/);
 
 const quiet = QUIET_BINS;
 const SEEN = ["111", "222"];
@@ -96,4 +98,17 @@ test("djinni-check.mjs: with telegram.json set up, new messages reach Telegram l
   writeFileSync(two.path("telegram.json"), telegram);
   await spawnScript(two, "djinni-check.mjs").done;
   assert.match(await waitForBotText(api, /2 new messages/), /\n<a href="https:\/\/djinni\.co\/my\/inbox\?bucket=unread">Open<\/a>$/);
+});
+
+test("djinni-check.mjs: a logged-out Djinni exits 2 after the normal finish — badge and seen store untouched", async (t) => {
+  // The session-expired exit used to be a process.exit(2) from inside the scan,
+  // past runScan's finally; now the scan hands the outcome back and the CLI exits.
+  const p = makeProject(t, { scripts: ["djinni-check.mjs"], playwright: playwrightWith([]).replace("sel === \"a[href='/logout']\"", "false") });   // default fakes log banners
+  writeFileSync(p.path("djinni-seen.json"), JSON.stringify(SEEN));
+  const prev = { count: 2, pending: [{ id: "111", label: "Acme" }] };
+  writeFileSync(p.path("djinni-notify-state.json"), JSON.stringify(prev));
+  await assert.rejects(spawnScript(p, "djinni-check.mjs").done, /djinni-check\.mjs exit 2/);
+  assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-seen.json"), "utf8")), SEEN);
+  assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-notify-state.json"), "utf8")), prev, "the last known badge count stays");
+  assert.match(await waitForBanner(p), /Session expired — run `node login\.mjs djinni`/);
 });

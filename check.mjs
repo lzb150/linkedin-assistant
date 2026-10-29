@@ -13,12 +13,12 @@
 //                                     does not touch the Dock badge.)
 
 import { LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
-import { runScan } from "./lib/scan-run.mjs";
+import { runScan, sessionExpired, LOGGED_OUT } from "./lib/scan-run.mjs";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
-import { threadIdFrom, messageKey, threadState, threadOutcome, threadOpened, unreadVerdict, listSettled } from "./lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadText, threadOutcome, threadOpened, unreadVerdict, listSettled } from "./lib/inbox.mjs";
 import { clip } from "./lib/telegram.mjs";
 import { buildDraft } from "./lib/draft.mjs";
 import { updateState, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.mjs";
@@ -85,7 +85,7 @@ let counted = false;
 const outcome = await runScan({ profile: PROFILE, app: "LinkedIn assistant", scan, finish });
 
 async function scan(page, ctx, signal) {
-  await openInbox(page, ctx);
+  if (await openInbox(page) === LOGGED_OUT) return LOGGED_OUT;
   const { cards, verdict } = await countUnread(page, await waitForList(page));
 
   // Threads to scan: the listed cards — preceded, when the auto-opened thread was
@@ -112,7 +112,7 @@ async function scanThread(page, card, signal) {
   return handleThread({ url, name, ...await readThread(page) }, signal);
 }
 
-async function openInbox(page, ctx) {
+async function openInbox(page) {
   // /messaging/ auto-opens the newest thread on load, and an opened thread is
   // read: every hourly check was silently reading the newest message before
   // the unread scan ran (2026-09-14: a 14:50 message, 0 unread at 14:53; only
@@ -122,13 +122,8 @@ async function openInbox(page, ctx) {
   const INBOX = SCAN_ALL ? "https://www.linkedin.com/messaging/" : "https://www.linkedin.com/messaging/?filter=unread";
   await page.goto(INBOX, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-  // Detect a logged-out session early and bail with a clear message.
-  if (LINKEDIN_LOGGED_OUT.test(page.url())) {
-    log("❌ Not logged in (session expired). Run:  node login.mjs");
-    notify("LinkedIn assistant", "Session expired — run `node login.mjs` to re-authenticate.");
-    await ctx.close();
-    process.exit(2);
-  }
+  // A logged-out session: the scan ends here (runScan exits 2 after finish).
+  if (LINKEDIN_LOGGED_OUT.test(page.url())) return sessionExpired("LinkedIn assistant", "node login.mjs");
 }
 
 async function waitForList(page) {
@@ -212,31 +207,31 @@ async function openCard(page, card) {
   return threadOpened({ wantId, url: page.url(), before, wasActive });
 }
 
-// Read the message bubbles (most recent incoming text).
+// Read the thread's messages: THEIR text for the scorer and the draft
+// (threadText), the state for the seen key (threadState), the oldest bubble
+// for the url-less thread id. One $$eval reads every item with its direction;
+// the bubbles alone (direction unknown) only stand in when the item selector
+// has drifted. `bubbleCount` counts rendered bubbles, so a drifted bubble
+// selector still reads as zero → retry, never "not a job" (threadOutcome).
 async function readThread(page) {
-  let bubbles = [], oldest = "", extractFailed = false, bubbleCount = 0, items = [];
+  let items = [], extractFailed = false;
   try {
     await waitForBubbles(page);
-    items = await page.$$eval(SEL.messageItem, (els, S) => els.map((e) => ({
-      incoming: e.classList.contains(S.incomingClass),
-      text: (e.querySelector(S.messageBubble)?.innerText || "").trim(),
-    })), SEL).catch(() => []);
-    const els = await page.$$(SEL.messageBubble);
-    bubbleCount = els.length;
-    if (els.length) oldest = (await els[0].innerText()).trim();
-    for (const el of els.slice(-12)) {
-      const t = (await el.innerText()).trim();
-      if (t) bubbles.push(t);
-    }
+    items = await page.$$eval(SEL.messageItem, (els, S) => els.map((e) => {
+      const bubble = e.querySelector(S.messageBubble);
+      return { incoming: e.classList.contains(S.incomingClass), hasBubble: Boolean(bubble), text: (bubble?.innerText || "").trim() };
+    }), SEL).catch(() => []);
+    if (!items.length) items = await bubblesOnly(page);
   } catch (e) { extractFailed = true; log(`  bubble extraction failed: ${e?.message}`); }
-  return { fullText: bubbles.join("\n"), ...threadSummary(items, bubbles), oldest, bubbleCount, extractFailed };
+  const { state, snippet } = threadState(items);
+  return { fullText: threadText(items), state, snippet, oldest: items[0]?.text || "", bubbleCount: items.filter((i) => i.hasBubble).length, extractFailed };
 }
 
-// The thread's state and its banner snippet (THEIR newest message, else the last bubble).
-function threadSummary(items, bubbles) {
-  // No list items (item selector drift): the bubbles stand in, direction unknown.
-  const { state, snippet: newest } = threadState(items.length ? items : bubbles.map((text) => ({ incoming: false, text })));
-  return { state, snippet: newest || bubbles.slice(-1)[0] || "" };
+// Item selector drift: the bubbles by themselves, direction unknown.
+async function bubblesOnly(page) {
+  const items = [];
+  for (const el of await page.$$(SEL.messageBubble)) items.push({ incoming: false, hasBubble: true, text: (await el.innerText()).trim() });
+  return items;
 }
 
 // The pane fills in after the url flips (live DOM 2026-09-28: 1 bubble at
@@ -349,6 +344,7 @@ if (outcome === "failed") {
   log(`FAILED after scanning ${scanned} unread, ${drafted} draft(s) written to ${DRAFTS}`);
   process.exit(1);
 }
+if (outcome === LOGGED_OUT) process.exit(2);
 log(`${outcome === "busy" ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
 // Only a real pass stamps the heartbeat: not a busy profile, not a list that
 // never loaded (selector drift) — the watchdog is what notices a permanent one,

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { keywordGate, titleExcluder, legacyIdOf, findRepost } from "../lib/keyword-gate.mjs";
+import { keywordGate, titleExcluder, legacyIdOf, findRepost, stampKeys, firstTime, marker } from "../lib/keyword-gate.mjs";
 import { identityKey, canonicalKey } from "../lib/dedup.mjs";
 
 const LONG = "x".repeat(400);
@@ -153,4 +153,25 @@ test("findRepost: of several closed priors the newest counts on, whatever their 
     const packageIndex = new Map([[canonicalKey(j), priors]]);
     assert.deepEqual(findRepost(j, { packageIndex, closedFiles }), { file: "b.md", url: newest.url, reposts: 2 });
   }
+});
+
+test("stampKeys: a judged repost's marker is stamped, and re-stamped on every later run while the store holds it", () => {
+  const seen = new Set();
+  const j = job({ source: "dou", url: "https://jobs.dou.ua/9/", mergedIds: ["dou::other"] });
+  assert.deepEqual(stampKeys(j, "id1", seen), ["id1", "dou::other"], "no repost judged, no marker in the store: identity keys only");
+  assert.deepEqual(stampKeys({ ...j, repost: { file: "old.md", reposts: 1 } }, "id1", seen), ["id1", "dou::other", "repost:jobs.dou.ua/9"], "just judged as a repost");
+  seen.add("repost:jobs.dou.ua/9");
+  // The listing is still live next run: the gate says "seen" (no `repost` on
+  // the job), and the marker must move with the identity key or it expires
+  // first and the same url is judged as a brand-new repost (a third package).
+  assert.deepEqual(stampKeys(j, "id1", seen), ["id1", "dou::other", "repost:jobs.dou.ua/9"]);
+  assert.deepEqual(stampKeys(job({ url: "" }), "id2", seen), ["id2"], "no url, no marker");
+});
+
+test("firstTime: the second chance every marker encodes — true once, then false", () => {
+  const seen = new Set();
+  assert.equal(firstTime(seen, marker.titleOnly("kw", "x")), true);
+  assert.equal(firstTime(seen, "title-only-kw:x"), false, "spelt the same as before the markers moved here");
+  assert.equal(marker.llmRetry("x"), "llm-retry:x");
+  assert.equal(marker.repost({ url: "https://djinni.co/jobs/1-a/?utm=1" }), "repost:djinni.co/jobs/1", "linkKey: Djinni id only, query dropped");
 });

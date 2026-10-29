@@ -31,6 +31,10 @@ A banner saying `<job>: no successful run for N h while M other runs finished
 docs/setup.md → "Schedule it"): that job has not finished cleanly for a long
 time while its siblings kept running. `launchctl list | grep <label>` shows
 whether it is loaded and its last exit code; `logs/<job>.err.log` says why it
-died (a node path `nvm` removed is the classic). The Dock badge daemon's own
+died (a node path `nvm` removed is the classic). A daily `jobs-dou` alert on a
+Mac that never had the hourly `job-discovery-dou` plist is a leftover: the full
+run stamped that id before 2026-10-28 and no longer does, so delete the
+`jobs-dou` entry from `last-success.json` once (the watchdog only expects jobs
+that have stamped). The Dock badge daemon's own
 log is `logs/jobs-badge.app-err.log` (`jobs:` lines: badge changes, Dock
 clicks, crashes); `logs/jobs-badge.err.log` only ever holds `open(1)` errors.

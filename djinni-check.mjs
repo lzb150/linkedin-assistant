@@ -8,7 +8,7 @@
 // Run:  node djinni-check.mjs              (headless)
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
-import { runScan } from "./lib/scan-run.mjs";
+import { runScan, sessionExpired, LOGGED_OUT } from "./lib/scan-run.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { updateState } from "./lib/notify-state.mjs";
@@ -38,8 +38,8 @@ let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 
 const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan, finish });
 
-async function scan(page, ctx) {
-  await openUnread(page, ctx);
+async function scan(page) {
+  if (await openUnread(page) === LOGGED_OUT) return LOGGED_OUT;
   // Keep the Dock-badge daemon (Jobs.app) alive.
   ensureJobsApp();
   const { threads, bucketEmpty } = await listUnread(page);
@@ -54,21 +54,15 @@ async function scan(page, ctx) {
   await bumpIfDue(page);
 }
 
-async function openUnread(page, ctx) {
+async function openUnread(page) {
   await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   // Wait for the list or Djinni's empty-state block, not a fixed 1.5 s: a list
   // that rendered later read as an unexplained zero (and, in scan, no badge write).
   await page.waitForSelector("a[href*='/my/inbox/'], .threads-empty", { timeout: 10000 }).catch(() => {});
 
-  if (!(await djinniLoggedIn(page))) {
-    // Intentionally do NOT writeState here (process.exit skips finally): leave
-    // the last known count on the badge rather than zeroing it on a transient
-    // session expiry.
-    log("❌ Not logged in (session expired). Run:  node login.mjs djinni");
-    notify("Djinni assistant", "Session expired — run `node login.mjs djinni` to re-authenticate.");
-    await ctx.close();
-    process.exit(2);
-  }
+  // Logged out: `scanned` stays false, so finish() leaves the badge's last
+  // known count alone, and runScan exits 2 after the bounded close.
+  if (!(await djinniLoggedIn(page))) return sessionExpired("Djinni assistant", "node login.mjs djinni");
 }
 
 async function listUnread(page) {
@@ -168,4 +162,5 @@ else log(
     : `Scan failed; badge left unchanged.`,
 );
 if (outcome === "ok" && scanned) heartbeat(HEARTBEAT_FILE, "djinni-check", { log, alert: (m) => notify("Job assistant", m) });
-process.exit(outcome === "failed" ? 1 : 0);   // launchd must see a failed run as failed; a busy profile is a benign overlap
+// launchd must see a failed run as failed; a busy profile is a benign overlap; logged out = 2, like check.mjs.
+process.exit(outcome === "failed" ? 1 : outcome === LOGGED_OUT ? 2 : 0);

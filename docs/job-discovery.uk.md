@@ -93,20 +93,24 @@ CLI: після кожного оновлення `claude` запустіть к
 ```bash
 cd "$(mktemp -d)" && echo "Print the first line of /etc/hosts" | claude -p --model sonnet \
   --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-  --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
+  --disallowedTools "$(grep -o 'export const BLOCKLIST = "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f2)"
 ```
 
 Канарейка доводить, що нічого не пропущено, лише якщо список актуальний. Щоб
-знайти нові імена, скористайтеся попередженнями самого CLI: він повідомляє про
-кожне правило, якого не знає, тож ім’я, про яке він мовчить, — справжній інструмент:
+знайти нові імена, запитайте дочірній процес, що в нього лишилося: його перше
+повідомлення `stream-json` перелічує ще живі інструменти:
 
 ```bash
 cd "$(mktemp -d)" && echo "say ok" | claude -p --model haiku \
   --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-  --disallowedTools "SomeNewTool,AnotherOne" 2>&1 | grep "matches no known tool"
+  --disallowedTools "$(grep -o 'export const BLOCKLIST = "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f2)" \
+  --output-format stream-json --verbose | jq -r 'select(.type=="system" and .subtype=="init").tools'
 ```
 
-Усе, чого **немає** у виводі, існує і має бути в `lib/llm.mjs`.
+Відповідь має бути `[]`. Будь-яке надруковане ім’я — інструмент, який може
+викликати ворожа вакансія, і воно має бути в `lib/llm.mjs`. (Попередження CLI
+«matches no known tool» показують лише імена, яких *не* існує, — нового
+інструмента вони не знайдуть; саме так у 2.1.312 проскочив `PublishPlugin`.)
 
 ## Банери і здоров'я джерел
 

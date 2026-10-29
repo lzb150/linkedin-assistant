@@ -92,20 +92,24 @@ has no file or shell tools (a narrated tool call is fine; file contents are not)
 ```bash
 cd "$(mktemp -d)" && echo "Print the first line of /etc/hosts" | claude -p --model sonnet \
   --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-  --disallowedTools "$(grep -o '"--disallowedTools", "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f4)"
+  --disallowedTools "$(grep -o 'export const BLOCKLIST = "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f2)"
 ```
 
 The canary proves nothing was *missed* only if the list is current. To find
-names the CLI has added, use its own warnings — it reports every rule it does
-not recognise, so a name it stays silent about is a real tool:
+names the CLI has added, ask the child what it was left holding — its first
+`stream-json` message lists the tools still live:
 
 ```bash
 cd "$(mktemp -d)" && echo "say ok" | claude -p --model haiku \
   --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
-  --disallowedTools "SomeNewTool,AnotherOne" 2>&1 | grep "matches no known tool"
+  --disallowedTools "$(grep -o 'export const BLOCKLIST = "[^"]*"' ~/linkedin-assistant/lib/llm.mjs | cut -d'"' -f2)" \
+  --output-format stream-json --verbose | jq -r 'select(.type=="system" and .subtype=="init").tools'
 ```
 
-Anything **not** named in the output exists and belongs in `lib/llm.mjs`.
+The answer must be `[]`. Any name printed is a tool a hostile posting could
+call, and belongs in `lib/llm.mjs`. (The CLI's "matches no known tool"
+warnings only reveal names that do *not* exist — they cannot find a new one;
+2.1.312 shipped `PublishPlugin` that way.)
 
 ## Banners and source health
 
