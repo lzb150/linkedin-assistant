@@ -64,8 +64,9 @@ saved to disk via the state server. The header shows New / Viewed with live
 counts, both selected by default. A third **Borderline** tab appears only while
 there are borderline packages — LLM verdicts just under `llm.minScore`, or
 packages the LLM failed to judge twice (see [Job discovery](job-discovery.md)).
-It is off by default; a borderline card shows under that tab alone, whatever its
-status, with a dashed `borderline` tag, and is archived 30 days after it was
+It is off by default; an unseen borderline card shows under that tab alone, with
+a dashed `borderline` tag. Mark it **Viewed** and it moves to the Viewed tab,
+tag and all, like any other card. A borderline package is archived 30 days after it was
 written — closed or not (the 14-day rule for closed cards does not apply to it).
 
 ![Card expanded in the Night City skin — cover letter, private note](card.png)

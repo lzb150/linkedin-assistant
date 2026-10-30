@@ -22,11 +22,15 @@ test("cardMatches: empty selections mean All", () => {
   assert.equal(core.cardMatches(baseCard, baseFilters), true);
 });
 
-test("cardMatches: a borderline card answers to the borderline tab alone, whatever its status", () => {
-  const b = { ...baseCard, status: "viewed", tier: "borderline" };
+test("cardMatches: an unseen borderline card answers to the borderline tab alone; a viewed one moves to Viewed", () => {
+  const b = { ...baseCard, status: "new", tier: "borderline" };
   assert.equal(core.cardMatches(b, { ...baseFilters, statusSel: ["new", "viewed"] }), false, "hidden under the default tabs");
   assert.equal(core.cardMatches(b, { ...baseFilters, statusSel: ["borderline"] }), true);
-  assert.equal(core.cardMatches({ ...baseCard, status: "viewed" }, { ...baseFilters, statusSel: ["borderline"] }), false, "a match never shows under the borderline tab");
+  const seen = { ...b, status: "viewed" };
+  assert.equal(core.cardMatches(seen, { ...baseFilters, statusSel: ["borderline"] }), false, "Viewed takes it off the borderline tab");
+  assert.equal(core.cardMatches(seen, { ...baseFilters, statusSel: ["viewed"] }), true);
+  assert.equal(core.cardMatches({ ...b, status: "closed" }, { ...baseFilters, statusSel: ["borderline"] }), false, "closed leaves it too");
+  assert.equal(core.cardMatches({ ...baseCard, status: "new" }, { ...baseFilters, statusSel: ["borderline"] }), false, "a match never shows under the borderline tab");
   assert.equal(core.cardMatches(b, { ...baseFilters, statusSel: [] }), true, "All shows everything");
   assert.equal(core.cardMatches({ ...b, detailsOpen: true }, { ...baseFilters, statusSel: ["new"] }), true, "an open card never hides");
 });
