@@ -51,7 +51,8 @@ back with a visible browser.
   Telegram alert say **reposted ×N**. Only the board that closed it counts;
   the same url is still the same listing, another board is still a dup.
 - **Posted date** — every source keeps the board's own stamp (`posted` in the
-  package: DOU `pubDate`, Himalayas `pubDate`, Djinni's listing tooltip, a
+  package: DOU `pubDate`, Himalayas `pubDate`, the "Published" date on Djinni's
+  vacancy page (its listing tooltip is the last update, which a bump re-stamps), a
   Telegram post's time, a LinkedIn card's `<time>` when rendered); the
   dashboard shows it as "posted 3 d ago", the Telegram alert likewise.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by

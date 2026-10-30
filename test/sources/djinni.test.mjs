@@ -4,7 +4,7 @@ import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { splitCards, parseCard, fetchDjinni } from "../../lib/sources/djinni.mjs";
+import { splitCards, parseCard, fetchDjinni, publishedOf } from "../../lib/sources/djinni.mjs";
 import { extractDivByClass } from "../../lib/sources/html.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +78,8 @@ test("fetchDjinni reads several pages per search, stops at an empty page, and fe
   assert.match(lines.join("\n"), /Djinni search ok \(3 over 2 pages\)/);
   const detailUrls = urls.filter((u) => !u.includes("/jobs/?"));
   assert.equal(detailUrls.length, 2, "only the two unknown jobs get a detail fetch");
+  // The posting date comes from the detail page ("Published 9 March"), so only the enriched jobs carry one.
+  assert.deepEqual(jobs.map((j) => (j.posted || "").slice(4)), ["", "-03-08T22:00:00.000Z", "-03-08T22:00:00.000Z"]);
   assert.ok(!detailUrls.includes(known));
   assert.match(lines.join("\n"), /fetching 2 full description\(s\) \(1 already known — skipped\)/);
   const k = jobs.find((j) => j.url === known);
@@ -172,10 +174,27 @@ test("fetchDjinni stops when a later page redirects to the unfiltered /jobs/ lis
   assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
 });
 
-test("parseCard reads the absolute stamp from the listing's tooltip as `posted`", () => {
-  const job = parseCard(splitCards(listing)[0]);
-  assert.equal(job.posted, "2026-06-12T09:37:00.000Z");   // 12:37 Kyiv summer time = UTC+3
-  assert.equal("posted" in parseCard(splitCards(listing)[0].replace(/title=["']\d{2}:\d{2} [\d.]+["']/g, "")), false);
+test("parseCard sets no `posted`: the listing tooltip is the last update, which a bump re-stamps", () => {
+  assert.equal("posted" in parseCard(splitCards(listing)[0]), false);
+});
+
+test("publishedOf reads the posting date from the detail page, in Kyiv time, both languages", () => {
+  const uk = '<div id="job-publication-info" class="mb-1"><div><span class="font-weight-500">Опубліковано 1 жовтня</span><span class="middot"> · </span>Оновлено 30 жовтня</div>';
+  assert.equal(publishedOf(uk, Date.parse("2026-10-30T15:00:00Z")), "2026-09-30T21:00:00.000Z");   // 1 Oct 00:00 Kyiv, UTC+3
+  assert.equal(publishedOf(detail, Date.parse("2026-06-12T12:00:00Z")), "2026-03-08T22:00:00.000Z");   // "Published 9 March", UTC+2
+});
+
+test("publishedOf takes the latest year that is not in the future, or the one the page states", () => {
+  const page = (d) => `<div id="job-publication-info"><span class="font-weight-500">${d}</span>`;
+  assert.equal(publishedOf(page("Опубліковано 20 грудня"), Date.parse("2026-01-05T12:00:00Z")), "2025-12-19T22:00:00.000Z");
+  assert.equal(publishedOf(page("Published 9 March 2025"), Date.parse("2026-06-12T12:00:00Z")), "2025-03-08T22:00:00.000Z");
+});
+
+test("publishedOf is undefined without the publication block, an unknown month or an impossible day", () => {
+  const now = Date.parse("2026-10-30T15:00:00Z");
+  assert.equal(publishedOf("<p>Published 9 March</p>", now), undefined, "only the publication block counts");
+  assert.equal(publishedOf('<div id="job-publication-info"><span>Опубліковано 1 брюмера</span>', now), undefined);
+  assert.equal(publishedOf('<div id="job-publication-info"><span>Published 31 February</span>', now), undefined);
 });
 
 test("fetchDjinni follows a redirect on a search's first page: only a later page's redirect is the end", async (t) => {
