@@ -4,6 +4,10 @@
 >
 > 🇺🇦 [Українською](troubleshooting.uk.md)
 
+Start with `npm run status`: one screen of launchd agents, each job's last clean
+finish, what every source found lately, the state server, the queues and the
+packages. A ✗ line is the thing to look at; exit code 1 means there is one.
+
 LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read messages:
 1. Run `HEADFUL=1 node check.mjs` and watch.
 2. Open DevTools on the messaging page, find the new class names.
