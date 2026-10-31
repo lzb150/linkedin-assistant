@@ -111,12 +111,13 @@ test("fetchHimalayas: off unless enabled, and no searches means no requests", as
   assert.equal(urls.length, 0);
 });
 
-test("toJob keeps the API's pubDate (unix seconds) as an ISO `posted`", () => {
+test("toJob keeps the API's pubDate (unix seconds, its last update) as an ISO `updated`, never `posted`", () => {
   const j = toJob({ title: "SDET", companyName: "Acme", guid: "https://himalayas.app/companies/acme/jobs/1", pubDate: 1791658143 });
-  assert.equal(j.posted, new Date(1791658143 * 1000).toISOString());
-  assert.equal("posted" in toJob({ title: "SDET", companyName: "Acme", guid: "https://himalayas.app/companies/acme/jobs/1" }), false);
+  assert.equal("posted" in j, false);
+  assert.equal(j.updated, new Date(1791658143 * 1000).toISOString());
+  assert.equal("updated" in toJob({ title: "SDET", companyName: "Acme", guid: "https://himalayas.app/companies/acme/jobs/1" }), false);
   const [first] = parseResponse(fixture);
-  assert.match(first.posted, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(first.updated, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test("toJob scores the full description; the excerpt only stands in when there is none", () => {
