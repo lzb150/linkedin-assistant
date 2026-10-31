@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom } from "../../lib/sources/linkedin-jobs.mjs";
+import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom, isRelisted } from "../../lib/sources/linkedin-jobs.mjs";
 
 test("buildUrl includes keywords and location and always sorts by date", () => {
   const url = buildUrl({ keywords: "QA Automation", location: "Ukraine" });
@@ -46,7 +46,12 @@ function fakePage(...rounds) {
       evaluate: async (fn) => (fn.name === "readCard" ? c : calls.push(`scroll:${i === all.length - 1 ? "last" : i}`)),
       click: async (opts) => { calls.push(`click:${opts?.timeout}`); },
     })),
-    locator: () => ({ first: () => ({ innerText: async (opts) => { calls.push(`desc:${opts?.timeout}`); return "  Job description  "; } }) }),
+    // The detail panel: its top card (location · age · applicants) and the description.
+    topCard: "Kyiv, Kyiv City, Ukraine · 1 week ago · 18 people clicked apply",
+    locator: (sel) => ({ first: () => ({ innerText: async (opts) => {
+      if (sel.includes("top-card")) { calls.push(`top:${opts?.timeout}`); return page.topCard; }
+      calls.push(`desc:${opts?.timeout}`); return "  Job description  ";
+    } }) }),
   };
   return page;
 }
@@ -251,4 +256,24 @@ test("readCard reads the card's <time datetime> when LinkedIn renders one", () =
     querySelectorAll: () => [],
   };
   assert.equal(readCard(card, SEL).posted, "2026-10-27");
+});
+
+test("isRelisted reads LinkedIn's 'Reposted' from the detail panel's top card", () => {
+  assert.equal(isRelisted("Kyiv, Kyiv City, Ukraine · Reposted 19 hours ago · 25 people clicked apply"), true);
+  assert.equal(isRelisted("Lviv, Lviv, Ukraine · 1 week ago · 18 people clicked apply"), false);
+  assert.equal(isRelisted(""), false);
+});
+
+test("fetchLinkedInJobs keeps a reposted card's date as `relisted`, never as `posted`", async () => {
+  // Live 2026-10-31: job 4469125989's card said "19 hours ago" (<time datetime="2026-10-30">), its
+  // panel "Reposted 19 hours ago"; LinkedIn shows the first posting date nowhere.
+  const card = { title: "QA", href: "/jobs/view/4469125989/", company: "Acme", location: "Kyiv", posted: "2026-10-30" };
+  const reposted = fakePage([card]);
+  reposted.topCard = "Kyiv, Kyiv City, Ukraine · Reposted 19 hours ago · 25 people clicked apply";
+  const [job] = await fetchLinkedInJobs(reposted, { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {} });
+  assert.equal(job.relisted, "2026-10-30T00:00:00.000Z");
+  assert.equal("posted" in job, false);
+  const [fresh] = await fetchLinkedInJobs(fakePage([card]), { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {} });
+  assert.equal(fresh.posted, "2026-10-30T00:00:00.000Z");
+  assert.equal("relisted" in fresh, false);
 });

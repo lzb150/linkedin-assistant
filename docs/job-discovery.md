@@ -54,7 +54,10 @@ back with a visible browser.
   package: DOU `pubDate`, Himalayas `pubDate`, the "Published" date on Djinni's
   vacancy page (its listing tooltip is the last update, which a bump re-stamps), a
   Telegram post's time, a LinkedIn card's `<time>` when rendered); the
-  dashboard shows it as "posted 3 d ago", the Telegram alert likewise.
+  dashboard shows it as "posted 3 d ago", the Telegram alert likewise. A
+  LinkedIn card whose detail panel says "Reposted" carries the re-listing's
+  date, and LinkedIn shows the first one nowhere: it is kept as `relisted` and
+  the dashboard says "relisted 1 d ago" (the alert shows no age).
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
   regardless of which source it came from. Entries carry a last-seen date and

@@ -316,6 +316,12 @@ test("alt-link source is escaped in the BODY as well as the frontmatter", () => 
   assert.equal((markdown.match(/^## Action$/gm) || []).length, 1);
 });
 
+test("a LinkedIn re-listing's date reaches the frontmatter as relisted, not posted", () => {
+  const { markdown } = buildApplication({ ...job, relisted: "2026-10-30T00:00:00.000Z" }, scored, null);
+  assert.match(markdown, /^relisted: 2026-10-30T00:00:00\.000Z$/m);
+  assert.doesNotMatch(markdown, /^posted:/m);
+});
+
 test("posted and a repost reach the frontmatter; neither key appears otherwise", () => {
   const { markdown } = buildApplication({ ...job, posted: "2026-10-27T10:00:00.000Z" }, scored, null, { repost: { url: "https://example.com/j/0", reposts: 2 } });
   assert.match(markdown, /^posted: 2026-10-27T10:00:00\.000Z$/m);
