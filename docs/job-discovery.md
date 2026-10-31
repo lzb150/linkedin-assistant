@@ -64,7 +64,11 @@ back with a visible browser.
   - `updated` — Himalayas' `pubDate`, which its API documents as the job's last
     update. The dashboard says "updated 1 d ago".
 
-  The Telegram alert shows no age for either.
+  The Telegram alert shows no age for either. When the same vacancy comes from
+  several boards, the package keeps the earliest of all these dates under its own
+  name: a re-listing older than every posting date proves the vacancy older than
+  them. LinkedIn's "Reposted" is read in its English UI only; a run whose detail
+  panels show no English age logs `LinkedIn: no top card in English`.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
   regardless of which source it came from. Entries carry a last-seen date and
