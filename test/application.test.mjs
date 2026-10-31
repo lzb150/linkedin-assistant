@@ -322,6 +322,12 @@ test("a LinkedIn re-listing's date reaches the frontmatter as relisted, not post
   assert.doesNotMatch(markdown, /^posted:/m);
 });
 
+test("a board's last-update date reaches the frontmatter as updated, not posted", () => {
+  const { markdown } = buildApplication({ ...job, updated: "2026-10-29T17:01:00.000Z" }, scored, null);
+  assert.match(markdown, /^updated: 2026-10-29T17:01:00\.000Z$/m);
+  assert.doesNotMatch(markdown, /^posted:/m);
+});
+
 test("posted and a repost reach the frontmatter; neither key appears otherwise", () => {
   const { markdown } = buildApplication({ ...job, posted: "2026-10-27T10:00:00.000Z" }, scored, null, { repost: { url: "https://example.com/j/0", reposts: 2 } });
   assert.match(markdown, /^posted: 2026-10-27T10:00:00\.000Z$/m);

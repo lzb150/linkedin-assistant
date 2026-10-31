@@ -4,7 +4,7 @@ import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { parseRss } from "../../lib/sources/dou.mjs";
+import { parseRss, markRelisted } from "../../lib/sources/dou.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const fixture = readFileSync(join(__dir, "../fixtures/sources/dou-feed.xml"), "utf8");
@@ -175,4 +175,26 @@ test("parseRss keeps the item's pubDate as an ISO `posted`", () => {
   const [first] = parseRss(fixture);
   assert.equal(first.posted, "2026-06-13T07:45:36.000Z");
   assert.equal(parseRss(fixture.replace(/<pubDate>[^<]*<\/pubDate>/, "<pubDate>soon</pubDate>"))[0].posted, undefined, "an unparseable date is simply absent");
+});
+
+test("markRelisted moves the date of a vacancy DOU re-dated to `relisted`: a newer id with an earlier date proves it", () => {
+  // Live feed, 2026-10-31: 358291 (months old) dated 29 Oct beside 377545 dated 22 Oct. DOU's ids follow
+  // creation, so 358291 existed before 22 Oct and its 29 Oct is a re-publication; the page shows nothing else.
+  const job = (id, posted) => ({ url: `https://jobs.dou.ua/companies/x/vacancies/${id}/`, ...(posted ? { posted } : {}) });
+  const out = markRelisted([
+    job(358291, "2026-10-29T09:09:44.000Z"),
+    job(377545, "2026-10-22T10:03:00.000Z"),
+    job(378361, "2026-10-30T09:02:08.000Z"),
+    job(378086, "2026-10-28T08:37:26.000Z"),
+    job(377000),
+    { url: "https://jobs.dou.ua/no-id/", posted: "2026-10-30T00:00:00.000Z" },
+  ]);
+  assert.deepEqual(out.map((j) => [j.posted || "-", j.relisted || "-"]), [
+    ["-", "2026-10-29T09:09:44.000Z"],
+    ["2026-10-22T10:03:00.000Z", "-"],
+    ["2026-10-30T09:02:08.000Z", "-"],
+    ["2026-10-28T08:37:26.000Z", "-"],
+    ["-", "-"],
+    ["2026-10-30T00:00:00.000Z", "-"],
+  ]);
 });

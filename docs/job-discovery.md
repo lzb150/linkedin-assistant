@@ -50,14 +50,21 @@ back with a visible browser.
   package carries `reposts: N` and `reposted_from`, the dashboard and the
   Telegram alert say **reposted ×N**. Only the board that closed it counts;
   the same url is still the same listing, another board is still a dup.
-- **Posted date** — every source keeps the board's own stamp (`posted` in the
-  package: DOU `pubDate`, Himalayas `pubDate`, the "Published" date on Djinni's
-  vacancy page (its listing tooltip is the last update, which a bump re-stamps), a
-  Telegram post's time, a LinkedIn card's `<time>` when rendered); the
-  dashboard shows it as "posted 3 d ago", the Telegram alert likewise. A
-  LinkedIn card whose detail panel says "Reposted" carries the re-listing's
-  date, and LinkedIn shows the first one nowhere: it is kept as `relisted` and
-  the dashboard says "relisted 1 d ago" (the alert shows no age).
+- **Posted date** — a package's `posted` is the first posting date, when the
+  board states one: DOU's `pubDate`, the "Published" date on Djinni's vacancy
+  page (its listing tooltip is the last update, which a bump re-stamps), a
+  Telegram post's time, a LinkedIn card's `<time>` when rendered. The dashboard
+  shows it as "posted 3 d ago", the Telegram alert likewise. Some dates are not
+  that, and are kept apart so they never pass for one:
+  - `relisted` — the date of a re-listing. LinkedIn's detail panel says
+    "Reposted"; DOU re-dates a re-published vacancy without a word, which shows
+    when a vacancy with a higher id (DOU numbers them as they are created) has an
+    earlier date. Neither board shows the first date. The dashboard says
+    "relisted 1 d ago".
+  - `updated` — Himalayas' `pubDate`, which its API documents as the job's last
+    update. The dashboard says "updated 1 d ago".
+
+  The Telegram alert shows no age for either.
 - `jobs-seen.json` prevents re-preparing the same vacancy. It is keyed by
   **identity** (`normalize(company) + normalize(title)`), so a job is remembered
   regardless of which source it came from. Entries carry a last-seen date and

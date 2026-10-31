@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, postedLabel, relistedLabel } from "../lib/dashboard-render.mjs";
+import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, postedLabel, relistedLabel, updatedLabel } from "../lib/dashboard-render.mjs";
 
 const md = (fm, body = "# x\n") => `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n${body}`;
 
@@ -140,4 +140,11 @@ test("a card LinkedIn re-listed says relisted, with the re-listing's age, never 
   const html = renderCard(it, 0, { now });
   assert.match(html, /<span class="posted" title="[^"]*first posting date[^"]*"><time datetime="2026-10-30T00:00:00\.000Z">relisted 1 d ago<\/time><\/span>/);
   assert.doesNotMatch(html, />posted /);
+});
+
+test("a card whose board gives only its last update says updated", () => {
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  assert.equal(updatedLabel("2026-10-29T17:01:00Z", now), "updated 1 d ago");
+  const html = renderCard(toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", updated: "2026-10-29T17:01:00Z" }, cover: "" }), 0, { now });
+  assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-29T17:01:00\.000Z">updated 1 d ago<\/time><\/span>/);
 });
