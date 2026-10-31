@@ -277,3 +277,30 @@ test("fetchLinkedInJobs keeps a reposted card's date as `relisted`, never as `po
   assert.equal(fresh.posted, "2026-10-30T00:00:00.000Z");
   assert.equal("relisted" in fresh, false);
 });
+
+// LinkedIn answers a burst of searches with HTTP 429 and a blank page: 29 searches in 12 days
+// logged "found 0 cards" (the third or fourth of a run), which read as an empty result. Reproduced
+// live 2026-10-31: /jobs/search/ and voyager/api/graphql returned 429, and it cleared within ~65 s.
+const RATE_LIMITED = (page, statuses) => {
+  page.goto = async () => { page.calls.push("goto"); const s = statuses.shift() ?? 200; return { status: () => s }; };
+  return page;
+};
+
+test("fetchLinkedInJobs waits out a rate-limited (HTTP 429) search page and reads it on the retry", async () => {
+  const page = RATE_LIMITED(fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "Kyiv" }]), [429, 200]);
+  const slept = [], logs = [];
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "qa" }] }, (l) => logs.push(l), { sleep: async (ms) => { slept.push(ms); } });
+  assert.deepEqual(jobs.map((j) => j.title), ["A"], "the retry reads the cards");
+  assert.equal(page.calls.filter((c) => c === "goto").length, 2);
+  assert.ok(slept.includes(90_000), `waited the cooldown: ${slept}`);
+  assert.ok(logs.some((l) => /rate-limited \(HTTP 429\)/.test(l)), logs.join("\n"));
+});
+
+test("fetchLinkedInJobs fails a search still rate-limited after the wait instead of logging 0 cards", async () => {
+  const page = RATE_LIMITED(fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "Kyiv" }]), [429, 429, 200]);
+  const logs = [];
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "qa" }, { keywords: "sdet" }] }, (l) => logs.push(l), { sleep: async () => {} });
+  assert.deepEqual(jobs.map((j) => j.title), ["A"], "the next search still runs");
+  assert.ok(logs.some((l) => /LinkedIn search error: .*429/.test(l)), logs.join("\n"));
+  assert.ok(!logs.some((l) => /found 0 cards/.test(l)), "a blank 429 page is not an empty result");
+});
