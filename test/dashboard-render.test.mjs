@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, postedLabel } from "../lib/dashboard-render.mjs";
+import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, postedLabel, relistedLabel } from "../lib/dashboard-render.mjs";
 
 const md = (fm, body = "# x\n") => `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n${body}`;
 
@@ -131,4 +131,13 @@ test("postedLabel and the card's posted / reposted cues", () => {
   assert.match(html, /<span class="repost"[^>]*>reposted ×2<\/span>/);
   const bare = renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30", posted: "soon", reposts: "x" }, cover: "" }), 0, { now });
   assert.doesNotMatch(bare, /class="posted"|class="repost"/, "garbage frontmatter renders nothing");
+});
+
+test("a card LinkedIn re-listed says relisted, with the re-listing's age, never posted", () => {
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  assert.equal(relistedLabel("2026-10-30T00:00:00Z", now), "relisted 1 d ago");
+  const it = toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", relisted: "2026-10-30T00:00:00Z" }, cover: "" });
+  const html = renderCard(it, 0, { now });
+  assert.match(html, /<span class="posted" title="[^"]*first posting date[^"]*"><time datetime="2026-10-30T00:00:00\.000Z">relisted 1 d ago<\/time><\/span>/);
+  assert.doesNotMatch(html, />posted /);
 });
