@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, postedLabel, relistedLabel, updatedLabel } from "../lib/dashboard-render.mjs";
+import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, ageLabel } from "../lib/dashboard-render.mjs";
 
 const md = (fm, body = "# x\n") => `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n${body}`;
 
@@ -117,12 +117,12 @@ test("sourceChips lists each source on disk once, sorted, with its label", () =>
   assert.match(html, />newboard</);
 });
 
-test("postedLabel and the card's posted / reposted cues", () => {
+test("ageLabel and the card's posted / reposted cues", () => {
   const now = Date.parse("2026-10-28T12:00:00Z");
-  assert.equal(postedLabel("2026-10-28T01:00:00Z", now), "posted today");
-  assert.equal(postedLabel("2026-10-25T12:00:00Z", now), "posted 3 d ago");
-  assert.equal(postedLabel("2026-09-01T12:00:00Z", now), "posted 8 w ago");
-  assert.equal(postedLabel("nope", now), "");
+  assert.equal(ageLabel("posted", "2026-10-28T01:00:00Z", now), "posted today");
+  assert.equal(ageLabel("posted", "2026-10-25T12:00:00Z", now), "posted 3 d ago");
+  assert.equal(ageLabel("posted", "2026-09-01T12:00:00Z", now), "posted 8 w ago");
+  assert.equal(ageLabel("posted", "nope", now), "");
   const it = toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", posted: "2026-10-25T12:00:00Z", reposts: "2" }, cover: "" });
   assert.equal(it.posted, "2026-10-25T12:00:00.000Z");
   assert.equal(it.reposts, 2);
@@ -135,7 +135,7 @@ test("postedLabel and the card's posted / reposted cues", () => {
 
 test("a card LinkedIn re-listed says relisted, with the re-listing's age, never posted", () => {
   const now = Date.parse("2026-10-31T12:00:00Z");
-  assert.equal(relistedLabel("2026-10-30T00:00:00Z", now), "relisted 1 d ago");
+  assert.equal(ageLabel("relisted", "2026-10-30T00:00:00Z", now), "relisted 1 d ago");
   const it = toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", relisted: "2026-10-30T00:00:00Z" }, cover: "" });
   const html = renderCard(it, 0, { now });
   assert.match(html, /<span class="posted" title="[^"]*first posting date[^"]*"><time datetime="2026-10-30T00:00:00\.000Z">relisted 1 d ago<\/time><\/span>/);
@@ -144,7 +144,7 @@ test("a card LinkedIn re-listed says relisted, with the re-listing's age, never 
 
 test("a card whose board gives only its last update says updated", () => {
   const now = Date.parse("2026-10-31T12:00:00Z");
-  assert.equal(updatedLabel("2026-10-29T17:01:00Z", now), "updated 1 d ago");
+  assert.equal(ageLabel("updated", "2026-10-29T17:01:00Z", now), "updated 1 d ago");
   const html = renderCard(toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", updated: "2026-10-29T17:01:00Z" }, cover: "" }), 0, { now });
   assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-29T17:01:00\.000Z">updated 1 d ago<\/time><\/span>/);
 });
