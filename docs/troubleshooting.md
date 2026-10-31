@@ -11,6 +11,11 @@ LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read mess
 
 Session expired? Jack in again: re-run `node login.mjs`.
 
+`LinkedIn rate-limited (HTTP 429)` in a run's log is LinkedIn throttling a burst
+of searches: the page comes back blank. The run waits 90 s and retries that
+search once; a retry that is throttled too logs `still rate-limited` and the
+next run picks the search up. Nothing to fix unless it shows up on every run.
+
 A missing Chromium build (the Playwright package was upgraded but its browser
 was not, or `~/Library/Caches/ms-playwright` was wiped) repairs itself: the
 first browser script to hit "Executable doesn't exist" logs `installing
