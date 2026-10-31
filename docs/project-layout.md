@@ -13,6 +13,7 @@
 ├── dashboard.mjs      HTML dashboard generator
 ├── state-server.mjs   local HTTP server (127.0.0.1:7777) for job-state persistence
 ├── report.mjs         weekly digest (Monday launchd job, or run by hand)
+├── status.mjs         one-screen health check (`npm run status`)
 ├── make-skills.mjs    generate skills.json from resume.txt (one-time setup)
 ├── telegram-setup.mjs one-time setup of the optional Telegram alerts → telegram.json
 ├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
@@ -42,6 +43,7 @@
 | `dashboard.mjs`       | Build the HTML dashboard (Viewed / Closed, notes, filters); inlines `lib/dashboard.css` and the client script. |
 | `state-server.mjs`    | Local HTTP server at 127.0.0.1:7777; persists job state to `job-state.json`. |
 | `report.mjs`          | Weekly digest: runs, packages per source, LLM verdicts, source yield. |
+| `status.mjs`          | `npm run status`: launchd agents, last clean finish per job, source counts, state server, queues, packages. Read-only; exit 1 on a ✗. |
 | `closed-check.mjs`    | Probe New/Viewed DOU, Djinni and LinkedIn urls; mark board-inactive vacancies Closed. |
 | `backup.mjs`          | Archive everything git does not hold (packages, drafts, state, config, plists) to iCloud Drive; keep the newest 14. |
 | `open-dashboard.sh`   | Dock-click helper: regenerate dashboard, open browser. |

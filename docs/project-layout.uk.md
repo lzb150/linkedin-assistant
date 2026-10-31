@@ -13,6 +13,7 @@
 ├── dashboard.mjs      генератор HTML-дашборда
 ├── state-server.mjs   локальний HTTP-сервер (127.0.0.1:7777) для збереження job-state
 ├── report.mjs         тижневий звіт (launchd-завдання в понеділок або вручну)
+├── status.mjs         перевірка стану на один екран (`npm run status`)
 ├── make-skills.mjs    згенерувати skills.json з resume.txt (одноразове налаштування)
 ├── telegram-setup.mjs одноразове налаштування необов'язкових сповіщень у Telegram → telegram.json
 ├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
@@ -42,6 +43,7 @@
 | `dashboard.mjs`       | Зібрати HTML-дашборд (Viewed / Closed, нотатки, фільтри); вбудовує `lib/dashboard.css` і клієнтський скрипт. |
 | `state-server.mjs`    | Локальний HTTP-сервер на 127.0.0.1:7777; зберігає стан у `job-state.json`. |
 | `report.mjs`          | Тижневий звіт: запуски, пакети за джерелами, вердикти LLM, вихід джерел. |
+| `status.mjs`          | `npm run status`: launchd-агенти, останнє чисте завершення кожного завдання, знахідки джерел, сервер стану, черги, пакети. Лише читає; код виходу 1, якщо є ✗. |
 | `closed-check.mjs`    | Опитати New/Viewed адреси DOU, Djinni і LinkedIn; позначити неактивні вакансії Closed. |
 | `backup.mjs`          | Архівувати все, чого немає в git (пакети, чернетки, стан, конфіг, plist-и), в iCloud Drive; зберігати 14 найновіших. |
 | `open-dashboard.sh`   | Помічник кліку в Dock: перегенерувати дашборд, відкрити браузер. |

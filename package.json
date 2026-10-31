@@ -11,7 +11,8 @@
     "jobs": "node jobs.mjs",
     "test": "node --test",
     "lint": "oxlint .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "status": "node status.mjs"
   },
   "engines": {
     "node": ">=20"
