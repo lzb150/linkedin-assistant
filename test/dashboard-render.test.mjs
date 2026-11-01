@@ -109,6 +109,17 @@ test("renderCard: a remote-board card whose countries name the candidate's count
   assert.match([toItem({ fm: { source: "himalayas", title: "SDET", url: "https://a/1", location: "Remote · Ukraine" }, cover: "" })].map(renderCard)[0], /Ukraine listed/, "map(renderCard) passes the array as the third argument: default countries");
 });
 
+test("renderCard: a long remote-board country list collapses to its size, the full list kept in the tooltip", () => {
+  const card = (source, location) => renderCard(toItem({ fm: { source, title: "SDET", url: "https://a/1", location }, cover: "" }), 0);
+  const long = "Remote · Belarus, Belgium, Cyprus, Denmark, Estonia, Finland, Ukraine";
+  const html = card("himalayas", long);
+  assert.match(html, /<span aria-hidden="true">Remote · ~7 countries<\/span>/);
+  assert.match(html, new RegExp(`<span title="${long}">.*<span class="sr-only">${long}</span>`));
+  assert.match(html, /Ukraine listed/, "the mark still reads the full list");
+  assert.match(card("himalayas", "Remote · Poland, Ukraine"), /<span>Remote · Poland, Ukraine<\/span>/, "a short list is shown as is");
+  assert.doesNotMatch(card("dou", "Київ, Харків, Львів, Дніпро, Одеса, Вінниця, віддалено"), /countries/, "DOU cities are not a country list");
+});
+
 test("sourceChips lists each source on disk once, sorted, with its label", () => {
   const items = [{ source: "linkedin" }, { source: "dou" }, { source: "linkedin" }, { source: "newboard" }];
   const html = sourceChips(items);
