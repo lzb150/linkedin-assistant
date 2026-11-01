@@ -50,6 +50,7 @@ async function scan(page) {
   scanned = threads.length > 0 || bucketEmpty;
   log(`Djinni unread threads: ${threads.length}`);
   if (!scanned) log("⚠️  Empty list without .threads-empty — selector may have drifted; badge left unchanged.");
+  else writeBadge();   // before the banner: a click on it reads this state (check.mjs does the same)
   bannerFresh(threads, bucketEmpty);
   await bumpIfDue(page);
 }
@@ -136,10 +137,14 @@ async function bumpIfDue(page) {
 }
 
 function finish() {
-  // Only overwrite the badge when we actually loaded the page. On a network
-  // error (page never loaded) leave the last known count so the badge does not
-  // flicker to 0 — same policy as the session-expiry path above.
-  if (!scanned) { log("scan failed — keeping last known badge count (state not rewritten)"); return; }
+  // Only overwrite the badge when we actually loaded the page (scan writes it
+  // then, before the banner). On a network error (page never loaded) leave the
+  // last known count so the badge does not flicker to 0 — same policy as the
+  // session-expiry path above.
+  if (!scanned) log("scan failed — keeping last known badge count (state not rewritten)");
+}
+
+function writeBadge() {
   try {
     // Persist the unread threads (id + label) too, so Jobs.app can open the
     // conversation on a Dock click: a single unread opens that thread, several

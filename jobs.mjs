@@ -30,7 +30,7 @@ import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
 import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
-import { launchBrowser, acquireProfileLock, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { launchBrowser, acquireProfileLock, isProfileBusy, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { judgeMatches } from "./lib/llm-gate.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
@@ -101,7 +101,7 @@ function markLinkedInPending(why) {
 try {
   acquireProfileLock(join(__dir, "jobs-run"));
 } catch (e) {
-  if (!/profile busy/.test(e.message)) throw e;
+  if (!isProfileBusy(e)) throw e;
   log("another jobs.mjs run is active — exiting");
   markLinkedInPending("another run holds the lock");
   process.exit(0);
@@ -194,8 +194,11 @@ try {
 // fetch for such jobs (most of every run); the scoring loop still re-stamps
 // the seen entry because the job is returned from its list fields. A repost of
 // a closed package is not known: it needs its description read again — once,
-// until its `repost:<link>` stamp, like the gate.
-const knownJob = (job) => (seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title))) && !freshRepost(job, { seen, packageIndex, closedFiles });
+// until its `repost:<link>` stamp, like the gate. A job the location filter
+// below will drop is known too: its location comes from the listing, and it
+// is never stamped seen, so Djinni and Telegram fetched ~22 such pages an hour.
+const droppedForLocation = (job) => !filterByLocation([job], config.excludeLocation, CANDIDATE_COUNTRY, { countryOnly: COUNTRY_ONLY }).length;
+const knownJob = (job) => droppedForLocation(job) || ((seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title))) && !freshRepost(job, { seen, packageIndex, closedFiles }));
 
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
 // Himalayas (public JSON API, remote jobs open to candidateCountry), Telegram
@@ -289,7 +292,7 @@ if (LINKEDIN_DUE && !LINKEDIN_DEFERRED) {
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
     // no 0-count either — leaving the source out of the summary keeps a
     // skipped run from looking like a scraper outage to health monitoring.
-    if (/profile busy/.test(e.message)) { busy = true; sourcesTried--; skippedSources.push("linkedin"); }   // not an outage: the source was never tried
+    if (isProfileBusy(e)) { busy = true; sourcesTried--; skippedSources.push("linkedin"); }   // not an outage: the source was never tried
     else {
       sourcesFailed++;
       if (!ctx) notify(`Browser launch failed: ${e.message}`);
@@ -342,9 +345,12 @@ const stamp = (job, id) => { for (const k of stampKeys(job, id, seen)) seen.add(
 // the next run re-reads it — once. The second title-only "no" stamps it seen:
 // a description that never loads (a short posting, selector drift) used to be
 // re-scraped, and re-judged by the paid LLM, every run forever. `gate` keeps
-// the keyword and LLM markers apart; neither key reads as seen.
+// the keyword and LLM markers apart; neither key reads as seen. Returns true
+// on the first one: the caller holds the job back for the re-read.
 function titleOnlyNo(job, id, gate) {
-  if (!firstTime(seen, marker.titleOnly(gate, id))) stamp(job, id);
+  const first = firstTime(seen, marker.titleOnly(gate, id));
+  if (!first) stamp(job, id);
+  return first;
 }
 for (const job of jobs) {
   const g = keywordGate(job, {

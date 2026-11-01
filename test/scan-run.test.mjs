@@ -40,7 +40,7 @@ test("runScan: the scan's signal aborts at the deadline, so a late resume can sk
 
 test("runScan: a normal scan is ok; a busy profile is busy, not failed", async () => {
   assert.equal(await runScan({ ...quiet, launch: async () => fakeCtx(), scan: async () => {}, deadlineMs: 1000 }), "ok");
-  assert.equal(await runScan({ ...quiet, launch: async () => { throw new Error("profile busy (pid 1)"); }, scan: async () => {} }), "busy");
+  assert.equal(await runScan({ ...quiet, launch: async () => { throw Object.assign(new Error("profile busy (pid 1)"), { code: "EPROFILEBUSY" }); }, scan: async () => {} }), "busy");
 });
 
 test("closeBounded: a close that never settles gives up at the budget; a rejected one is logged", async () => {

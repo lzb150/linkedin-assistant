@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startBotApi as botApi } from "./helpers/e2e.mjs";
-import { readTelegramConfig, queueTelegram, drainOutbox, jobMessage, alertMessage, startSender } from "../lib/telegram.mjs";
+import { readTelegramConfig, queueTelegram, drainOutbox, jobMessage, alertMessage, startSender, clip } from "../lib/telegram.mjs";
 import { localDay } from "../lib/local-day.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -247,4 +247,13 @@ test("startSender: a logs dir it cannot create is reported, never thrown", (t) =
   assert.doesNotThrow(() => startSender({ root, platform: "linux", log: (...a) => logs.push(a.join(" ")) }));
   assert.equal(logs.length, 1);
   assert.match(logs[0], /^telegram: sender failed to start: ENOTDIR/);
+});
+
+test("clip and alertMessage never cut an emoji in half: a lone surrogate made the banner JSON unparseable", () => {
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/;
+  const snippet = `${"x".repeat(139)}🚀 launch`;
+  assert.equal(clip(snippet, 140), "x".repeat(139));
+  assert.doesNotMatch(clip(snippet, 140), lone);
+  assert.equal(clip("ab🚀", 4), "ab🚀", "a whole pair inside the limit stays");
+  assert.doesNotMatch(alertMessage("t", `${"y".repeat(3499)}🚀`), lone);
 });

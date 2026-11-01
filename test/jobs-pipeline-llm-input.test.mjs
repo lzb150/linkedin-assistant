@@ -45,6 +45,23 @@ test("jobs.mjs: a title-only match the LLM turns down is re-judged once, then ma
   assert.equal(claudeCalls(p), 2, "the second no marked it seen");
 });
 
+test("jobs.mjs: a title-only match the LLM rates borderline is re-judged with its description, not parked for good", async (t) => {
+  // A borderline package is stamped seen: on the title alone it buried the vacancy unread.
+  const claude = `#!/bin/sh
+PROMPT="$(cat)"; echo "args=$*" >> "$(dirname "$0")/../claude.log"
+echo '{"score": 60, "why": "partial fit", "red_flags": [], "cover": "Maybe."}'
+`;
+  const item = { title: "SDET Automation Engineer в Beta, Львів", link: "https://jobs.dou.ua/companies/beta/vacancies/8/", desc: "Playwright, TypeScript, API testing, CI/CD." };
+  const p = setupProject(t, await serveFeed(t, () => rss([item])), { claude, llm: { minScore: 70, borderlineMin: 50 } });
+  assert.match(await runJobs(p), /· borderline \[\d+ \/ llm 60\] dou: SDET Automation Engineer @ Beta \(no description — will retry\)/);
+  assert.deepEqual(mdFiles(p), [], "no package on the title alone");
+  assert.deepEqual(Object.keys(p.json("jobs-seen.json")).filter((k) => !k.startsWith("title-only-")), [], "not seen");
+  item.desc = AQA;
+  assert.match(await runJobs(p), /~ BORDERLINE \[\d+ \/ llm 60\] dou: SDET Automation Engineer @ Beta/);
+  assert.equal(claudeCalls(p), 2, "judged again, now with the description");
+  assert.equal(mdFiles(p).length, 1);
+});
+
 test("an injection marker in the TITLE flags the package, not just one in the description", async (t) => {
   // Only job.text is scanned, and composeText builds it as
   // "<title> at <company>. <location>. <desc>" — so a payload in the title is

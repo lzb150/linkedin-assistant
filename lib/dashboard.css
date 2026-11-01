@@ -150,6 +150,10 @@ main { max-width: 920px; margin: 22px auto; padding: 0 14px; }
 .salary { color: var(--success-text); font: 600 12.5px var(--font-mono); white-space: nowrap; }
 /* The employer named the candidate's country itself (remote boards only). */
 .listed { color: var(--success-text); font: 600 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+/* A collapsed country list (dashboard-render locationHtml): inline, in the sub line's own type, not a section summary's. */
+.places { display: inline; margin: 0; }
+.places > summary { display: inline; padding: 0; font: inherit; letter-spacing: normal; text-transform: none; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.places > summary::before { content: none; }
 .actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 132px; }
 .apply {
   white-space: nowrap; text-align: center; text-decoration: none; padding: 10px 14px;
@@ -164,15 +168,19 @@ main { max-width: 920px; margin: 22px auto; padding: 0 14px; }
 .status-seg button:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .status-seg button.active[data-status="new"] { background: var(--border-hi); color: var(--text); }
 .status-seg button.active[data-status="viewed"] { background: var(--attention-fill); color: var(--ink); }
+/* Pressed is more than a fill: both fills sit under 3:1 against the card (WCAG 1.4.11), so a bar in the text colour marks it too. */
+.status-seg button.active { box-shadow: inset 0 -3px 0 currentColor; }
 /* Muted background + heading (not whole-card opacity, which drops text
    contrast below WCAG 4.5:1). */
 .card.viewed { background: var(--card-muted); }
 .card.viewed .titles h2 { color: var(--muted); }
 .card.viewed::before, .card.viewed::after { opacity: .45; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
-.filter-seg, .src-seg { display: inline-flex; border: 1px solid var(--header-border); }
-.filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 7px 12px; font: 600 11.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; }
-.filter-seg button:first-child, .src-seg button:first-child { border-left: 0; }
+.filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; padding: 7px 12px; font: 600 11.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; }
+/* The chips wrap: five boards made the source row 445 px wide, so at 320 px (400 % zoom) the page scrolled sideways (WCAG 1.4.10).
+   Each chip draws its own border, overlapped by 1 px, so a wrapped row keeps its grid lines. */
+.filter-seg, .src-seg { display: inline-flex; flex-wrap: wrap; padding: 1px 0 0 1px; }
+.filter-seg button, .src-seg button { border: 1px solid var(--header-border); margin: -1px 0 0 -1px; }
 .filter-seg button:hover, .src-seg button:hover, .theme:hover { color: var(--header-text); background: color-mix(in srgb, var(--header-accent) 12%, transparent); }
 .filter-seg button.active, .src-seg button.active { background: var(--header-accent); color: var(--ink); box-shadow: 0 0 calc(var(--glow) * 14px) color-mix(in srgb, var(--header-accent) 50%, transparent); }
 .filter-seg .cnt { font-weight: 400; margin-left: 4px; font-variant-numeric: tabular-nums; }

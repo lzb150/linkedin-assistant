@@ -109,14 +109,16 @@ test("renderCard: a remote-board card whose countries name the candidate's count
   assert.match([toItem({ fm: { source: "himalayas", title: "SDET", url: "https://a/1", location: "Remote · Ukraine" }, cover: "" })].map(renderCard)[0], /Ukraine listed/, "map(renderCard) passes the array as the third argument: default countries");
 });
 
-test("renderCard: a long remote-board country list collapses to its size, the full list kept in the tooltip", () => {
+test("renderCard: a long remote-board country list collapses to a disclosure; worldwide and office lists stay whole", () => {
   const card = (source, location) => renderCard(toItem({ fm: { source, title: "SDET", url: "https://a/1", location }, cover: "" }), 0);
   const long = "Remote · Belarus, Belgium, Cyprus, Denmark, Estonia, Finland, Ukraine";
   const html = card("himalayas", long);
-  assert.match(html, /<span aria-hidden="true">Remote · ~7 countries<\/span>/);
-  assert.match(html, new RegExp(`<span title="${long}">.*<span class="sr-only">${long}</span>`));
+  assert.match(html, new RegExp(`<details class="places"><summary>Remote · ~7 countries</summary> ${long}</details>`), "the full list opens from the keyboard too");
   assert.match(html, /Ukraine listed/, "the mark still reads the full list");
   assert.match(card("himalayas", "Remote · Poland, Ukraine"), /<span>Remote · Poland, Ukraine<\/span>/, "a short list is shown as is");
+  const world = "Remote · Worldwide, Poland, Germany, Spain, Portugal, Romania, Bulgaria";
+  assert.match(card("tgchannels", world), new RegExp(`<span>${world}</span>`), "open to everyone stays on screen");
+  assert.doesNotMatch(card("tgchannels", "Office · Kyiv, Lviv, Odesa, Dnipro, Kharkiv, Vinnytsia, Lutsk"), /countries/, "a city list is not countries");
   assert.doesNotMatch(card("dou", "Київ, Харків, Львів, Дніпро, Одеса, Вінниця, віддалено"), /countries/, "DOU cities are not a country list");
 });
 

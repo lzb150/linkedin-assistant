@@ -236,12 +236,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // because nothing depends on the poll landing at an exact instant.
         timer?.tolerance = 1.0
         // A foreground (user) launch opens Djinni if there are unread messages,
-        // otherwise the dashboard.
+        // else the LinkedIn thread or inbox if any, otherwise the dashboard.
         if !isBackground { handleActivation() }
     }
 
     // Dock-icon click while already running -> Djinni unread thread/bucket if any,
-    // otherwise the dashboard.
+    // else the LinkedIn thread or inbox if any, otherwise the dashboard.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         // Two agents (check.mjs, djinni-check.mjs) fire at the same minute; when the
         // daemon was down both miss pgrep and both `open` it. The second `open`
