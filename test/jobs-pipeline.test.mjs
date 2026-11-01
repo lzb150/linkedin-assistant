@@ -1,8 +1,9 @@
 // End-to-end runs of jobs.mjs as a black box — sources and the keyword gate.
 // A local HTTP server plays the boards, fake `claude` and `osascript` binaries
 // on PATH play the LLM and the notifier (test/helpers/jobs-pipeline.mjs). The
-// LLM gate's runs are in jobs-pipeline-llm.test.mjs, the run-level behaviour
-// (config, health, exit codes, dirs) in jobs-pipeline-run.test.mjs.
+// LLM gate's runs are in jobs-pipeline-llm-{failure,gate,input}.test.mjs (three
+// files so node --test runs them in parallel), the run-level behaviour (config,
+// health, exit codes, dirs) in jobs-pipeline-run.test.mjs.
 import { test } from "node:test";
 import { createServer } from "node:http";
 import assert from "node:assert/strict";
