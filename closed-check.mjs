@@ -3,8 +3,8 @@
 // reports inactive as status "closed" in job-state.json, so they leave the
 // dashboard's New and Viewed views. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
-// Packages closed for 14+ days and Viewed packages left untouched for 30+ days
-// are moved to applications/archive/,
+// Packages closed for 14+ days, Viewed packages left untouched for 30+ days and
+// borderline packages generated 30+ days ago are moved to applications/archive/,
 // which nothing reads — keeps the dashboard small. Their job-state entries go
 // with them (an entry without a live package is dead weight: 493 of 713 were).
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ import { heartbeat } from "./lib/heartbeat.mjs";
 import { isClosed, selectCandidates, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
 import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
-import { acquireProfileLock } from "./lib/run-lock.mjs";
+import { acquireProfileLock, isProfileBusy } from "./lib/run-lock.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
@@ -30,7 +30,7 @@ const dir = dirname(fileURLToPath(import.meta.url));
 try {
   acquireProfileLock(join(dir, "closed-check"));
 } catch (e) {
-  if (!/profile busy/.test(e.message)) throw e;
+  if (!isProfileBusy(e)) throw e;
   log("another closed-check.mjs run is active — exiting");
   process.exit(0);
 }

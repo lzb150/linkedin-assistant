@@ -5,7 +5,7 @@ import { filterByLocation, djinniEligible, candidateCountryList, excludeList, nu
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
     { title: "A", source: "dou", location: "Київ" },
-    { title: "B", source: "dou", location: "Краків, Польща" },
+    { title: "B", source: "dou", location: "Краків (Польща)" },                    // DOU spells a foreign office "Місто (Країна)"
     { title: "C", source: "linkedin" }, // no location → kept
     { title: "D", source: "dou", location: "Київ, Варшава (Польща), віддалено" },   // DOU: offices + remote → kept
     { title: "E", source: "linkedin", location: "Poland (Remote)" },               // remote but not DOU → dropped
@@ -18,6 +18,28 @@ test("filterByLocation: foreign terms drop a job unless it is a remote DOU listi
   // Another candidate: living in Poland, F (Канада, Польща, Сербія) becomes eligible and H (Європи та Україна) does not
   const pl = filterByLocation(jobs, ["ukraine"], ["Poland", "Польща"]);
   assert.deepEqual(pl.map((j) => j.title), ["A", "B", "C", "D", "E", "F"]);
+});
+
+test("filterByLocation: a DOU listing naming a Ukrainian office stays in next to a foreign one; foreign-only is dropped", () => {
+  const exclude = ["за кордоном", "Польща", "Португалія"];
+  const jobs = [
+    { title: "A", source: "dou", location: "Київ, Львів, за кордоном" },
+    { title: "B", source: "dou", location: "Львів, Лісабон (Португалія), Люблін (Польща)" },
+    { title: "C", source: "dou", location: "за кордоном" },
+    { title: "D", source: "dou", location: "Лісабон (Португалія), Варшава (Польща)" },
+    { title: "E", source: "linkedin", location: "Kyiv, Poland" },   // not DOU: no office rule
+  ];
+  assert.deepEqual(filterByLocation(jobs, [...exclude, "poland"]).map((j) => j.title), ["A", "B"]);
+});
+
+test("filterByLocation: an English countries segment that says 'offices' or 'remotely' is still judged as countries", () => {
+  const jobs = [
+    { title: "A", source: "tgchannels", location: "Remote · Ukraine (offices in Kyiv and Lviv)" },
+    { title: "B", source: "tgchannels", location: "Remote · Ukraine, remotely" },
+    { title: "C", source: "tgchannels", location: "Remote · Poland (offices in Warsaw)" },
+  ];
+  assert.deepEqual(filterByLocation(jobs, [], undefined, { countryOnly: new Set(["tgchannels"]) }).map((j) => j.title), ["A", "B"]);
+  assert.deepEqual(filterByLocation(jobs, []).map((j) => j.title), ["A", "B"], "worldwide mode: Poland-only is closed to Ukraine");
 });
 
 test("filterByLocation: Himalayas is judged by its countries like Djinni, not by excludeLocation substrings", () => {

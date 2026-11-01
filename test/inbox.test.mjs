@@ -84,7 +84,7 @@ test("threadState: only THEIR messages identify the state; an empty follow-up st
 
 test("listSettled: a rendered list container with text but no row is the empty state in any UI language; a skeleton keeps waiting; rows without the card class are drift", () => {
   const S = { conversationList: ".list", conversationCard: "li.card", emptyUnread: "No unread messages" };
-  const el = (text, { li = false } = {}) => ({ innerText: text, querySelector: (sel) => (sel === "li" && li ? {} : null) });
+  const el = (text, { li = false } = {}) => ({ innerText: text, querySelector: (sel) => (sel.split(", ").includes("li") && li ? {} : null) });
   const dom = (lists, { card = false, thread = false } = {}) => ({
     document: { querySelector: (sel) => (sel === S.conversationCard && card ? {} : null), querySelectorAll: () => lists },
     location: { pathname: thread ? "/messaging/thread/2-abc/" : "/messaging/" },
@@ -94,11 +94,28 @@ test("listSettled: a rendered list container with text but no row is the empty s
   assert.equal(listSettled(S, dom([el("Jane · Hi")], { card: true, thread: true })), "thread", "the url wins while it counts");
   assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })], { card: true })), "cards");
   assert.equal(listSettled(S, dom([el("No unread messages")])), "empty", "the English text");
-  assert.equal(listSettled(S, dom([el("Немає непрочитаних повідомлень")])), "empty", "any other language: text, no row");
+  const uk = dom([el("Немає непрочитаних повідомлень")]);
+  assert.equal(listSettled(S, { ...uk, now: 0 }), null, "any other language: text, no row — not yet held");
+  assert.equal(listSettled(S, { ...uk, now: 2000 }), "empty", "held unchanged for 2 s: the empty state");
   assert.equal(listSettled(S, dom([el("")])), null, "a blank container is still rendering");
   assert.equal(listSettled(S, dom([el(" \n ")])), null, "whitespace-only (a skeleton) too");
   assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })])), null, "rows without the card class: not the empty state (drift, badge kept)");
   assert.equal(listSettled(S, dom([])), null, "no container at all");
+});
+
+test("listSettled: a loader is never the empty state, and text that changes restarts the 2 s hold — a placeholder read as empty skipped the unread scan", () => {
+  const S = { conversationList: ".list", conversationCard: "li.card", emptyUnread: "No unread messages" };
+  const el = (text, busy = false) => ({ innerText: text, querySelector: (sel) => (sel.includes("aria-busy") && busy ? {} : null) });
+  const at = (list, now) => listSettled(S, { document: { querySelector: () => null, querySelectorAll: () => [list] }, location: { pathname: "/messaging/" }, now });
+  const loading = el("Loading", true);
+  assert.equal(at(loading, 0), null);
+  assert.equal(at(loading, 5000), null, "a loader inside: never empty, however long it shows");
+  const flicker = el("Loading");
+  assert.equal(at(flicker, 0), null);
+  flicker.innerText = "Немає непрочитаних повідомлень";
+  assert.equal(at(flicker, 1500), null, "changed text restarts the hold");
+  assert.equal(at(flicker, 3000), null);
+  assert.equal(at(flicker, 3500), "empty", "unchanged for 2 s after the change");
 });
 
 test("threadText: only THEIR messages are scored and quoted — your own reply must not make a courtesy follow-up a job message", () => {
