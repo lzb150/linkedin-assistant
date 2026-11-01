@@ -40,7 +40,7 @@ jobs:
         run: |
           node -e 'console.log("availableParallelism", require("os").availableParallelism())'
           fail=0
-          for c in default 6 12 24; do
+          for c in 6 default 6 6; do
             rc=0; s=$(date +%s)
             if [ "$c" = default ]; then node --test >"$RUNNER_TEMP/t.log" 2>&1 || rc=$?
             else node --test --test-concurrency="$c" >"$RUNNER_TEMP/t.log" 2>&1 || rc=$?; fi
