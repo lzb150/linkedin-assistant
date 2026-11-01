@@ -34,7 +34,20 @@ jobs:
       # Tests never launch a browser — plain npm ci, no playwright install.
       - run: npm ci
       # Bare: every Node from 20 up finds test/ by its own default, a path does not.
-      - run: node --test
+      # EXPERIMENT (not for merge): the suite at several --test-concurrency values.
+      - name: node --test concurrency experiment
+        shell: bash
+        run: |
+          node -e 'console.log("availableParallelism", require("os").availableParallelism())'
+          fail=0
+          for c in default 6 12 24; do
+            rc=0; s=$(date +%s)
+            if [ "$c" = default ]; then node --test >"$RUNNER_TEMP/t.log" 2>&1 || rc=$?
+            else node --test --test-concurrency="$c" >"$RUNNER_TEMP/t.log" 2>&1 || rc=$?; fi
+            echo "RESULT concurrency=$c rc=$rc $(( $(date +%s) - s ))s $(grep -E '^(ℹ|#) (pass|fail) ' "$RUNNER_TEMP/t.log" | tr '\n' ' ')"
+            if [ "$rc" != 0 ]; then grep -E 'not ok|✖' "$RUNNER_TEMP/t.log" | head -20; fail=1; fi
+          done
+          exit "$fail"
       # oxlint, not ESLint: one package and its prebuilt binary, in a repo with
       # one runtime dependency. Only the `correctness` category is on — the rules
       # that catch bugs. The style categories wanted 65 changes to working code on
