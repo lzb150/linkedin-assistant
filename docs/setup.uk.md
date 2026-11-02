@@ -138,8 +138,8 @@ plist не завантажили після перевстановлення а
 ## Резервна копія (і відновлення)
 
 Git тримає лише код. Пакети для відгуку, чернетки, усі файли стану,
-`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh` і живі
-plist-и існують тільки на цьому диску, тож `backup.mjs` щоночі архівує їх
+`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh`, історія
+трафіку GitHub власника (`gh-traffic/`) і живі plist-и існують тільки на цьому диску, тож `backup.mjs` щоночі архівує їх
 (`com.example.backup.plist.example`, 21:00) в iCloud Drive —
 `~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, по
 одному `.tgz` на день, зберігаються 14 найновіших, ~5 МБ кожен. `BACKUP_DIR`
