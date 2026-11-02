@@ -133,8 +133,8 @@ source it tried failed.
 ## Back up (and restore)
 
 Git holds the code only. The application packages, drafts, every state file,
-`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh` and the
-live plists exist on this disk alone, so `backup.mjs` archives them nightly
+`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh`, the
+owner's GitHub traffic history (`gh-traffic/`) and the live plists exist on this disk alone, so `backup.mjs` archives them nightly
 (`com.example.backup.plist.example`, 21:00) into iCloud Drive —
 `~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, one
 `.tgz` per day, newest 14 kept, ~5 MB each. `BACKUP_DIR` points it elsewhere

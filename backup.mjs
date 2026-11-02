@@ -31,6 +31,9 @@ const ITEMS = [
   "job-state.json", "jobs-seen.json", "seen.json", "closed-check-state.json",
   "djinni-seen.json", "djinni-bump-state.json", "djinni-notify-state.json", "notify-state.json",
   "source-health.json", "run-stats.jsonl", "last-success.json",
+  // The repo owner's GitHub traffic history (gh-traffic/collect.sh): GitHub
+  // keeps views and clones for 14 days only, so the CSVs cannot be re-fetched.
+  "gh-traffic",
 ];
 
 const plists = readdirSync(ROOT).filter((f) => /^com\..+\.plist$/.test(f));

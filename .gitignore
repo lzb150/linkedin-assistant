@@ -93,3 +93,6 @@ telegram-outbox.lock/
 
 # Last clean finish per launchd job (lib/heartbeat.mjs watchdog)
 last-success.json
+
+# Repo owner's GitHub traffic history (collector script + CSVs; archived by backup.mjs)
+gh-traffic/
