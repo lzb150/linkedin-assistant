@@ -40,6 +40,7 @@ function fakePage(...rounds) {
     url: () => current,
     waitForURL: async (pred) => { calls.push("waitForURL"); current = "https://www.linkedin.com/jobs/search/?currentJobId=clicked"; if (typeof pred === "function") pred(new URL(current)); },
     goto: async () => { calls.push("goto"); },
+    $: async () => null,   // no /jobs/search-results/ card to re-find: the handle is clicked
     mouse: { wheel: async () => {} },
     $$: async () => (rounds[Math.min(round++, rounds.length - 1)]).map((c, i, all) => ({
       // readCard runs in-page via evaluate; the scroll helper is also an evaluate
@@ -247,6 +248,32 @@ test("fetchLinkedInJobs throws when every search errored with nothing gathered",
   const page = fakePage([]);
   page.goto = async () => { throw new Error("net::ERR_INTERNET_DISCONNECTED"); };
   await assert.rejects(fetchLinkedInJobs(page, { searches: [{ keywords: "a" }, { keywords: "b" }] }, () => {}, { sleep: async () => {} }), /all 2 LinkedIn search\(es\) failed/);
+});
+
+// Since 2026-11-03 /jobs/search/ redirects to /jobs/search-results/: hashed class names, no
+// title link, so every search logged "found 0 cards" for two days. The card is found by the
+// job id in its componentkey; its <p>s are title, company, location.
+test("readCard reads a /jobs/search-results/ card by its componentkey and <p>s", () => {
+  const p = (innerText, hidden) => ({ innerText, querySelector: (s) => (hidden && s === "span[aria-hidden='true']" ? { innerText: hidden } : null) });
+  const card = (ps) => ({
+    getAttribute: (n) => (n === "componentkey" ? "job-card-component-ref-4485318694" : null),
+    querySelectorAll: (s) => (s === "p" ? ps : []),
+    querySelector: () => null,
+  });
+  const verified = card([p("Senior Automation QA Engineer (Verified job)\nSenior Automation QA Engineer", "Senior Automation QA Engineer "), p("Ciklum"), p("Ukraine (Remote)"), p("Viewed")]);
+  assert.deepEqual(readCard(verified, {}), { title: "Senior Automation QA Engineer", href: "/jobs/view/4485318694/", company: "Ciklum", location: "Ukraine (Remote)", posted: "" }, "the visible title, not the screen-reader copy");
+  assert.equal(readCard(card([p("Test Automation EngineerTest Automation Engineer"), p("Sii")]), {}).title, "Test Automation Engineer", "no aria-hidden span: the doubled text is halved");
+});
+
+// The new list re-renders on every click and detaches the other cards' handles: only the first
+// card per search got its description until the card was re-found by its job id.
+test("fetchLinkedInJobs clicks the card re-found by its job id, not the possibly detached handle", async () => {
+  const page = fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "" }]);
+  const found = [];
+  page.$ = async (sel) => { found.push(sel); return { click: async () => { page.calls.push("click:fresh"); } }; };
+  await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "x" }] }, () => {}, { sleep: async () => {} });
+  assert.deepEqual(found, ["[role='button'][componentkey='job-card-component-ref-1']"]);
+  assert.deepEqual(page.calls.filter((c) => c.startsWith("click")), ["click:fresh"]);
 });
 
 test("readCard reads the card's <time datetime> when LinkedIn renders one", () => {

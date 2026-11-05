@@ -14,6 +14,12 @@ LinkedIn часто змінює свій HTML. Якщо `check.mjs` знахо�
 2. Відкрийте DevTools на сторінці повідомлень, знайдіть нові назви класів.
 3. Оновіть об'єкт `SEL` на початку `check.mjs`.
 
+Те саме з пошуком вакансій: `found 0 cards` у кожному пошуку LinkedIn (а після
+10 таких запусків — банер `linkedin: never returned results`) означає, що
+сторінка пошуку змінилася, як 2026-11-03, коли `/jobs/search/` почав
+перенаправляти на `/jobs/search-results/`. Виправте об'єкт `SEL` і `readCard` у
+`lib/sources/linkedin-jobs.mjs` за живою сторінкою (`HEADFUL=1 node jobs.mjs`).
+
 Сесія закінчилась? Підключіться знову: перезапустіть `node login.mjs`.
 
 `LinkedIn rate-limited (HTTP 429)` у лозі запуску — LinkedIn гальмує серію
