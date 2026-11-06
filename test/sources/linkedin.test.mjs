@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom, isRelisted } from "../../lib/sources/linkedin-jobs.mjs";
+import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom, isRelisted, ageDate } from "../../lib/sources/linkedin-jobs.mjs";
 
 test("buildUrl includes keywords and location and always sorts by date", () => {
   const url = buildUrl({ keywords: "QA Automation", location: "Ukraine" });
@@ -40,6 +40,7 @@ function fakePage(...rounds) {
     url: () => current,
     waitForURL: async (pred) => { calls.push("waitForURL"); current = "https://www.linkedin.com/jobs/search/?currentJobId=clicked"; if (typeof pred === "function") pred(new URL(current)); },
     goto: async () => { calls.push("goto"); },
+    $: async () => null,   // no /jobs/search-results/ card to re-find: the handle is clicked
     mouse: { wheel: async () => {} },
     $$: async () => (rounds[Math.min(round++, rounds.length - 1)]).map((c, i, all) => ({
       // readCard runs in-page via evaluate; the scroll helper is also an evaluate
@@ -247,6 +248,75 @@ test("fetchLinkedInJobs throws when every search errored with nothing gathered",
   const page = fakePage([]);
   page.goto = async () => { throw new Error("net::ERR_INTERNET_DISCONNECTED"); };
   await assert.rejects(fetchLinkedInJobs(page, { searches: [{ keywords: "a" }, { keywords: "b" }] }, () => {}, { sleep: async () => {} }), /all 2 LinkedIn search\(es\) failed/);
+});
+
+// Since 2026-11-03 /jobs/search/ redirects to /jobs/search-results/: hashed class names, no
+// title link, so every search logged "found 0 cards" for two days. The card is found by the
+// job id in its componentkey; its <p>s are title, company, location.
+test("readCard reads a /jobs/search-results/ card by its componentkey and <p>s", () => {
+  const p = (innerText, hidden) => ({ innerText, querySelector: (s) => (hidden && s === "span[aria-hidden='true']" ? { innerText: hidden } : null) });
+  const card = (ps) => ({
+    getAttribute: (n) => (n === "componentkey" ? "job-card-component-ref-4485318694" : null),
+    querySelectorAll: (s) => (s === "p" ? ps : []),
+    querySelector: () => null,
+  });
+  const verified = card([p("Senior Automation QA Engineer (Verified job)\nSenior Automation QA Engineer", "Senior Automation QA Engineer "), p("Ciklum"), p("Ukraine (Remote)"), p("Viewed")]);
+  assert.deepEqual(readCard(verified, {}), { title: "Senior Automation QA Engineer", href: "/jobs/view/4485318694/", company: "Ciklum", location: "Ukraine (Remote)", posted: "" }, "the visible title, not the screen-reader copy");
+  assert.equal(readCard(card([p("Test Automation EngineerTest Automation Engineer"), p("Sii")]), {}).title, "Test Automation Engineer", "no aria-hidden span: the doubled text is halved");
+});
+
+// Live 2026-11-06 (30 cards): title, company and location are the <p>s of one box, insights and
+// statuses sit in other boxes. Taking the first three <p>s of the whole card would read a card
+// with no location <p> as located in "Viewed".
+test("readCard reads a /jobs/search-results/ card's location from the title's box, never a status", () => {
+  const cardEl = { getAttribute: (n) => (n === "componentkey" ? "job-card-component-ref-7" : null), querySelector: () => null };
+  const box = (texts) => {
+    const b = { parentElement: cardEl };
+    b.ps = texts.map((innerText) => ({ innerText, parentElement: b, querySelector: () => null }));
+    b.querySelectorAll = (s) => (s === "p" ? b.ps : []);
+    return b;
+  };
+  const lockup = box(["QA Engineer", "Acme"]);   // no location <p>
+  const status = box(["12 connections work here", "Viewed"]);
+  cardEl.querySelectorAll = (s) => (s === "p" ? [...lockup.ps, ...status.ps] : []);
+  assert.deepEqual(readCard(cardEl, {}), { title: "QA Engineer", href: "/jobs/view/7/", company: "Acme", location: "", posted: "" });
+});
+
+test("ageDate turns the top card's age into a date: the day for days and longer, the hour for hours", () => {
+  const now = Date.parse("2026-11-06T10:15:00Z");
+  assert.equal(ageDate("Ukraine · 6 days ago · 10 people clicked apply", now), "2026-10-31T00:00:00.000Z");
+  assert.equal(ageDate("Ukraine · Reposted 1 week ago · 3 people clicked apply", now), "2026-10-30T00:00:00.000Z");
+  assert.equal(ageDate("Ukraine · 1 month ago · 94 people clicked apply", now), "2026-10-07T00:00:00.000Z", "a month counts as 30 days, its lower bound");
+  assert.equal(ageDate("Kyiv · Reposted 19 hours ago · 25 people clicked apply", now), "2026-11-05T15:15:00.000Z");
+  assert.equal(ageDate("Ukraine · 59 people clicked apply", now), undefined);
+  assert.equal(ageDate("", now), undefined);
+});
+
+// The new UI's cards carry no <time>: every LinkedIn job lost its posted date until the top card's
+// age filled it ("Ukraine · 6 days ago · …", live 2026-11-06).
+test("fetchLinkedInJobs dates a card with no <time> from its top card, as `relisted` when reposted", async () => {
+  const now = () => Date.parse("2026-11-06T10:15:00Z");
+  const card = { title: "QA", href: "/jobs/view/4485318694/", company: "Ciklum", location: "Ukraine (Remote)", posted: "" };
+  const page = fakePage([card]);
+  page.topCard = "Ukraine · 6 days ago · 10 people clicked apply";
+  const [job] = await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {}, now });
+  assert.equal(job.posted, "2026-10-31T00:00:00.000Z");
+  const reposted = fakePage([card]);
+  reposted.topCard = "Ukraine · Reposted 1 week ago · 3 people clicked apply";
+  const [again] = await fetchLinkedInJobs(reposted, { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {}, now });
+  assert.equal(again.relisted, "2026-10-30T00:00:00.000Z");
+  assert.equal("posted" in again, false);
+});
+
+// The new list re-renders on every click and detaches the other cards' handles: only the first
+// card per search got its description until the card was re-found by its job id.
+test("fetchLinkedInJobs clicks the card re-found by its job id, not the possibly detached handle", async () => {
+  const page = fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "" }]);
+  const found = [];
+  page.$ = async (sel) => { found.push(sel); return { click: async () => { page.calls.push("click:fresh"); } }; };
+  await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "x" }] }, () => {}, { sleep: async () => {} });
+  assert.deepEqual(found, ["[role='button'][componentkey='job-card-component-ref-1']"]);
+  assert.deepEqual(page.calls.filter((c) => c.startsWith("click")), ["click:fresh"]);
 });
 
 test("readCard reads the card's <time datetime> when LinkedIn renders one", () => {

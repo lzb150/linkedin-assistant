@@ -13,6 +13,12 @@ LinkedIn changes its HTML often. If `check.mjs` finds 0 cards or can't read mess
 2. Open DevTools on the messaging page, find the new class names.
 3. Update the `SEL` object at the top of `check.mjs`.
 
+The same goes for job search: `found 0 cards` on every LinkedIn search (and,
+after 10 such runs, the `linkedin: never returned results` banner) means the
+search page changed, as it did on 2026-11-03 when `/jobs/search/` began
+redirecting to `/jobs/search-results/`. Fix the `SEL` object and `readCard` in
+`lib/sources/linkedin-jobs.mjs` against the live page (`HEADFUL=1 node jobs.mjs`).
+
 Session expired? Jack in again: re-run `node login.mjs`.
 
 `LinkedIn rate-limited (HTTP 429)` in a run's log is LinkedIn throttling a burst
