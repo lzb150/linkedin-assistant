@@ -53,7 +53,9 @@ back with a visible browser.
 - **Posted date** — a package's `posted` is the first posting date, when the
   board states one: DOU's `pubDate`, the "Published" date on Djinni's vacancy
   page (its listing tooltip is the last update, which a bump re-stamps), a
-  Telegram post's time, a LinkedIn card's `<time>` when rendered. The dashboard
+  Telegram post's time, a LinkedIn card's `<time>` when rendered, else the age in
+  LinkedIn's detail panel ("Ukraine · 6 days ago · …"; a week counts as 7 days and
+  a month as 30, the youngest it can be). The dashboard
   shows it as "posted 3 d ago", the Telegram alert likewise. Some dates are not
   that, and are kept apart so they never pass for one:
   - `relisted` — the date of a re-listing. LinkedIn's detail panel says
