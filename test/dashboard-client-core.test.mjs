@@ -88,4 +88,8 @@ test("visitedUpTo: the newest package on the page, never now, never backwards", 
   assert.equal(core.visitedUpTo(page, "2026-10-02T00:00:00.000Z"), "2026-10-03T08:00:00.000Z");
   assert.equal(core.visitedUpTo(page, "2026-10-05T00:00:00.000Z"), "2026-10-05T00:00:00.000Z", "an older page does not move it back");
   assert.equal(core.visitedUpTo([], ""), new Date(0).toISOString(), "an empty first visit: every later package is new");
+  // A future `generated` (or a stored value from one) must not pin lastVisit.
+  const now = Date.parse("2026-10-04T00:00:00Z");
+  assert.equal(core.visitedUpTo([...page, "2027-01-01T00:00:00Z"], "2026-10-02T00:00:00.000Z", now), "2026-10-03T08:00:00.000Z");
+  assert.equal(core.visitedUpTo(page, "2027-01-01T00:00:00.000Z", now), "2026-10-03T08:00:00.000Z", "a stored future value heals");
 });
