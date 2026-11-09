@@ -191,6 +191,7 @@ test("jobMessage: the title links to the vacancy and every scraped field is esca
 test("jobMessage: no link for a non-http url, and the keyword score when the LLM did not judge", () => {
   const html = jobMessage({ title: "SDET", company: "Acme", source: "djinni", url: "javascript:alert(1)", score: 40, llmScore: null });
   assert.equal(html, "<b>SDET</b>\nAcme · Djinni\n⭐ keyword 40");
+  assert.match(jobMessage({ title: "SDET", source: "djinni", score: 40, llmScore: 95, suspect: "injection (1 marker)" }), /\n⚠ posting addresses the screener/);
 });
 
 test("alertMessage: bold title, escaped text and an optional link", () => {
