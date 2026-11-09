@@ -13,13 +13,13 @@ const SEEN = ["111", "222"];
 
 // A logged-in Djinni whose unread bucket the evaluate reads as `threads`.
 // `emptyBlock`: the page renders Djinni's empty-state block (.threads-empty).
-const playwrightWith = (threads, { close = "async () => {}", emptyBlock = false } = {}) => `
+const playwrightWith = (threads, { close = "async () => {}", emptyBlock = false, status = 200, loginForm = false } = {}) => `
 const page = {
   url: () => "https://djinni.co/my/inbox?bucket=unread",
-  goto: async () => {},
+  goto: async () => ({ status: () => ${status} }),
   waitForTimeout: async () => {},
   waitForSelector: async () => ({}),
-  $: async (sel) => (sel === "a[href='/logout']"${emptyBlock ? ' || sel === ".threads-empty"' : ""} ? {} : null),
+  $: async (sel) => (sel === "a[href='/logout']"${loginForm ? " || sel === 'input[type=password]'" : ""}${emptyBlock ? ' || sel === ".threads-empty"' : ""} ? {} : null),
   $$: async () => [],
   evaluate: async () => ${JSON.stringify(threads)},
   locator: () => ({ first: () => ({ innerText: async () => "", isVisible: async () => false }) }),
@@ -103,7 +103,7 @@ test("djinni-check.mjs: with telegram.json set up, new messages reach Telegram l
 test("djinni-check.mjs: a logged-out Djinni exits 2 after the normal finish — badge and seen store untouched", async (t) => {
   // The session-expired exit used to be a process.exit(2) from inside the scan,
   // past runScan's finally; now the scan hands the outcome back and the CLI exits.
-  const p = makeProject(t, { scripts: ["djinni-check.mjs"], playwright: playwrightWith([]).replace("sel === \"a[href='/logout']\"", "false") });   // default fakes log banners
+  const p = makeProject(t, { scripts: ["djinni-check.mjs"], playwright: playwrightWith([], { loginForm: true }).replace("sel === \"a[href='/logout']\" ||", "") });   // default fakes log banners
   writeFileSync(p.path("djinni-seen.json"), JSON.stringify(SEEN));
   const prev = { count: 2, pending: [{ id: "111", label: "Acme" }] };
   writeFileSync(p.path("djinni-notify-state.json"), JSON.stringify(prev));
@@ -111,4 +111,19 @@ test("djinni-check.mjs: a logged-out Djinni exits 2 after the normal finish — 
   assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-seen.json"), "utf8")), SEEN);
   assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-notify-state.json"), "utf8")), prev, "the last known badge count stays");
   assert.match(await waitForBanner(p), /Session expired — run `node login\.mjs djinni`/);
+});
+
+test("djinni-check.mjs: a 5xx or a page with neither /logout nor a login form is a failed scan, not a session expiry", async (t) => {
+  // Both used to read as "logged out": a banner and a phone alert every hour of a Djinni / Cloudflare outage.
+  for (const [name, opts, strip] of [["HTTP 503", { status: 503 }, false], ["no logout link, no login form", {}, true]]) {
+    let pw = playwrightWith([], opts);
+    if (strip) pw = pw.replace("sel === \"a[href='/logout']\"", "false");
+    const p = makeProject(t, { scripts: ["djinni-check.mjs"], playwright: pw });
+    const prev = { count: 2, pending: [{ id: "111", label: "Acme" }] };
+    writeFileSync(p.path("djinni-notify-state.json"), JSON.stringify(prev));
+    await assert.rejects(spawnScript(p, "djinni-check.mjs").done, /djinni-check\.mjs exit 1/, name);
+    assert.deepEqual(JSON.parse(readFileSync(p.path("djinni-notify-state.json"), "utf8")), prev, `${name}: badge kept`);
+    const log = existsSync(p.path("notify.log")) ? readFileSync(p.path("notify.log"), "utf8") : "";
+    assert.doesNotMatch(log, /Session expired/, name);
+  }
 });
