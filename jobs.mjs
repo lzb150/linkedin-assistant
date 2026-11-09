@@ -354,7 +354,7 @@ const matches = [];
 // once per run: the next run would call the second "seen" anyway, and the
 // one-shot markers (llm-retry:, title-only-*:) are keyed on identity, so the
 // second copy would also inherit the first one's deferral.
-const matchedIds = new Set();
+const matchedIds = new Map();   // identity → its entry in matches
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { for (const k of stampKeys(job, id, seen)) seen.add(k); };
 // A job turned down on its title alone (no description yet) stays unseen so
@@ -396,13 +396,17 @@ for (const job of jobs) {
       log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
       break;
     case "match":
-      if (matchedIds.has(id)) {   // no stamp: the first copy's outcome stamps (or defers) the identity for both
+      if (matchedIds.has(id)) {   // no stamp: the judged copy's outcome stamps (or defers) the identity for both
+        const first = matchedIds.get(id);
+        // The copy with a description is the one worth judging: a title-only
+        // first copy would be judged on its title alone, twice, and never read.
+        if (first.retry && !g.retry) Object.assign(first, { job, scored: g.scored, retry: false });
         log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
         recordOutcome(summary, job.source, "seen");
         continue;
       }
-      matchedIds.add(id);
-      matches.push({ id, job, scored: g.scored, retry: g.retry });
+      matchedIds.set(id, { id, job, scored: g.scored, retry: g.retry });
+      matches.push(matchedIds.get(id));
       continue;
   }
   recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
