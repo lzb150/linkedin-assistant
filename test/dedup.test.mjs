@@ -252,6 +252,11 @@ test("linkKey: one posting whatever the slash, the www or Djinni's title slug; '
   assert.equal(linkKey("https://djinni.co/jobs/830692-strong-junior-middle-qa-automation-engineer"), "djinni.co/jobs/830692");
   assert.equal(linkKey("https://www.Boards.example/jobs/1/?utm_source=tg"), linkKey("https://boards.example/jobs/1"));
   assert.notEqual(linkKey("https://boards.example/jobs/1"), linkKey("https://boards.example/jobs/2"));
+  // The posting id can live in the query: only tracking parameters are noise.
+  assert.notEqual(linkKey("https://careers.acme.com/jobs?gh_jid=111"), linkKey("https://careers.acme.com/jobs?gh_jid=222"));
+  assert.equal(linkKey("https://careers.acme.com/jobs/?utm_source=x&gh_jid=111&trk=a"), linkKey("https://careers.acme.com/jobs?fbclid=z&gh_jid=111"));
+  assert.equal(linkKey("https://a.example/j?b=2&a=1"), linkKey("https://a.example/j?a=1&b=2"), "parameter order does not matter");
+  assert.equal(linkKey("https://careers.acme.com/jobs/1/?refId=1&trackingId=2"), "careers.acme.com/jobs/1", "a link with only tracking keeps its query-less key");
   assert.equal(linkKey("u-djinni"), "");
   assert.equal(linkKey(undefined), "");
 });
