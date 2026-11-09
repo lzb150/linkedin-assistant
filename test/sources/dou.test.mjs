@@ -198,3 +198,9 @@ test("markRelisted moves the date of a vacancy DOU re-dated to `relisted`: a new
     ["2026-10-30T00:00:00.000Z", "-"],
   ]);
 });
+
+test("markRelisted leaves a date less than a day after a newer id's alone: created in the evening, published the next morning", () => {
+  const job = (id, posted) => ({ url: `https://jobs.dou.ua/companies/x/vacancies/${id}/`, posted });
+  const out = markRelisted([job(100, "2026-10-30T07:00:00.000Z"), job(101, "2026-10-29T20:00:00.000Z")]);
+  assert.deepEqual(out.map((j) => j.relisted), [undefined, undefined]);
+});
