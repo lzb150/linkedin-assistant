@@ -3,7 +3,7 @@
 // the fake `claude` live in test/helpers/jobs-pipeline.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
+import { readdirSync, chmodSync } from "node:fs";
 import { runScript } from "./helpers/e2e.mjs";
 import { rss, AQA, serveFeed, setupProject, runJobs, mdFiles, claudeCalls, ACME, BETA } from "./helpers/jobs-pipeline.mjs";
 
@@ -43,6 +43,28 @@ test("jobs.mjs: a title-only match the LLM turns down is re-judged once, then ma
   assert.equal(claudeCalls(p), 2, "re-judged once");
   await runJobs(p);
   assert.equal(claudeCalls(p), 2, "the second no marked it seen");
+});
+
+test("jobs.mjs: a second title-only borderline whose package cannot be written stays unseen", async (t) => {
+  // The second look stamped the job seen BEFORE the write, so a failed write
+  // left it seen with no package: the vacancy was lost for the 90-day TTL.
+  const claude = `#!/bin/sh
+PROMPT="$(cat)"; echo "args=$*" >> "$(dirname "$0")/../claude.log"
+echo '{"score": 60, "why": "partial fit", "red_flags": [], "cover": "Maybe."}'
+`;
+  const item = { title: "SDET Automation Engineer в Beta, Львів", link: "https://jobs.dou.ua/companies/beta/vacancies/8/", desc: "Playwright, TypeScript, API testing, CI/CD." };
+  const p = setupProject(t, await serveFeed(t, () => rss([item])), { claude, llm: { minScore: 70, borderlineMin: 50 } });
+  const real = () => Object.keys(p.json("jobs-seen.json")).filter((k) => !k.startsWith("title-only-"));
+  await runJobs(p);   // first look: held for the re-read
+  const dir = p.path("applications");
+  chmodSync(dir, 0o500);
+  t.after(() => { try { chmodSync(dir, 0o700); } catch {} });   // so the project dir can be removed
+  assert.match(await runJobs(p), /package build\/write failed/);
+  assert.deepEqual(real(), [], "no package, so not seen");
+  chmodSync(dir, 0o700);
+  await runJobs(p);
+  assert.equal(mdFiles(p).length, 1, "the next run writes it");
+  assert.equal(real().length, 1);
 });
 
 test("jobs.mjs: a title-only match the LLM rates borderline is re-judged with its description, not parked for good", async (t) => {
