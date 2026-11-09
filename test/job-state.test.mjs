@@ -90,6 +90,10 @@ test("normalizeMeta keeps only lastVisit and canonicalizes it to toISOString() f
   assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00Z", junk: 1 }), { lastVisit: "2026-06-20T09:00:00.000Z" });
   assert.deepEqual(normalizeMeta({ lastVisit: "2026-06-20T09:00:00.123Z" }), { lastVisit: "2026-06-20T09:00:00.123Z" });
   for (const bad of [{}, { lastVisit: "t" }, { lastVisit: "" }, [], null, "x"]) assert.equal(normalizeMeta(bad), null);
+  // A future time would pin lastVisit (it never moves backwards): refused beyond 5 minutes of clock skew.
+  const now = Date.parse("2026-11-09T10:00:00Z");
+  assert.equal(normalizeMeta({ lastVisit: "2026-11-09T10:04:00Z" }, now).lastVisit, "2026-11-09T10:04:00.000Z");
+  assert.equal(normalizeMeta({ lastVisit: "2026-11-09T10:06:00Z" }, now), null);
 });
 
 // A long-running state server (started before a deploy) must not delete

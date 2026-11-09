@@ -31,7 +31,7 @@
       <div class="num cut">0</div>
       <div class="body">
         <h3>Збір і фільтр за локацією</h3>
-        <p class="sub">DOU, Djinni та LinkedIn. Вакансії за кордоном відсікаються до будь-якої оцінки.</p>
+        <p class="sub">DOU, Djinni, LinkedIn, Himalayas і Telegram-канали. Вакансії за кордоном відсікаються до будь-якої оцінки.</p>
         <div class="rule" data-label="// правило">location містить <b>excludeLocation</b><br>(«за кордоном», Poland, Кіпр, Germany, Georgia…)</div>
       </div>
       <div class="exits">
@@ -46,7 +46,7 @@
       <div class="body">
         <h3>Keyword gate: дублі та заголовок</h3>
         <p class="sub"><code>lib/keyword-gate.mjs</code>. Перевірки йдуть згори вниз, вирішує перша, що спрацювала.</p>
-        <div class="rule" data-label="// правило">seen? → пакет уже є? → дубль з іншого майданчика?<br>→ заголовок містить <b>junior · intern · internship · trainee · manual</b></div>
+        <div class="rule" data-label="// правило">seen? → пакет уже є? → дубль з іншого майданчика?<br>→ заголовок містить <b>junior · intern · internship · trainee · manual · lead</b></div>
       </div>
       <div class="exits">
         <div class="exit"><span class="tag">seen / packaged / dup</span>Уже бачили або пакет уже є</div>
@@ -78,7 +78,8 @@
         <div class="rule" data-label="// правило">не більше <b>15</b> викликів за прогін, <b>3</b> паралельно<br>жорстке правило: не для України / релокейт / офіс за кордоном → <b>score ≤ 10</b><br><br>прохід: llm.score <b>≥ 70</b> (llm.minScore)</div>
       </div>
       <div class="exits">
-        <div class="exit"><span class="tag">low · llm</span>Claude поставив менше 70</div>
+        <div class="exit"><span class="tag">low · llm</span>Claude поставив менше 50</div>
+        <div class="exit soft"><span class="tag">borderline</span>Claude поставив 50–69 (llm.borderlineMin): пакет у вкладці Borderline, без повідомлення в Telegram</div>
         <div class="exit soft"><span class="tag">deferred</span>Ліміт 15 вичерпано, вакансія чекає наступного прогону</div>
         <div class="exit soft"><span class="tag">suspect</span>У тексті ознаки prompt injection: пакет пишеться з позначкою</div>
       </div>
@@ -153,13 +154,13 @@
     <h2>Особливі випадки</h2>
     <div class="notes">
       <div class="note"><h3>Немає опису</h3><p>Якщо тексту менше 300 символів, оцінка йде за заголовком. Перша відмова не позначає вакансію як seen, наступний прогін перечитає її з описом. Друга відмова вже остаточна.</p></div>
-      <div class="note"><h3>Claude не відповів</h3><p>Виклик повторюється один раз. Якщо знову помилка, пакет пишеться лише за keyword-балами, щоб збіг не загубився.</p></div>
+      <div class="note"><h3>Claude не відповів</h3><p>Виклик повторюється один раз. Якщо знову помилка, пакет лише за keyword-балами пишеться у вкладку Borderline, щоб збіг не загубився.</p></div>
       <div class="note"><h3>Свій поріг у майданчика</h3><p><code>dou.minScore</code>, <code>djinni.minScore</code>, <code>linkedin.minScore</code> перекривають загальний. Зараз жоден не задано, у всіх 18.</p></div>
       <div class="note"><h3>Повідомлення в LinkedIn</h3><p>Ті самі бали, але інші пороги: ≥ 8 — relevant, ≥ 4 — maybe. Вони вирішують, чи писати чернетку відповіді.</p></div>
     </div>
   </section>
 
-  <footer>Значення з <code>jobs.config.json</code> і <code>skills.json</code> станом на 15 жовтня 2026. Код: <code>lib/keyword-gate.mjs</code>, <code>lib/relevance.mjs</code>, <code>lib/llm.mjs</code>, <code>jobs.mjs</code>.</footer>
+  <footer>Значення з <code>jobs.config.json</code> і <code>skills.json</code> станом на 9 листопада 2026. Код: <code>lib/keyword-gate.mjs</code>, <code>lib/relevance.mjs</code>, <code>lib/llm.mjs</code>, <code>jobs.mjs</code>.</footer>
 </div>
 </div>
 

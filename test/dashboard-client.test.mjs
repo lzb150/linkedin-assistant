@@ -170,6 +170,7 @@ test("online session mirrors server state to localStorage; offline reload keeps 
   await off.run("setStatus(card, 'viewed')");
   assert.equal(off.run(`entryOf(${JSON.stringify(U)}).note`), "no relocation", "a status change keeps the note");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), [U]);
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirtyFields")), { [U]: ["status"] }, "only the edited field is replayed");
 });
 
 // The offline branch of initState must restore the dirty list saved by an
@@ -373,6 +374,21 @@ test("a note sent at unload is re-sent note-only on the next load and cannot rol
   assert.equal(onDisk[U].status, "closed", "the later status survives");
   assert.equal(onDisk[U].note, "call back");
   assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "outbox drained");
+});
+
+test("a note edited offline is replayed note-only and cannot roll back a status set meanwhile", async (t) => {
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/13/";
+  const store = new Map([["jobStatus", JSON.stringify({ _meta: {}, [U]: { status: "viewed" } })]]);
+  const off = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  await off.run(`patchEntry(${JSON.stringify(U)}, { note: "call back" })`);
+  // closed-check marks it closed while the tab is offline.
+  await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: U, patch: { status: "closed" } }) });
+  const on = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  assert.equal(on.run("online"), true);
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk[U].status, "closed", "the later status survives");
+  assert.equal(onDisk[U].note, "call back");
 });
 
 test("a note saved after an unload flush replaces the queued one in the outbox", async (t) => {

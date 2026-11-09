@@ -69,6 +69,12 @@ test("offlinePatches: dirty urls push full-override patches, deletions clear", (
     { url: "https://d/", patch: { status: "new", note: "" } },
   ]);
   assert.deepEqual(core.offlinePatches(local, []), []);
+  // Field-level: a note edited offline must not push the mirrored status back
+  // over one closed-check set meanwhile; a deletion clears only what was edited.
+  assert.deepEqual(core.offlinePatches(local, ["https://a/", "https://d/"], { "https://a/": ["note"], "https://d/": ["status"] }), [
+    { url: "https://a/", patch: { note: "hi" } },
+    { url: "https://d/", patch: { status: "new" } },
+  ]);
   // The clearing patch really empties an entry via the shared merge.
   assert.equal(core.mergeEntryLocal(server["https://d/"], core.entryToPatch(undefined)), null);
   // A status this build does not know (newer closed-check/dashboard) survives a
@@ -82,4 +88,8 @@ test("visitedUpTo: the newest package on the page, never now, never backwards", 
   assert.equal(core.visitedUpTo(page, "2026-10-02T00:00:00.000Z"), "2026-10-03T08:00:00.000Z");
   assert.equal(core.visitedUpTo(page, "2026-10-05T00:00:00.000Z"), "2026-10-05T00:00:00.000Z", "an older page does not move it back");
   assert.equal(core.visitedUpTo([], ""), new Date(0).toISOString(), "an empty first visit: every later package is new");
+  // A future `generated` (or a stored value from one) must not pin lastVisit.
+  const now = Date.parse("2026-10-04T00:00:00Z");
+  assert.equal(core.visitedUpTo([...page, "2027-01-01T00:00:00Z"], "2026-10-02T00:00:00.000Z", now), "2026-10-03T08:00:00.000Z");
+  assert.equal(core.visitedUpTo(page, "2027-01-01T00:00:00.000Z", now), "2026-10-03T08:00:00.000Z", "a stored future value heals");
 });

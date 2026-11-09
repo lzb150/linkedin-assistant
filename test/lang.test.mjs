@@ -27,3 +27,8 @@ test("detectLang: a board's own Cyrillic (DOU title tail, Djinni location line) 
   assert.equal(detectLang("Шукаємо Senior QA Automation Engineer (Playwright, TypeScript) на віддалену позицію, досвід від 3 років"), "uk");
   assert.equal(detectLang("Ищем QA Automation (Playwright, TypeScript), удалённо, опыт от 3 лет"), "ru");
 });
+
+test("detectLang: a Russian posting under Djinni's Ukrainian location line is ru; the majority of distinguishing letters decides", () => {
+  assert.equal(detectLang("Тільки віддалено · Україна · QA Автоматизатор: ищем инженера, опыт обязателен, удалённо"), "ru");
+  assert.equal(detectLang("Шукаємо інженера, досвід обов'язковий, можливий ёж"), "uk");
+});

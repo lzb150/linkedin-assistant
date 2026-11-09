@@ -324,7 +324,7 @@ function saveBadge(next) {
   catch (e) { log("notify: writeState failed:", e?.message); return false; }
 }
 
-function finish({ held }) {
+function finish({ held, outcome }) {
   // Only a run that actually held the profile may write seen.json back: on the
   // "profile busy" path this process loaded its snapshot before the lock holder
   // started adding entries, so saving here rolls that holder's work back.
@@ -335,7 +335,8 @@ function finish({ held }) {
     // only what remember() could not write itself.
     saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified, unreadCount, opened: scanned }));
   } else if (!SCAN_ALL) {
-    log("notify: scan failed before counting — keeping previous badge state");
+    // busy / logged-out already logged their own line; keep the badge either way.
+    if (outcome === "failed") log("notify: scan failed before counting — keeping previous badge state");
     if (notified.length) saveBadge((prev) => keepBadgeAdding({ prev, notified }));
   }
 }

@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { keywordGate, titleExcluder, seenEither, freshRepost, marker, firstTime, stampKeys } from "./lib/keyword-gate.mjs";
+import { profileError } from "./lib/relevance.mjs";
 import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
@@ -75,6 +76,15 @@ try {
 } catch (e) {
   log(`⚠ jobs.config.json unusable (${e.message}) — fix the JSON; nothing was scanned`);
   if (!CATCHUP) banner("Job assistant", "jobs.config.json is broken — fix the JSON (details in logs/)");
+  process.exit(1);
+}
+// skills.json is the same kind of file, but lib/relevance.mjs degrades to an
+// empty profile so check.mjs still loads. Here an empty profile scores every
+// vacancy 0 and stamp() would bury each one for the 90-day TTL, so the run stops
+// before gathering. The banner is the 3-hourly run's alone, as above.
+if (profileError) {
+  log(`⚠ skills.json unusable (${profileError}) — regenerate it: node make-skills.mjs; nothing was scanned`);
+  if (!CATCHUP) banner("Job assistant", "skills.json is broken — run: node make-skills.mjs (details in logs/)");
   process.exit(1);
 }
 const {
@@ -339,6 +349,12 @@ log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length}
 // where the LLM applies a second gate (llm.minScore).
 let considered = 0;
 const matches = [];
+// Same-source copies with different urls share one identity and reach this gate
+// together (the seen store is only stamped after the LLM gate). Judge an identity
+// once per run: the next run would call the second "seen" anyway, and the
+// one-shot markers (llm-retry:, title-only-*:) are keyed on identity, so the
+// second copy would also inherit the first one's deferral.
+const matchedIds = new Map();   // identity → its entry in matches
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { for (const k of stampKeys(job, id, seen)) seen.add(k); };
 // A job turned down on its title alone (no description yet) stays unseen so
@@ -379,7 +395,19 @@ for (const job of jobs) {
     case "low":
       log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
       break;
-    case "match": matches.push({ id, job, scored: g.scored, retry: g.retry }); continue;
+    case "match":
+      if (matchedIds.has(id)) {   // no stamp: the judged copy's outcome stamps (or defers) the identity for both
+        const first = matchedIds.get(id);
+        // The copy with a description is the one worth judging: a title-only
+        // first copy would be judged on its title alone, twice, and never read.
+        if (first.retry && !g.retry) Object.assign(first, { job, scored: g.scored, retry: false });
+        log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
+        recordOutcome(summary, job.source, "seen");
+        continue;
+      }
+      matchedIds.set(id, { id, job, scored: g.scored, retry: g.retry });
+      matches.push(matchedIds.get(id));
+      continue;
   }
   recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
   if (g.retry) titleOnlyNo(job, id, "kw");   // a "low" with no description: re-read once with it

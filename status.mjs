@@ -11,6 +11,7 @@ import { readJson } from "./lib/json-file.mjs";
 import { normalizeHeartbeat, staleJobs } from "./lib/heartbeat.mjs";
 import { normalizeHistory, median } from "./lib/source-health.mjs";
 import { readPackages } from "./lib/packages.mjs";
+import { packageItem, collapseItems } from "./lib/dashboard-render.mjs";
 import { readStore } from "./lib/job-state.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
 
@@ -99,10 +100,12 @@ function packages() {
   const state = readStore(join(dir, "job-state.json"));
   const by = { new: 0, viewed: 0, closed: 0 };
   let borderline = 0;
-  for (const p of readPackages(apps)) {
-    const status = state[p.url]?.status || "new";
-    by[status] = (by[status] || 0) + 1;
-    if (p.tier === "borderline") borderline++;
+  // The dashboard's own cards: one per vacancy, so these counts match its tabs.
+  for (const it of collapseItems(readPackages(apps, { raw: true }).map(packageItem))) {
+    // A status this build does not know counts as new, like the dashboard's.
+    const status = state[it.fm.url]?.status;
+    by[Object.hasOwn(by, status) ? status : "new"]++;
+    if (it.tier === "borderline") borderline++;
   }
   const archived = existsSync(join(apps, "archive")) ? readdirSync(join(apps, "archive")).filter((f) => f.endsWith(".md")).length : 0;
   line("·", `${by.new} new, ${by.viewed} viewed, ${by.closed} closed${borderline ? ` (${borderline} borderline)` : ""}; ${archived} archived`);

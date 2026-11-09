@@ -252,6 +252,11 @@ test("linkKey: one posting whatever the slash, the www or Djinni's title slug; '
   assert.equal(linkKey("https://djinni.co/jobs/830692-strong-junior-middle-qa-automation-engineer"), "djinni.co/jobs/830692");
   assert.equal(linkKey("https://www.Boards.example/jobs/1/?utm_source=tg"), linkKey("https://boards.example/jobs/1"));
   assert.notEqual(linkKey("https://boards.example/jobs/1"), linkKey("https://boards.example/jobs/2"));
+  // The posting id can live in the query: only tracking parameters are noise.
+  assert.notEqual(linkKey("https://careers.acme.com/jobs?gh_jid=111"), linkKey("https://careers.acme.com/jobs?gh_jid=222"));
+  assert.equal(linkKey("https://careers.acme.com/jobs/?utm_source=x&gh_jid=111&trk=a"), linkKey("https://careers.acme.com/jobs?fbclid=z&gh_jid=111"));
+  assert.equal(linkKey("https://a.example/j?b=2&a=1"), linkKey("https://a.example/j?a=1&b=2"), "parameter order does not matter");
+  assert.equal(linkKey("https://careers.acme.com/jobs/1/?refId=1&trackingId=2"), "careers.acme.com/jobs/1", "a link with only tracking keeps its query-less key");
   assert.equal(linkKey("u-djinni"), "");
   assert.equal(linkKey(undefined), "");
 });
@@ -302,6 +307,19 @@ test("canonicalKey folds 'Quality Assurance' into 'QA' and the long SDET spellin
     canonicalKey({ company: "madappgang", title: "QA Automation Engineer" }),
     "seniority still separates",
   );
+});
+
+test("dedupeJobs: a keeper takes dates only from the copies folded into it, not from same-source siblings", () => {
+  // Two reqs of one board under one title stay separate vacancies; the group's
+  // earliest date used to be written onto both, making the newer one look old.
+  const a = { source: "dou", company: "Acme", title: "SDET", url: "u1", text: "x".repeat(50), posted: "2026-10-20T00:00:00.000Z" };
+  const b = { source: "dou", company: "Acme", title: "SDET", url: "u2", text: "x".repeat(40), posted: "2026-11-05T00:00:00.000Z" };
+  assert.deepEqual(dedupeJobs([a, b]).deduped.map((j) => j.posted), ["2026-10-20T00:00:00.000Z", "2026-11-05T00:00:00.000Z"], "nothing folded: dates untouched");
+  const c = { source: "djinni", company: "Acme", title: "SDET", url: "u3", text: "x".repeat(5), posted: "2026-10-01T00:00:00.000Z" };
+  const { deduped } = dedupeJobs([a, b, c]);
+  assert.equal(deduped.length, 2);
+  assert.equal(a.posted, "2026-10-01T00:00:00.000Z", "the keeper the djinni copy folded into takes its earlier date");
+  assert.equal(b.posted, "2026-11-05T00:00:00.000Z", "its sibling keeps its own");
 });
 
 test("dedupeJobs keeps the earliest `posted` of a merged group on the keeper", () => {

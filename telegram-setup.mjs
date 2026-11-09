@@ -1,22 +1,43 @@
 // One-time setup for the Telegram copy of the alerts (lib/telegram.mjs).
 //   1. In Telegram, open @BotFather, send /newbot and pick a name.
 //   2. Send your new bot any message (a bot cannot write to you first).
-//   3. node telegram-setup.mjs <token from BotFather>
+//   3. node telegram-setup.mjs — it asks for the token from BotFather (typed, not
+//      echoed). TELEGRAM_BOT_TOKEN=<token> node telegram-setup.mjs skips the prompt.
+//      A token passed as an argument works too but shows up in `ps` and shell history.
 // Finds your chat from that message, sends a test message there and writes
 // telegram.json (0600, gitignored). Re-run it to change the bot or the chat;
 // delete telegram.json to turn the alerts off.
 // TELEGRAM_API points it at another Bot API server (self-hosted, or a test fake).
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { Writable } from "node:stream";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const API = process.env.TELEGRAM_API || "https://api.telegram.org";
-const token = (process.argv[2] || "").trim();
 const fail = (msg) => { console.error(`✗ ${msg}`); process.exit(1); };
 
+// The token stays out of `ps` and shell history: environment, else a prompt
+// with echo off. An argument still works, with a warning.
+async function readToken() {
+  if (process.env.TELEGRAM_BOT_TOKEN) return process.env.TELEGRAM_BOT_TOKEN;
+  if (process.argv[2]) {
+    console.error("! a token in the command line shows up in `ps` and shell history — prefer the prompt or TELEGRAM_BOT_TOKEN");
+    return process.argv[2];
+  }
+  if (!process.stdin.isTTY) return "";
+  let muted = false;
+  const output = new Writable({ write(chunk, _enc, cb) { if (!muted) process.stderr.write(chunk); cb(); } });
+  const rl = createInterface({ input: process.stdin, output, terminal: true });
+  process.stderr.write("Bot token from @BotFather: ");
+  muted = true;
+  try { return await rl.question(""); } catch { return ""; } finally { rl.close(); process.stderr.write("\n"); }
+}
+const token = (await readToken()).trim();
+
 // Shape check before any request: the token becomes part of the URL path.
-if (!/^\d+:[\w-]+$/.test(token)) fail("usage: node telegram-setup.mjs <bot token from @BotFather> (it looks like 123456789:AAH…)");
+if (!/^\d+:[\w-]+$/.test(token)) fail("no valid bot token — run node telegram-setup.mjs and paste the token from @BotFather at the prompt, or set TELEGRAM_BOT_TOKEN (it looks like 123456789:AAH…)");
 
 async function call(method, body = {}) {
   const { res, json } = await post(method, body);

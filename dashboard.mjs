@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeTextAtomic } from "./lib/json-file.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { parse, toItem, collapseItems, renderCard, sourceChips } from "./lib/dashboard-render.mjs";
+import { packageItem, collapseItems, renderCard, sourceChips } from "./lib/dashboard-render.mjs";
 import { readJobsConfig } from "./lib/jobs-config.mjs";
 import { candidateCountryList } from "./lib/filters.mjs";
 import { execFile } from "node:child_process";
@@ -36,10 +36,7 @@ if (/<\/style/i.test(css)) throw new Error("dashboard CSS must not contain </sty
 // read once instead of twice, and a package archived between the two reads can
 // no longer disappear underneath us.
 const warn = (f, e) => console.warn(`unreadable package skipped: ${f} (${e.message})`);
-const items = collapseItems(readPackages(APPS, { warn, raw: true })
-  .map(({ _raw }) => parse(_raw))
-  .filter(Boolean)
-  .map(toItem));
+const items = collapseItems(readPackages(APPS, { warn, raw: true }).map(packageItem));
 // Only candidateCountry is read, for the "<country> listed" mark on remote-board
 // cards. A missing or broken config is jobs.mjs's to report; here it just means
 // the default country.

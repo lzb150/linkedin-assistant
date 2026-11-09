@@ -2,6 +2,7 @@
 // Every status lands in the server's job-state.json, not just on screen.
 import { test, expect } from "../fixtures/dashboard.mjs";
 import { JOBS, DEFAULT_STATE } from "../support/jobs.mjs";
+import { DashboardPage } from "../pages/dashboard-page.mjs";
 
 test.describe("status buttons", () => {
   test("Mark Viewed flips the card, the counts and the store on disk", async ({ dashboard, server }) => {
@@ -26,6 +27,17 @@ test.describe("status buttons", () => {
 
     await expect(dashboard.card(JOBS.globex.title).viewedButton).toHaveAttribute("aria-pressed", "true");
     await expect(dashboard.viewedTab).toHaveText("Viewed 1");
+  });
+
+  test("a click redraws the cards another tab changed", async ({ dashboard, context, server }) => {
+    const other = new DashboardPage(await context.newPage(), server.base);
+    await other.goto();
+    await other.card(JOBS.globex.title).markViewed();
+    await expect.poll(() => server.readState()[JOBS.globex.url]?.status).toBe("viewed");
+
+    await dashboard.card(JOBS.acme.title).markViewed();
+
+    await expect(dashboard.card(JOBS.globex.title).viewedButton).toHaveAttribute("aria-pressed", "true");
   });
 
   test.describe("on a Viewed card", () => {

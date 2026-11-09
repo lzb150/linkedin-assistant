@@ -1,5 +1,5 @@
 /* "Night City" tokens for the README images, copied from the dashboard skin in
-   dashboard.mjs so the pictures match the app. Light or dark follows the
+   lib/dashboard.css so the pictures match the app. Light or dark follows the
    colour scheme (render.mjs emulates each one). The HUD bar stays dark in
    both modes, as the dashboard header does. */
 @import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&family=Tektur:wght@500;700&display=block");

@@ -92,7 +92,9 @@ above `llm.borderlineMin` (default 50; 0 turns the band off): then the package i
 written as `tier: borderline` and waits under the dashboard's muted **Borderline**
 tab, with no banner name and no Telegram message. The cutoff is noisy by about
 ±12 points (the same vacancy scored 80 via one board and 68 via another), and 40
-of 93 rejects in a fortnight sat in 50–69. A CLI failure (a timeout on a busy Mac, a crash) is not a verdict: the job is
+of 93 rejects in a fortnight sat in 50–69. A posting that addresses the screener
+(prompt-injection phrasing in English, Ukrainian or Russian) is flagged `llm_suspect`; the Telegram message
+carries a ⚠ line, and if the LLM rejects such a posting it is written as borderline instead of dropped, so you see it. A CLI failure (a timeout on a busy Mac, a crash) is not a verdict: the job is
 deferred to the next run, like a match past `maxPerRun`; only a second failure writes a keyword-only package, so an outage never loses a match —
 into the same Borderline tab, since an unjudged package is not a match either. Such a package shows an **AI ?** badge on the dashboard (see [Dashboard](dashboard.md)).
 Needs `resume.txt`; tune via the `llm` block in `jobs.config.json` (`enabled`,
