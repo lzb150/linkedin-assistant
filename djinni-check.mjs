@@ -15,7 +15,7 @@ import { updateState } from "./lib/notify-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
 import { heartbeat } from "./lib/heartbeat.mjs";
-import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, djinniLoginPage, freshThreads } from "./lib/djinni-bump.mjs";
+import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, djinniLoginPage, gotoDjinni, freshThreads } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".djinni-profile");
@@ -56,11 +56,8 @@ async function scan(page) {
 }
 
 async function openUnread(page) {
-  const res = await page.goto(UNREAD_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
-  // A 5xx / Cloudflare page has no /logout link either: read as "logged out" it
-  // bannered a session expiry (and a phone alert) every hour of an outage. A
-  // thrown error ends the run as "failed" (exit 1, badge kept, no banner).
-  if (res && res.status() >= 400) throw new Error(`Djinni page failed to load (HTTP ${res.status()})`);
+  // An HTTP error throws: the run ends as "failed" (exit 1, badge kept, no banner).
+  await gotoDjinni(page, UNREAD_URL, "Djinni page");
   // Wait for the list or Djinni's empty-state block, not a fixed 1.5 s: a list
   // that rendered later read as an unexplained zero (and, in scan, no badge write).
   await page.waitForSelector("a[href*='/my/inbox/'], .threads-empty", { timeout: 10000 }).catch(() => {});
