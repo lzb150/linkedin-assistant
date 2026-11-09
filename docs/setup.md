@@ -54,7 +54,9 @@ messages, an expired session or a broken source come through too.
 
 1. In Telegram, open **@BotFather**, send `/newbot` and pick a name.
 2. Send your new bot any message (a bot cannot write to you first).
-3. Run `node telegram-setup.mjs <token from BotFather>`. It finds your chat,
+3. Run `node telegram-setup.mjs` and paste the token from BotFather at the
+   prompt (not echoed; `TELEGRAM_BOT_TOKEN` works too, and a token passed as an
+   argument would show up in `ps` and shell history). It finds your chat,
    sends a test message and writes `telegram.json` (gitignored, readable by you
    alone).
 
