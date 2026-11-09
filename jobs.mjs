@@ -349,6 +349,12 @@ log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length}
 // where the LLM applies a second gate (llm.minScore).
 let considered = 0;
 const matches = [];
+// Same-source copies with different urls share one identity and reach this gate
+// together (the seen store is only stamped after the LLM gate). Judge an identity
+// once per run: the next run would call the second "seen" anyway, and the
+// one-shot markers (llm-retry:, title-only-*:) are keyed on identity, so the
+// second copy would also inherit the first one's deferral.
+const matchedIds = new Set();
 // Stamp a job seen together with the copies dedupeJobs folded into it.
 const stamp = (job, id) => { for (const k of stampKeys(job, id, seen)) seen.add(k); };
 // A job turned down on its title alone (no description yet) stays unseen so
@@ -389,7 +395,15 @@ for (const job of jobs) {
     case "low":
       log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
       break;
-    case "match": matches.push({ id, job, scored: g.scored, retry: g.retry }); continue;
+    case "match":
+      if (matchedIds.has(id)) {   // no stamp: the first copy's outcome stamps (or defers) the identity for both
+        log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
+        recordOutcome(summary, job.source, "seen");
+        continue;
+      }
+      matchedIds.add(id);
+      matches.push({ id, job, scored: g.scored, retry: g.retry });
+      continue;
   }
   recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
   if (g.retry) titleOnlyNo(job, id, "kw");   // a "low" with no description: re-read once with it
