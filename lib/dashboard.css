@@ -235,7 +235,7 @@ pre::before { content: "// cover_note." attr(lang); content: "// cover_note." at
 .card.fresh { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 calc(var(--glow) * 28px) color-mix(in srgb, var(--accent) 16%, transparent); }
 .ribbon { background: var(--accent); color: var(--accent-ink); font: 700 10px/1.4 var(--font-mono); letter-spacing: .14em; padding: 2px 6px; margin-left: 8px; vertical-align: 3px; animation: pulse 1.6s ease-in-out 3; }   /* 3 pulses, under the 5 s WCAG 2.2.2 limit */
 @keyframes pulse { 50% { box-shadow: 0 0 calc(var(--glow) * 14px) var(--accent); } }
-#q { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid var(--header-border); background: var(--input-bg); color: var(--header-text); font: 13px var(--font-mono); caret-color: var(--header-hot); }
+#q { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid var(--header-muted);   /* the field's edge is a UI component boundary: ≥ 3:1 (8:1 on the header; --header-border is 2:1) */ background: var(--input-bg); color: var(--header-text); font: 13px var(--font-mono); caret-color: var(--header-hot); }
 #q::placeholder { color: var(--header-muted); }
 #q:focus-visible { outline: none; border-color: var(--header-accent); box-shadow: 0 0 0 1px var(--header-accent), 0 0 calc(var(--glow) * 18px) color-mix(in srgb, var(--header-accent) 35%, transparent); }
 @media (max-width: 640px) { .head { flex-wrap: wrap; } .titles { flex-basis: calc(100% - 58px); } .actions { width: 100%; flex-direction: row; } .apply, .status-seg { flex: 1; } .theme { margin-left: 0; } }
