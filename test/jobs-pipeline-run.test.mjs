@@ -35,18 +35,21 @@ test("jobs.mjs: a misspelt config key is reported, and a disabled source is name
   assert.match(out, /linkedin: disabled in config — skipped/);
 });
 
-test("jobs.mjs: a corrupt skills.json degrades to an empty profile instead of killing the run", async (t) => {
+test("jobs.mjs: a corrupt skills.json stops the run with the file named instead of burying vacancies", async (t) => {
   // skills.json is hand-edited by design ("edit freely" in the README), and the
   // parse was a top-level unguarded JSON.parse in a module every entry point
   // imports — so one stray comma raised a SyntaxError that never named the file
   // and killed the run before a single job was gathered.
   const p = setupProject(t, await serveFeed(t, () => FEED));
   writeFileSync(p.path("skills.json"), '{"roles": ["sdet"],}');   // trailing comma
-  const out = await runScript(p, "jobs.mjs");
+  const err = await runScript(p, "jobs.mjs").then(() => null, (e) => e);
+  assert.ok(err, "the run fails: an empty profile would stamp every vacancy seen for 90 days");
+  const out = err.message;
   assert.match(out, /skills\.json unusable/, "the file is named");
   assert.match(out, /node make-skills\.mjs/, "and the fix is spelled out");
   assert.equal(readdirSync(p.path("applications")).filter((f) => f.endsWith(".md")).length, 0,
-    "an empty profile matches nothing — visibly quiet, not silently wrong");
+    "nothing was written");
+  assert.doesNotMatch(out, /Total jobs gathered/, "and nothing was gathered, so nothing was stamped seen");
 });
 
 test("jobs.mjs: a corrupt jobs.config.json stops the run with the file named, not a raw SyntaxError", async (t) => {

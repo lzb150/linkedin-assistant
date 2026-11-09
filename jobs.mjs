@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { keywordGate, titleExcluder, seenEither, freshRepost, marker, firstTime, stampKeys } from "./lib/keyword-gate.mjs";
+import { profileError } from "./lib/relevance.mjs";
 import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
@@ -75,6 +76,15 @@ try {
 } catch (e) {
   log(`⚠ jobs.config.json unusable (${e.message}) — fix the JSON; nothing was scanned`);
   if (!CATCHUP) banner("Job assistant", "jobs.config.json is broken — fix the JSON (details in logs/)");
+  process.exit(1);
+}
+// skills.json is the same kind of file, but lib/relevance.mjs degrades to an
+// empty profile so check.mjs still loads. Here an empty profile scores every
+// vacancy 0 and stamp() would bury each one for the 90-day TTL, so the run stops
+// before gathering. The banner is the 3-hourly run's alone, as above.
+if (profileError) {
+  log(`⚠ skills.json unusable (${profileError}) — regenerate it: node make-skills.mjs; nothing was scanned`);
+  if (!CATCHUP) banner("Job assistant", "skills.json is broken — run: node make-skills.mjs (details in logs/)");
   process.exit(1);
 }
 const {
