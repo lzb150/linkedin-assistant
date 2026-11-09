@@ -136,6 +136,10 @@ test("ageLabel and the card's posted / reposted cues", () => {
   assert.equal(ageLabel("posted", "2026-10-25T12:00:00Z", now), "posted 3 d ago");
   assert.equal(ageLabel("posted", "2026-09-01T12:00:00Z", now), "posted 8 w ago");
   assert.equal(ageLabel("posted", "nope", now), "");
+  // Calendar days, not 24 h blocks (built from local parts: the label is local).
+  const lateNight = new Date(2026, 9, 27, 23, 50).toISOString(), after = new Date(2026, 9, 28, 0, 30).getTime();
+  assert.equal(ageLabel("posted", lateNight, after), "posted 1 d ago");
+  assert.equal(toItem({ fm: { posted: "2026-10-27" }, cover: "" }).posted, new Date(2026, 9, 27).toISOString(), "a bare date is a local calendar date");
   const it = toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", posted: "2026-10-25T12:00:00Z", reposts: "2" }, cover: "" });
   assert.equal(it.posted, "2026-10-25T12:00:00.000Z");
   assert.equal(it.reposts, 2);
@@ -157,7 +161,7 @@ test("a card LinkedIn re-listed says relisted, with the re-listing's age, never 
 
 test("a card whose board gives only its last update says updated", () => {
   const now = Date.parse("2026-10-31T12:00:00Z");
-  assert.equal(ageLabel("updated", "2026-10-29T17:01:00Z", now), "updated 1 d ago");
-  const html = renderCard(toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", updated: "2026-10-29T17:01:00Z" }, cover: "" }), 0, { now });
-  assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-29T17:01:00\.000Z">updated 1 d ago<\/time><\/span>/);
+  assert.equal(ageLabel("updated", "2026-10-30T17:01:00Z", now), "updated 1 d ago");
+  const html = renderCard(toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", updated: "2026-10-30T17:01:00Z" }, cover: "" }), 0, { now });
+  assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-30T17:01:00\.000Z">updated 1 d ago<\/time><\/span>/);
 });
