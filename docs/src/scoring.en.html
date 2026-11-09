@@ -31,7 +31,7 @@
       <div class="num cut">0</div>
       <div class="body">
         <h3>Collect and filter by location</h3>
-        <p class="sub">DOU, Djinni and LinkedIn. Vacancies abroad are cut before any scoring.</p>
+        <p class="sub">DOU, Djinni, LinkedIn, Himalayas and Telegram channels. Vacancies abroad are cut before any scoring.</p>
         <div class="rule" data-label="// rule">location contains <b>excludeLocation</b><br>("за кордоном", Poland, Кіпр, Germany, Georgia…)</div>
       </div>
       <div class="exits">
@@ -46,7 +46,7 @@
       <div class="body">
         <h3>Keyword gate: duplicates and title</h3>
         <p class="sub"><code>lib/keyword-gate.mjs</code>. Checks run top to bottom; the first one that fires decides.</p>
-        <div class="rule" data-label="// rule">seen? → package already written? → duplicate from another board?<br>→ title contains <b>junior · intern · internship · trainee · manual</b></div>
+        <div class="rule" data-label="// rule">seen? → package already written? → duplicate from another board?<br>→ title contains <b>junior · intern · internship · trainee · manual · lead</b></div>
       </div>
       <div class="exits">
         <div class="exit"><span class="tag">seen / packaged / dup</span>Already seen or already packaged</div>
@@ -78,7 +78,8 @@
         <div class="rule" data-label="// rule">at most <b>15</b> calls per run, <b>3</b> in parallel<br>hard rule: not open to Ukraine / relocation / office abroad → <b>score ≤ 10</b><br><br>pass: llm.score <b>≥ 70</b> (llm.minScore)</div>
       </div>
       <div class="exits">
-        <div class="exit"><span class="tag">low · llm</span>Claude scored it below 70</div>
+        <div class="exit"><span class="tag">low · llm</span>Claude scored it below 50</div>
+        <div class="exit soft"><span class="tag">borderline</span>Claude scored it 50–69 (llm.borderlineMin): a package in the Borderline tab, no Telegram message</div>
         <div class="exit soft"><span class="tag">deferred</span>The 15-call cap is used up; the vacancy waits for the next run</div>
         <div class="exit soft"><span class="tag">suspect</span>Signs of prompt injection in the text: the package is written with a flag</div>
       </div>
@@ -153,13 +154,13 @@
     <h2>Special cases</h2>
     <div class="notes">
       <div class="note"><h3>No description</h3><p>Under 300 characters of text, the vacancy is scored on its title. The first rejection does not mark it seen, so the next run re-reads it with the description. The second rejection is final.</p></div>
-      <div class="note"><h3>Claude did not answer</h3><p>The call is retried once. If it fails again, the package is written on keyword points alone so the match is not lost.</p></div>
+      <div class="note"><h3>Claude did not answer</h3><p>The call is retried once. If it fails again, a keyword-only package is written into the Borderline tab so the match is not lost.</p></div>
       <div class="note"><h3>Per-board threshold</h3><p><code>dou.minScore</code>, <code>djinni.minScore</code> and <code>linkedin.minScore</code> override the global one. None is set today, so all use 18.</p></div>
       <div class="note"><h3>LinkedIn messages</h3><p>Same points, different thresholds: ≥ 8 is relevant, ≥ 4 is maybe. They decide whether a reply draft is written.</p></div>
     </div>
   </section>
 
-  <footer>Values from <code>jobs.config.json</code> and <code>skills.json</code> as of 15 October 2026. Code: <code>lib/keyword-gate.mjs</code>, <code>lib/relevance.mjs</code>, <code>lib/llm.mjs</code>, <code>jobs.mjs</code>.</footer>
+  <footer>Values from <code>jobs.config.json</code> and <code>skills.json</code> as of 9 November 2026. Code: <code>lib/keyword-gate.mjs</code>, <code>lib/relevance.mjs</code>, <code>lib/llm.mjs</code>, <code>jobs.mjs</code>.</footer>
 </div>
 </div>
 
