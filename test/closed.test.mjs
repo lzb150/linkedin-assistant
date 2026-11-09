@@ -67,6 +67,16 @@ test("selectCandidates: dou/djinni/linkedin only, new/viewed only, re-checked at
   assert.deepEqual(selectCandidates({ packages, stateMap, checked, now, recheckDays: 3, maxPerRun: 2 }).length, 2, "cap applies after ordering");
 });
 
+test("selectCandidates: a url whose probe got no answer waits a day and sorts by that attempt, so it cannot starve the rest", () => {
+  const packages = [
+    { url: "https://jobs.dou.ua/v/1/", source: "dou" },      // tried 2 h ago → waits
+    { url: "https://jobs.dou.ua/v/2/", source: "dou" },      // tried 2 d ago → due, sorts after the never-probed
+    { url: "https://jobs.dou.ua/v/3/", source: "dou" },      // never probed
+  ];
+  const tried = { "https://jobs.dou.ua/v/1/": new Date(now.getTime() - 2 * 3600000).toISOString(), "https://jobs.dou.ua/v/2/": daysAgo(2) };
+  assert.deepEqual(selectCandidates({ packages, tried, now }).map((c) => c.url), ["https://jobs.dou.ua/v/3/", "https://jobs.dou.ua/v/2/"]);
+});
+
 test("planArchive: closed past the grace period and viewed untouched for viewedDays move to archive; recent, new and post-applied stay", () => {
   const packages = [
     { file: "old-closed.md", url: "https://jobs.dou.ua/v/1/" },

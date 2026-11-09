@@ -37,7 +37,7 @@ try {
 
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
-const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }
+const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO, _tried: { url: lastUnansweredAttemptISO } }
 const HEARTBEAT_FILE = join(dir, "last-success.json");
 
 // A package readPackages could not read is absent from `packages`, so it looks
@@ -52,13 +52,14 @@ const mayPrune = () => packages.length && !partialRead;
 // fresh stamps hid the loss. Keep it untouched and stop stamping for this run.
 let checked = {};
 let checkedReadable = true;
+let tried = {};   // urls whose probe got no answer: kept out of `checked`, but not re-probed before tomorrow (selectCandidates)
 try {
-  checked = readJson(CHECKED, null) || {};
+  ({ _tried: tried = {}, ...checked } = readJson(CHECKED, null) || {});
 } catch (e) {
   checkedReadable = false;
   log(`⚠ ${CHECKED} unreadable (${e.message}) — re-check stamps are not updated this run and the file is left untouched; fix or delete it`);
 }
-const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, checked); };
+const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, { ...checked, _tried: tried }); };
 
 // The dashboard edits job-state.json through the state server (POST /state:
 // one read-modify-write per request, serialised on its event loop), and this
@@ -109,7 +110,7 @@ const CLEAR = { status: "new", note: "" };
 
 const stateAtStart = await readLive("skipping closed-vacancy check");
 
-const todo = selectCandidates({ packages, stateMap: stateAtStart, checked });   // 150 per run, each url at most every 3 days
+const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, tried });   // 150 per run, each url at most every 3 days
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
 const byUrl = new Map(packages.map((p) => [p.url, p]));
 
@@ -159,12 +160,13 @@ for (const { url, source } of todo) {
     // Stamp only a real answer about the vacancy. A 429/5xx/Cloudflare page says
     // nothing, and a stamp would park the url for the whole re-check window.
     if (status === 200 || status === 404 || status === 410) checked[url] = new Date().toISOString();
+    else tried[url] = new Date().toISOString();
     if (isClosed({ source, status, html })) {
       pending.push(url);
       const p = byUrl.get(url);
       log(`  ✗ closed [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url}`);
     }
-  } catch (e) { log(`  · ${url} — ${e.message}`); }   // network trouble: not checked, retried next run
+  } catch (e) { tried[url] = new Date().toISOString(); log(`  · ${url} — ${e.message}`); }   // network trouble: not checked, retried tomorrow
   // Politeness pause after EVERY probe, failed ones too (a `continue` in the
   // catch used to skip it and hammer a board during a network blip).
   await new Promise((r) => setTimeout(r, 1000));
@@ -211,7 +213,7 @@ if (savedNow || wouldPrune) {
 }
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
+if (mayPrune()) for (const m of [checked, tried]) for (const u of Object.keys(m)) if (!live.has(u)) delete m[u];
 saveChecked();
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
 heartbeat(HEARTBEAT_FILE, "closed-check", { log, alert: (m) => notify("Job assistant", m) });
