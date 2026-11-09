@@ -309,6 +309,19 @@ test("canonicalKey folds 'Quality Assurance' into 'QA' and the long SDET spellin
   );
 });
 
+test("dedupeJobs: a keeper takes dates only from the copies folded into it, not from same-source siblings", () => {
+  // Two reqs of one board under one title stay separate vacancies; the group's
+  // earliest date used to be written onto both, making the newer one look old.
+  const a = { source: "dou", company: "Acme", title: "SDET", url: "u1", text: "x".repeat(50), posted: "2026-10-20T00:00:00.000Z" };
+  const b = { source: "dou", company: "Acme", title: "SDET", url: "u2", text: "x".repeat(40), posted: "2026-11-05T00:00:00.000Z" };
+  assert.deepEqual(dedupeJobs([a, b]).deduped.map((j) => j.posted), ["2026-10-20T00:00:00.000Z", "2026-11-05T00:00:00.000Z"], "nothing folded: dates untouched");
+  const c = { source: "djinni", company: "Acme", title: "SDET", url: "u3", text: "x".repeat(5), posted: "2026-10-01T00:00:00.000Z" };
+  const { deduped } = dedupeJobs([a, b, c]);
+  assert.equal(deduped.length, 2);
+  assert.equal(a.posted, "2026-10-01T00:00:00.000Z", "the keeper the djinni copy folded into takes its earlier date");
+  assert.equal(b.posted, "2026-11-05T00:00:00.000Z", "its sibling keeps its own");
+});
+
 test("dedupeJobs keeps the earliest `posted` of a merged group on the keeper", () => {
   const { deduped } = dedupeJobs([
     { source: "dou", company: "Acme", title: "SDET", url: "u1", text: "x".repeat(50), posted: "2026-10-20T00:00:00.000Z" },
