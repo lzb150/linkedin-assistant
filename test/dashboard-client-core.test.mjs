@@ -69,6 +69,12 @@ test("offlinePatches: dirty urls push full-override patches, deletions clear", (
     { url: "https://d/", patch: { status: "new", note: "" } },
   ]);
   assert.deepEqual(core.offlinePatches(local, []), []);
+  // Field-level: a note edited offline must not push the mirrored status back
+  // over one closed-check set meanwhile; a deletion clears only what was edited.
+  assert.deepEqual(core.offlinePatches(local, ["https://a/", "https://d/"], { "https://a/": ["note"], "https://d/": ["status"] }), [
+    { url: "https://a/", patch: { note: "hi" } },
+    { url: "https://d/", patch: { status: "new" } },
+  ]);
   // The clearing patch really empties an entry via the shared merge.
   assert.equal(core.mergeEntryLocal(server["https://d/"], core.entryToPatch(undefined)), null);
   // A status this build does not know (newer closed-check/dashboard) survives a
