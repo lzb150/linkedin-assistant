@@ -74,6 +74,6 @@ Run it hourly via launchd:
 
 ```bash
 cp com.example.djinni-inbox.plist.example \
-   ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # then edit the paths
+   ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # then edit the paths and the Label
 launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
 ```

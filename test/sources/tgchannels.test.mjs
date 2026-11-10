@@ -46,6 +46,11 @@ test("resolvesPublic: a public-looking name that resolves to loopback or the LAN
     assert.equal(await resolvesPublic("https://x.nip.io/", to(inward)), false, inward);
   }
   assert.equal(await resolvesPublic("https://x.example/", to("93.184.216.34", "192.168.1.1")), false, "one inward address among several is enough");
+  // Ranges the first list missed; NAT64 is judged by the IPv4 address it carries.
+  for (const inward of ["198.18.0.1", "192.0.0.8", "224.0.0.251", "255.255.255.255", "2002:7f00:1::1", "fec0::1", "ff02::1", "64:ff9b::7f00:1", "64:ff9b::10.0.0.5"]) {
+    assert.equal(await resolvesPublic("https://x.nip.io/", to(inward)), false, inward);
+  }
+  assert.equal(await resolvesPublic("https://x.example/", to("64:ff9b::5db8:d822")), true, "a public site behind NAT64 is still read");
   assert.equal(await resolvesPublic("https://x.example/", async () => { throw new Error("ENOTFOUND"); }), false);
   assert.equal(await resolvesPublic("https://x.example/", to()), false);
 });

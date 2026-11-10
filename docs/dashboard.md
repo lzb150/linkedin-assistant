@@ -97,12 +97,12 @@ Djinni and LinkedIn vacancies that are still **New** or **Viewed** (plain GET, o
 second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
 applications") as **Closed**. Closed cards leave the
-New and Viewed views (with both tabs deselected they show a muted "· closed" cue) and are never
+New and Viewed views (with both tabs deselected they show a muted " // closed" cue) and are never
 auto-reopened by clicking them. Closed packages are moved to
 `applications/archive/` after a 14-day grace period, Viewed packages you have not
 touched for 30 days go the same way, and nothing reads that folder. `run.sh`
 deletes archived packages older than 180 days. It never posts a banner — closures show up as the muted
-"· closed" cue on the dashboard. While the state server answers, closures and
+" // closed" cue on the dashboard. While the state server answers, closures and
 prunes go through it (`POST /state`, the same payload a dashboard click sends),
 so a click landing mid-run is never overwritten; with the server down the
 script writes `job-state.json` directly, as before. Install like the weekly
@@ -115,11 +115,12 @@ median per-run yield of every source. `node report.mjs` prints it;
 `--notify` also posts a one-line macOS notification and, with
 [Telegram alerts](setup.md#phone-alerts-telegram-optional) set up, sends the whole digest to your phone — which is what the weekly
 launchd job (`com.eugene.jobs-report.plist`, ships as `.example`, Monday
-09:00) does. `REPORT_DAYS=14` widens the window. LLM counts come from the run
-logs in `logs/`, so they cover only what the log rotation still holds. Install:
+09:00) does. `REPORT_DAYS=14` widens the window. The run and LLM counts come from
+`run-stats.jsonl`; for runs older than that file they fall back to the run logs in
+`logs/`, which cover only what the log rotation still holds. Install:
 
 ```bash
 cp com.example.jobs-report.plist.example \
-   ~/Library/LaunchAgents/com.eugene.jobs-report.plist   # edit paths inside
+   ~/Library/LaunchAgents/com.eugene.jobs-report.plist   # edit the paths and the Label inside
 launchctl load ~/Library/LaunchAgents/com.eugene.jobs-report.plist
 ```

@@ -313,3 +313,11 @@ test("isoDate: RSS, ISO, unix seconds and Djinni's tooltip become ISO; garbage, 
   // A garbled tooltip must not roll over into a plausible date (Date.UTC alone made "00.13.2026" the 31st of December).
   for (const bad of ["12:37 00.13.2026", "12:37 31.02.2026", "24:00 12.06.2026", "12:60 12.06.2026", "12:37 00.00.2026"]) assert.equal(isoDate(bad, now), undefined, bad);
 });
+
+test("isoDate refuses what Date.parse only guesses at", () => {
+  for (const v of ["5", "2026-02-31", "2026-13-01T10:00:00Z", "soon"]) assert.equal(isoDate(v, Date.parse("2026-11-10T00:00:00Z")), undefined, v);
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  assert.equal(isoDate("2026-11-09", now), "2026-11-09T00:00:00.000Z");
+  assert.equal(isoDate("2026-11-09T10:00:00+02:00", now), "2026-11-09T08:00:00.000Z");
+  assert.equal(isoDate("Mon, 09 Nov 2026 10:45:36 +0200", now), "2026-11-09T08:45:36.000Z");
+});

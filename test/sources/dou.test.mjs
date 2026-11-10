@@ -204,3 +204,13 @@ test("markRelisted leaves a date less than a day after a newer id's alone: creat
   const out = markRelisted([job(100, "2026-10-30T07:00:00.000Z"), job(101, "2026-10-29T20:00:00.000Z")]);
   assert.deepEqual(out.map((j) => j.relisted), [undefined, undefined]);
 });
+
+test("fetchDou counts a 200 that is no feed (a block page) as a failed feed", async (t) => {
+  const { fetchDou } = await import("../../lib/sources/dou.mjs");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => "<html><title>Just a moment...</title></html>" });
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  await assert.rejects(fetchDou({ feeds: ["http://x/1"] }, (l) => lines.push(l)), /all 1 DOU feed\(s\) failed/);
+  assert.match(lines.join("\n"), /not a feed/);
+});

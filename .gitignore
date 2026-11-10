@@ -68,6 +68,9 @@ closed-check.lock/
 # notify-state read-modify-write lock (lib/notify-state.mjs updateState, Jobs.app clearBadge)
 notify-state.json.lock/
 djinni-notify-state.json.lock/
+# heartbeat read-modify-write lock (lib/heartbeat.mjs, the same withLock)
+last-success.json.lock/
+*last-success.json.lock.stale-*/
 *notify-state.json.lock.stale-*/
 
 # Atomic-write temp files and quarantined corrupt state files

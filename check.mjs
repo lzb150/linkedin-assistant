@@ -14,7 +14,7 @@
 
 import { LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
 import { runScan, sessionExpired, LOGGED_OUT, exitCodeFor } from "./lib/scan-run.mjs";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { scoreMessage, looksLikeJobMessage } from "./lib/relevance.mjs";
@@ -29,7 +29,8 @@ import { log, notify, ensureJobsApp, stampHeartbeat } from "./lib/notify.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
-mkdirSync(DRAFTS, { recursive: true, mode: 0o700 }); // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
+mkdirSync(DRAFTS, { recursive: true, mode: 0o700 });
+chmodSync(DRAFTS, 0o700);   // the mode above only applies when the directory is created // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 const HEARTBEAT_FILE = join(__dir, "last-success.json");
@@ -106,14 +107,18 @@ async function scan(page, ctx, signal) {
 // Open one target (`null` card = the auto-opened thread) and handle it;
 // true = stop the scan (run deadline, or message selector drift).
 async function scanThread(page, card, signal) {
-  const name = await readName(page, card);
+  let name = await readName(page, card);
   // The auto-opened thread is already open: nothing to click or verify.
   if (card && !(await openCard(page, card))) { log(`· could not open thread, skipping: ${name}`); return false; }
   const url = page.url();
   scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
   if (card && unopened.includes(name)) unopened.splice(unopened.indexOf(name), 1);
 
-  return handleThread({ url, name, ...await readThread(page) }, signal);
+  const thread = await readThread(page);
+  // The auto-opened thread's header can render after its url: read before the
+  // bubbles were in, the name was "Recruiter" in the banner and the draft.
+  if (!card) name = await readName(page, null, name);
+  return handleThread({ url, name, ...thread }, signal);
 }
 
 async function openInbox(page) {
@@ -276,7 +281,8 @@ function handleThread({ url, name, fullText, state, snippet, oldest, bubbleCount
   // other thread: opening them would only mark each one read in LinkedIn —
   // the unread filter never lists it again — with no draft to show for it.
   // Stop here, so the rest stay unread for the run after the selector is fixed.
-  if (action === "retry" && !bubbleCount) { log("· message selector drift — stopping the scan; the remaining unread threads stay unread"); return true; }
+  // A read that threw (navigation, a detached frame) has no bubbles either, and says nothing about the others.
+  if (action === "retry" && !bubbleCount && !extractFailed) { log("· message selector drift — stopping the scan; the remaining unread threads stay unread"); return true; }
   return false;
 }
 

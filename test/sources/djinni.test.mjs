@@ -213,3 +213,13 @@ test("fetchDjinni follows a redirect on a search's first page: only a later page
   assert.equal(jobs.length, 2);
   assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
 });
+
+test("fetchDjinni reads a 200 without the search page's filter column as a cut, a real empty result as none", async (t) => {
+  const realFetch = globalThis.fetch;
+  let body = "<html><title>Just a moment...</title></html>";
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => body });
+  t.after(() => { globalThis.fetch = realFetch; });
+  await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1"] }, () => {}), /all 1 Djinni search\(es\) failed/);
+  body = '<html><div class="jobs-filter__set"></div></html>';
+  assert.deepEqual(await fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1"] }, () => {}), []);
+});

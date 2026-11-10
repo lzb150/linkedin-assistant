@@ -346,3 +346,11 @@ test("a job with no company or location and a bare score still writes every fron
   assert.match(markdown, /^# Senior AQA — \? \(dou, score 5\)$/m);
   assert.match(filename, /_dou_Senior_AQA_[0-9a-f]{6}\.md$/, "no company: the slug falls back to the title");
 });
+
+test("appendAltLink refuses the package's own url", () => {
+  const { file, cleanup } = tmpPackage(FM.replace("company: Acme", "company: Acme\nurl: https://jobs.dou.ua/v/1/"));
+  try {
+    assert.equal(appendAltLink(file, "dou", "https://jobs.dou.ua/v/1/"), false);
+    assert.doesNotMatch(readFileSync(file, "utf8"), /alt_links/);
+  } finally { cleanup(); }
+});

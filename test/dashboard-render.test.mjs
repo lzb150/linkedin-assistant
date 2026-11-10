@@ -144,8 +144,8 @@ test("ageLabel and the card's posted / reposted cues", () => {
   assert.equal(it.posted, "2026-10-25T12:00:00.000Z");
   assert.equal(it.reposts, 2);
   const html = renderCard(it, 0, { now });
-  assert.match(html, /<time datetime="2026-10-25T12:00:00\.000Z">posted 3 d ago<\/time>/);
-  assert.match(html, /<span class="repost"[^>]*>reposted ×2<\/span>/);
+  assert.match(html, /<time datetime="2026-10-25T12:00:00\.000Z" data-kind="posted">posted 3 d ago<\/time><\/span>/);
+  assert.match(html, /<span class="repost"[^>]*>reposted ×2<span class="sr-only"> \([^<]+\)<\/span><\/span>/);
   const bare = renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30", posted: "soon", reposts: "x" }, cover: "" }), 0, { now });
   assert.doesNotMatch(bare, /class="posted"|class="repost"/, "garbage frontmatter renders nothing");
   // `new Date(2026, 1, 30)` rolls over to 2 March, and Date.parse reads "5" as 2001.
@@ -157,7 +157,7 @@ test("a card LinkedIn re-listed says relisted, with the re-listing's age, never 
   assert.equal(ageLabel("relisted", "2026-10-30T00:00:00Z", now), "relisted 1 d ago");
   const it = toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", relisted: "2026-10-30T00:00:00Z" }, cover: "" });
   const html = renderCard(it, 0, { now });
-  assert.match(html, /<span class="posted" title="[^"]*first posting date[^"]*"><time datetime="2026-10-30T00:00:00\.000Z">relisted 1 d ago<\/time><\/span>/);
+  assert.match(html, /<span class="posted" title="[^"]*first posting date[^"]*"><time datetime="2026-10-30T00:00:00\.000Z" data-kind="relisted">relisted 1 d ago<\/time><span class="sr-only"> \([^<]*first posting date\)<\/span><\/span>/);
   assert.doesNotMatch(html, />posted /);
 });
 
@@ -165,5 +165,12 @@ test("a card whose board gives only its last update says updated", () => {
   const now = Date.parse("2026-10-31T12:00:00Z");
   assert.equal(ageLabel("updated", "2026-10-30T17:01:00Z", now), "updated 1 d ago");
   const html = renderCard(toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", updated: "2026-10-30T17:01:00Z" }, cover: "" }), 0, { now });
-  assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-30T17:01:00\.000Z">updated 1 d ago<\/time><\/span>/);
+  assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-30T17:01:00\.000Z" data-kind="updated">updated 1 d ago<\/time><span class="sr-only"> \([^<]*last update[^<]*\)<\/span><\/span>/);
+});
+
+test("a hand-edited CRLF package keeps its whole letter, and a rolled-over full stamp is no date", () => {
+  const crlf = md({ title: "SDET" }, "# x\n<!--cover:start-->\nHello\n## Action inside the letter\n<!--cover:end-->\n## Action\n").replace(/\n/g, "\r\n");
+  assert.equal(parse(crlf).cover, "Hello\n## Action inside the letter");
+  assert.equal(toItem({ fm: { posted: "2026-02-30T10:00:00Z" }, cover: "" }).posted, "");
+  assert.equal(toItem({ fm: { posted: "2026-02-27T10:00:00Z" }, cover: "" }).posted, "2026-02-27T10:00:00.000Z");
 });
