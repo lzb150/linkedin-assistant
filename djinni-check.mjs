@@ -136,7 +136,7 @@ async function bumpIfDue(page) {
       writeJsonAtomic(BUMP_STATE_FILE, nextBumpState(bumpState, outcome));
       log(`bump: ${outcome}`);
       if (outcome === "bumped") notify("Djinni", "Profile bumped — back to the top of search results.");
-      if (outcome === "unverified") notify("Djinni assistant", "Bump attempt could not be verified — check djinni.co/my/profile/ manually.");
+      if (outcome === "unverified" || outcome === "clicked") notify("Djinni assistant", "Bump attempt could not be verified — check djinni.co/my/profile/ manually.");
     }
   } catch (e) { log("bump failed:", e?.message); }
 }

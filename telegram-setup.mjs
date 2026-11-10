@@ -69,12 +69,20 @@ const me = await call("getMe");
 const chat = [...(await call("getUpdates"))].reverse().map((u) => u.message?.chat).find((c) => c?.type === "private");
 if (!chat) fail(`no message to the bot yet — open https://t.me/${me.username}, send it any message, then run this again`);
 
-// Test message first: a config is only saved once it has been shown to work.
-await call("sendMessage", { chat_id: chat.id, text: "✅ linkedin-assistant: Telegram alerts are on. New matching jobs and recruiter messages will arrive here." });
-writeJsonAtomic(join(__dir, "telegram.json"), { token, chatId: chat.id, ...(process.env.TELEGRAM_API ? { apiBase: API } : {}) }, 2);   // 0600
-// The chat is whoever messaged the bot last, so name them: a stranger who found
-// the bot by its username shortly before this run would get every alert.
+// The chat is whoever messaged the bot last: a stranger who found the bot by
+// its username shortly before this run would get every alert. Name them and,
+// at a terminal, ask before anything is sent or saved.
 // Control and format characters go — the name is theirs and prints to a terminal.
 const who = [chat.first_name, chat.last_name].filter(Boolean).join(" ") + (chat.username ? ` (@${chat.username})` : "");
 const name = who.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 80) || "no name";
+if (process.stdin.isTTY) {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  const answer = await rl.question(`Send the alerts to chat ${chat.id}: ${name}? [y/N] `).catch(() => "");
+  rl.close();
+  if (!/^y(es)?$/i.test(answer.trim())) fail("nothing saved — send the bot a message yourself and run this again");
+}
+
+// Test message first: a config is only saved once it has been shown to work.
+await call("sendMessage", { chat_id: chat.id, text: "✅ linkedin-assistant: Telegram alerts are on. New matching jobs and recruiter messages will arrive here." });
+writeJsonAtomic(join(__dir, "telegram.json"), { token, chatId: chat.id, ...(process.env.TELEGRAM_API ? { apiBase: API } : {}) }, 2);   // 0600
 console.log(`✓ telegram.json written — alerts go to @${me.username} (chat ${chat.id}: ${name}). Not you? Delete telegram.json, send the bot a message yourself and run this again. Check Telegram for the test message.`);

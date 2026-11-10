@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { channelUrl, isPublicHttps, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
+import { channelUrl, isPublicHttps, resolvesPublic, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 // A real t.me/s/remote_qa_jobs page (2026-10-17) cut to four posts: 384
@@ -33,6 +33,21 @@ function web({ channel = {}, pages = {} } = {}) {
 test("channelUrl: the public preview, @ dropped, `before` only past the first page", () => {
   assert.equal(channelUrl("@remote_qa_jobs"), "https://t.me/s/remote_qa_jobs");
   assert.equal(channelUrl("remote_qa_jobs", 379), "https://t.me/s/remote_qa_jobs?before=379");
+});
+
+// The apply-link host as a public address: the job-page tests use made-up hosts.
+const PUBLIC = async () => [{ address: "93.184.216.34", family: 4 }];
+
+test("resolvesPublic: a public-looking name that resolves to loopback or the LAN is refused, and so is one that does not resolve", async () => {
+  // isPublicHttps reads only the spelling: 127.0.0.1.nip.io and fritz.box passed it.
+  const to = (...addrs) => async () => addrs.map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
+  assert.equal(await resolvesPublic("https://acme.example/job", PUBLIC), true);
+  for (const inward of ["127.0.0.1", "10.0.0.5", "172.20.0.1", "192.168.1.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "fd00::1", "fe80::1"]) {
+    assert.equal(await resolvesPublic("https://x.nip.io/", to(inward)), false, inward);
+  }
+  assert.equal(await resolvesPublic("https://x.example/", to("93.184.216.34", "192.168.1.1")), false, "one inward address among several is enough");
+  assert.equal(await resolvesPublic("https://x.example/", async () => { throw new Error("ENOTFOUND"); }), false);
+  assert.equal(await resolvesPublic("https://x.example/", to()), false);
 });
 
 test("isPublicHttps: only a public https host on the default port", () => {
@@ -110,7 +125,7 @@ test("fetchTgChannels: two posts sharing a fallback link stay two jobs — the p
     channel: { "": page([wrap(1, noApply({ Title: "SDET", "Company name": "Acme" })), wrap(2, noApply({ Title: "QA Lead", "Company name": "Acme" }))]) },
     pages: { [site]: ld({ "@type": "JobPosting", description: "Careers page" }) },
   });
-  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"] }, () => {}, { doFetch });
+  const jobs = await fetchTgChannels({ enabled: true, channels: ["c"] }, () => {}, { doFetch, lookup: PUBLIC });
   assert.deepEqual(jobs.map((j) => [j.title, j.url]), [["QA Lead", "https://t.me/c/2"], ["SDET", "https://t.me/c/1"]], "distinct urls, newest first");
   assert.deepEqual(urls.filter((u) => !u.includes("t.me")), [site, site], "the shared link is still read for each post's description");
   assert.ok(jobs.every((j) => j.text.endsWith("Careers page")));
@@ -162,7 +177,7 @@ test("fetchTgChannels walks `pages` pages by `before`, enriches new jobs from th
     pages: { [a]: ld({ "@type": "JobPosting", description: "<p>Full text of A</p>" }), [b]: 503 },
   });
   const lines = [];
-  const jobs = await fetchTgChannels({ enabled: true, channels: ["@remote_qa_jobs"], pages: 3 }, (l) => lines.push(l), { doFetch });
+  const jobs = await fetchTgChannels({ enabled: true, channels: ["@remote_qa_jobs"], pages: 3 }, (l) => lines.push(l), { doFetch, lookup: PUBLIC });
   assert.deepEqual(jobs.map((j) => j.title), ["SDET A", "SDET B"]);
   assert.deepEqual(urls.filter((u) => u.includes("t.me")), ["https://t.me/s/remote_qa_jobs", "https://t.me/s/remote_qa_jobs?before=10"], "stops on the page with no `before`, not at `pages`");
   assert.match(jobs[0].text, /Tags: qa, test automation\. Full text of A$/);
@@ -189,7 +204,7 @@ test("fetchTgChannels: known jobs and fullDescription:false skip the job pages",
   const a = "https://boards.example/jobs/a";
   const channel = { "": page([wrap(2, post({ Title: "SDET A" }, a)), wrap(3, post({ Title: "SDET Known" }, "https://boards.example/jobs/k"))]) };
   const known = web({ channel, pages: { [a]: ld({ "@type": "JobPosting", description: "Full" }) } });
-  await fetchTgChannels({ enabled: true, channels: ["c"] }, () => {}, { doFetch: known.doFetch, skip: (j) => j.title === "SDET Known" });
+  await fetchTgChannels({ enabled: true, channels: ["c"] }, () => {}, { doFetch: known.doFetch, lookup: PUBLIC, skip: (j) => j.title === "SDET Known" });
   assert.deepEqual(known.urls.filter((u) => !u.includes("t.me")), [a]);
   const off = web({ channel });
   await fetchTgChannels({ enabled: true, channels: ["c"], fullDescription: false }, () => {}, { doFetch: off.doFetch });

@@ -14,7 +14,7 @@ import { DAY_MS } from "./lib/local-day.mjs";
 import { readStoreOrExit, writeStore, mergeEntry, STATE_SERVER_URL } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, stampHeartbeat } from "./lib/notify.mjs";
-import { isClosed, selectCandidates, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
+import { isClosed, selectCandidates, selectReprobes, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
 import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
@@ -32,7 +32,7 @@ acquireRunLockOrExit(join(dir, "closed-check"), { log, name: "closed-check.mjs" 
 
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
-const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO, _tried: { url: lastUnansweredAttemptISO } }
+const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO, _tried: { url: lastUnansweredAttemptISO }, _gone: { url: closedOn404ISO } }
 const HEARTBEAT_FILE = join(dir, "last-success.json");
 
 // A package readPackages could not read is absent from `packages`, so it looks
@@ -47,14 +47,15 @@ const mayPrune = () => packages.length && !partialRead;
 // fresh stamps hid the loss. Keep it untouched and stop stamping for this run.
 let checked = {};
 let checkedReadable = true;
+let gone = {};    // urls this checker closed on a 404/410, re-probed once a day later (lib/closed.mjs selectReprobes)
 let tried = {};   // urls whose probe got no answer: kept out of `checked`, but not re-probed before tomorrow (selectCandidates)
 try {
-  ({ _tried: tried = {}, ...checked } = readJson(CHECKED, null) || {});
+  ({ _tried: tried = {}, _gone: gone = {}, ...checked } = readJson(CHECKED, null) || {});
 } catch (e) {
   checkedReadable = false;
   log(`⚠ ${CHECKED} unreadable (${e.message}) — re-check stamps are not updated this run and the file is left untouched; fix or delete it`);
 }
-const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, { ...checked, _tried: tried }); };
+const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, { ...checked, _tried: tried, _gone: gone }); };
 
 // The dashboard edits job-state.json through the state server (POST /state:
 // one read-modify-write per request, serialised on its event loop), and this
@@ -104,7 +105,10 @@ const CLEAR = { status: "new", note: "" };
 
 const stateAtStart = await readLive("skipping closed-vacancy check");
 
-const todo = selectCandidates({ packages, stateMap: stateAtStart, checked, tried });   // 150 per run, each url at most every 3 days
+const todo = [
+  ...selectCandidates({ packages, stateMap: stateAtStart, checked, tried }),   // 150 per run, each url at most every 3 days
+  ...selectReprobes({ packages, stateMap: stateAtStart, gone }),               // the second look at a 404 closure
+];
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
 const byUrl = new Map(packages.map((p) => [p.url, p]));
 
@@ -141,8 +145,25 @@ async function flush() {
   saveChecked();
 }
 
+// The second look at a url closed on a 404/410. A real answer settles it either
+// way; a 200 without the marker reopens the card — unless it was touched since
+// the closure (a click on it is the owner's word, and wins).
+const REOPEN = { status: "new" };
+async function settleReprobe(url, source, status, html) {
+  if (status !== 200 && status !== 404 && status !== 410) return;   // no answer: asked again tomorrow
+  const closedAt = Date.parse(gone[url] || "");
+  delete gone[url];
+  if (isClosed({ source, status, html })) return;
+  const map = await readLive("closed-check: store unreadable mid-run — reopening skipped");
+  const e = map[url];
+  if (e?.status !== "closed" || Date.parse(e.updatedAt || "") > closedAt + 60_000) return;
+  await save(map, [{ url, patch: REOPEN }]);
+  const p = byUrl.get(url);
+  log(`  ↺ reopened [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url} (the board answers again)`);
+}
+
 let probed = 0;
-for (const { url, source } of todo) {
+for (const { url, source, reprobe } of todo) {
   try {
     // Every redirect hop is re-checked against the board host, not just the
     // frontmatter url: an open redirect on a board would otherwise aim this
@@ -154,8 +175,10 @@ for (const { url, source } of todo) {
     // nothing, and a stamp would park the url for the whole re-check window.
     if (status === 200 || status === 404 || status === 410) checked[url] = new Date().toISOString();
     else tried[url] = new Date().toISOString();
-    if (isClosed({ source, status, html })) {
+    if (reprobe) await settleReprobe(url, source, status, html);
+    else if (isClosed({ source, status, html })) {
       pending.push(url);
+      if (status !== 200) gone[url] = new Date().toISOString();
       const p = byUrl.get(url);
       log(`  ✗ closed [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url}`);
     }
@@ -187,7 +210,9 @@ const staleBefore = Date.now() - DAY_MS;
 // While the two disagreed, a legacy entry could be archived and then never
 // pruned, so it sat in the store forever with no package behind it.
 const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return !Number.isFinite(t) || t < staleBefore; };
-const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]);
+// An entry with a note is kept: the note is the owner's own text, and pruning
+// it with the package left it only in the snapshots and backups.
+const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]) && !map[u]?.note;
 // Counted on the map we actually write, not on the one read before the renames:
 // the first pass used to prune `stateMap`, which is then thrown away, so the
 // logged number could disagree with what was really removed.
@@ -206,7 +231,7 @@ if (savedNow || wouldPrune) {
 }
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-if (mayPrune()) for (const m of [checked, tried]) for (const u of Object.keys(m)) if (!live.has(u)) delete m[u];
+if (mayPrune()) for (const m of [checked, tried, gone]) for (const u of Object.keys(m)) if (!live.has(u)) delete m[u];
 saveChecked();
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
 stampHeartbeat(HEARTBEAT_FILE, "closed-check");

@@ -148,6 +148,8 @@ test("ageLabel and the card's posted / reposted cues", () => {
   assert.match(html, /<span class="repost"[^>]*>reposted ×2<\/span>/);
   const bare = renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30", posted: "soon", reposts: "x" }, cover: "" }), 0, { now });
   assert.doesNotMatch(bare, /class="posted"|class="repost"/, "garbage frontmatter renders nothing");
+  // `new Date(2026, 1, 30)` rolls over to 2 March, and Date.parse reads "5" as 2001.
+  for (const posted of ["2026-02-30", "2026-13-45", "5"]) assert.equal(toItem({ fm: { posted }, cover: "" }).posted, "", posted);
 });
 
 test("a card LinkedIn re-listed says relisted, with the re-listing's age, never posted", () => {
