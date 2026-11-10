@@ -181,3 +181,26 @@ test("jobs.mjs: only the hourly DOU_ONLY run stamps the jobs-dou heartbeat, so t
   await runJobs(p);                 // DOU_ONLY=1, the hourly job itself
   assert.deepEqual(stamps().sort(), ["jobs-dou", "jobs-linkedin"], "the hourly run stamps itself");
 });
+
+test("jobs.mjs: the full run leaves a board to an hourly run that read it within 50 minutes; a board that read 0 there, or ALL_SOURCES=1, is read again", async (t) => {
+  // The :45 full run repeated the :15 hourly sweep of every board. Skipping is
+  // only safe while the hourly run really read the board: a stale stamp or a
+  // board that found nothing there must not leave it unread for another hour.
+  const p = setupProject(t, await serveFeed(t, () => FEED));
+  await runJobs(p);                                          // the hourly run: stamps jobs-dou, records dou > 0
+  const out = await runScript(p, "jobs.mjs");
+  assert.match(out, /dou: read 0 min ago by the hourly run — skipped/);
+  assert.doesNotMatch(out, /Gathering dou/);
+  assert.doesNotMatch(out, /not run at all/, "a board left to the hourly run is not an outage");
+
+  assert.match(await runScript(p, "jobs.mjs", { ALL_SOURCES: "1" }), /Gathering dou/, "the override reads it anyway");
+
+  const health = p.json("source-health.json");
+  writeFileSync(p.path("source-health.json"), JSON.stringify({ ...health, dou: [...health.dou, 0] }));
+  assert.match(await runScript(p, "jobs.mjs"), /Gathering dou/, "a board that read 0 last time is read again");
+
+  const beat = p.json("last-success.json");
+  beat.jobs["jobs-dou"].at = new Date(Date.now() - 51 * 60_000).toISOString();
+  writeFileSync(p.path("last-success.json"), JSON.stringify(beat));
+  assert.match(await runScript(p, "jobs.mjs"), /Gathering dou/, "an hourly run older than 50 minutes does not count");
+});
