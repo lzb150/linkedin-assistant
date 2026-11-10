@@ -135,14 +135,15 @@ source it tried failed.
 ## Back up (and restore)
 
 Git holds the code only. The application packages, drafts, every state file,
-`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh`, the
+`jobs.config.json`, `skills.json`, `resume.txt`, `run.sh`, the
 owner's GitHub traffic history (`gh-traffic/`) and the live plists exist on this disk alone, so `backup.mjs` archives them nightly
 (`com.example.backup.plist.example`, 21:00) into iCloud Drive —
 `~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, one
 `.tgz` per day, newest 14 kept, under 1 MB each. `BACKUP_DIR` points it elsewhere
 (an external disk, a synced folder); `BACKUP_KEEP` changes the count. The two
 browser profiles are left out: 1.4 GB of Chromium cache that two `node login.mjs`
-runs recreate.
+runs recreate. `telegram.json` is left out too — it holds the bot token, which
+does not belong in a cloud folder; `node telegram-setup.mjs` writes it again.
 
 Restore on a fresh Mac:
 
@@ -151,6 +152,7 @@ git clone git@github.com:lzb150/linkedin-assistant.git && cd linkedin-assistant
 npm ci && npx playwright install chromium
 tar -xzf ~/Library/Mobile\ Documents/com~apple~CloudDocs/linkedin-assistant-backup/linkedin-assistant-YYYY-MM-DD.tgz
 node login.mjs && node login.mjs djinni      # the two sessions are not in the archive
+node telegram-setup.mjs                      # only if you use the Telegram alerts: the token is not in the archive
 ./build-jobs.sh                              # Jobs.app
 cp com.*.plist ~/Library/LaunchAgents/ && for p in com.*.plist; do launchctl load ~/Library/LaunchAgents/$p; done
 ```

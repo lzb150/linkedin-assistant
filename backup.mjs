@@ -25,9 +25,11 @@ const KEEP = Math.max(1, Number(process.env.BACKUP_KEEP) || 14);
 
 // Everything machine-local that the project cannot regenerate. Missing entries
 // are skipped (no Djinni account → no djinni-*.json), never an error.
+// telegram.json is left out on purpose: it holds the bot token, and the
+// default destination is a cloud folder. `node telegram-setup.mjs` rewrites it.
 const ITEMS = [
   "applications", "drafts",
-  "jobs.config.json", "skills.json", "resume.txt", "run.sh", "telegram.json",
+  "jobs.config.json", "skills.json", "resume.txt", "run.sh",
   "job-state.json", "jobs-seen.json", "seen.json", "closed-check-state.json",
   "djinni-seen.json", "djinni-bump-state.json", "djinni-notify-state.json", "notify-state.json",
   "source-health.json", "run-stats.jsonl", "last-success.json",
