@@ -91,7 +91,7 @@ test("llmJSON gives up on its own timer and SIGKILLs the process group even if t
   assert.ok(Date.now() - t0 < 2000, "resolved by the timer, not by the pipe");
   assert.equal(opts.detached, true, "CLI must lead its own process group");
   assert.equal(opts.timeout, undefined, "no execFile timeout — it would wait for the pipe anyway");
-  assert.deepEqual(kills, [[-4242, "SIGKILL"], [-4242, "SIGKILL"]], "group kill on both attempts");
+  assert.deepEqual(kills, [[-4242, "SIGKILL"]], "group kill, and no retry after a timeout");
   assert.match(lines[0], /llm failed: timeout 0s, SIGKILL to the process group/);
 });
 

@@ -15,8 +15,8 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { log, notify } from "./lib/notify.mjs";
-import { heartbeat } from "./lib/heartbeat.mjs";
+import { log, notify, stampHeartbeat } from "./lib/notify.mjs";
+import { localDay } from "./lib/local-day.mjs";
 
 // BACKUP_ROOT is a test seam (back up a prepared tmp tree); the real root is this directory.
 const ROOT = process.env.BACKUP_ROOT || dirname(fileURLToPath(import.meta.url));
@@ -40,7 +40,7 @@ const plists = readdirSync(ROOT).filter((f) => /^com\..+\.plist$/.test(f));
 const present = [...ITEMS, ...plists].filter((f) => existsSync(join(ROOT, f)));
 if (!present.length) { log(`backup: nothing to back up in ${ROOT}`); process.exit(1); }
 
-const day = new Date().toISOString().slice(0, 10);
+const day = localDay();
 const name = `linkedin-assistant-${day}.tgz`;
 const out = join(DEST, name);
 const tmp = `${out}.tmp-${process.pid}`;
@@ -65,4 +65,4 @@ const old = readdirSync(DEST).filter((f) => /^linkedin-assistant-\d{4}-\d{2}-\d{
 for (const f of old) { try { rmSync(join(DEST, f)); } catch (e) { log(`backup: could not remove ${f}: ${e.message}`); } }
 
 log(`backup: ${name} (${(size / 1_048_576).toFixed(1)} MB, ${present.length} items) → ${DEST}; ${old.length} old archive(s) removed`);
-heartbeat(join(ROOT, "last-success.json"), "backup", { log, alert: (m) => notify("Job assistant", m) });
+stampHeartbeat(join(ROOT, "last-success.json"), "backup");

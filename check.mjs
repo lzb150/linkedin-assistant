@@ -13,7 +13,7 @@
 //                                     does not touch the Dock badge.)
 
 import { LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
-import { runScan, sessionExpired, LOGGED_OUT } from "./lib/scan-run.mjs";
+import { runScan, sessionExpired, LOGGED_OUT, exitCodeFor } from "./lib/scan-run.mjs";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -24,8 +24,7 @@ import { buildDraft } from "./lib/draft.mjs";
 import { updateState, linkedinBadge, keepBadgeAdding } from "./lib/notify-state.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
-import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
-import { heartbeat } from "./lib/heartbeat.mjs";
+import { log, notify, ensureJobsApp, stampHeartbeat } from "./lib/notify.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
@@ -341,14 +340,11 @@ function finish({ held, outcome }) {
   }
 }
 
-if (outcome === "failed") {
-  log(`FAILED after scanning ${scanned} unread, ${drafted} draft(s) written to ${DRAFTS}`);
-  process.exit(1);
-}
-if (outcome === LOGGED_OUT) process.exit(2);
+if (outcome === "failed") log(`FAILED after scanning ${scanned} unread, ${drafted} draft(s) written to ${DRAFTS}`);
+if (exitCodeFor(outcome)) process.exit(exitCodeFor(outcome));
 log(`${outcome === "busy" ? "Skipped (profile busy)." : "Done."} Scanned ${scanned} unread, wrote ${drafted} draft(s) to ${DRAFTS}`);
 // Only a real pass stamps the heartbeat: not a busy profile, not a list that
 // never loaded (selector drift) — the watchdog is what notices a permanent one,
 // as djinni-check.mjs does with `scanned`. A SCAN_ALL rerun by hand counts nothing.
-if (counted) heartbeat(HEARTBEAT_FILE, "check", { log, alert: (m) => notify("Job assistant", m) });
+if (counted) stampHeartbeat(HEARTBEAT_FILE, "check");
 process.exit(0);

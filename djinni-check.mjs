@@ -8,13 +8,12 @@
 // Run:  node djinni-check.mjs              (headless)
 //       HEADFUL=1 node djinni-check.mjs    (watch it work)
 
-import { runScan, sessionExpired, LOGGED_OUT } from "./lib/scan-run.mjs";
+import { runScan, sessionExpired, LOGGED_OUT, exitCodeFor } from "./lib/scan-run.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { updateState } from "./lib/notify-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
-import { log, notify, ensureJobsApp } from "./lib/notify.mjs";
-import { heartbeat } from "./lib/heartbeat.mjs";
+import { log, notify, ensureJobsApp, stampHeartbeat } from "./lib/notify.mjs";
 import { readBumpState, dueForCheck, nextBumpState, bumpProfile, djinniLoggedIn, djinniLoginPage, gotoDjinni, freshThreads } from "./lib/djinni-bump.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -36,7 +35,7 @@ const UNREAD_URL = "https://djinni.co/my/inbox?bucket=unread";
 let scanned = false; // true once we have a real count from a loaded page
 let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 
-const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan, finish });
+const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan });
 
 async function scan(page) {
   if (await openUnread(page) === LOGGED_OUT) return LOGGED_OUT;
@@ -62,7 +61,7 @@ async function openUnread(page) {
   // that rendered later read as an unexplained zero (and, in scan, no badge write).
   await page.waitForSelector("a[href*='/my/inbox/'], .threads-empty", { timeout: 10000 }).catch(() => {});
 
-  // Logged out: `scanned` stays false, so finish() leaves the badge's last
+  // Logged out: `scanned` stays false, so nothing rewrites the badge's last
   // known count alone, and runScan exits 2 after the bounded close.
   // Expired only when Djinni shows its login page; any other page without the
   // /logout link (error page, challenge) is a failed load, not a session.
@@ -142,14 +141,6 @@ async function bumpIfDue(page) {
   } catch (e) { log("bump failed:", e?.message); }
 }
 
-function finish() {
-  // Only overwrite the badge when we actually loaded the page (scan writes it
-  // then, before the banner). On a network error (page never loaded) leave the
-  // last known count so the badge does not flicker to 0 — same policy as the
-  // session-expiry path above.
-  if (!scanned) log("scan failed — keeping last known badge count (state not rewritten)");
-}
-
 function writeBadge() {
   try {
     // Persist the unread threads (id + label) too, so Jobs.app can open the
@@ -172,6 +163,6 @@ else log(
     ? `Done. Djinni unread: ${unreadThreads.length} -> ${STATE_FILE}`
     : `Scan failed; badge left unchanged.`,
 );
-if (outcome === "ok" && scanned) heartbeat(HEARTBEAT_FILE, "djinni-check", { log, alert: (m) => notify("Job assistant", m) });
+if (outcome === "ok" && scanned) stampHeartbeat(HEARTBEAT_FILE, "djinni-check");
 // launchd must see a failed run as failed; a busy profile is a benign overlap; logged out = 2, like check.mjs.
-process.exit(outcome === "failed" ? 1 : outcome === LOGGED_OUT ? 2 : 0);
+process.exit(exitCodeFor(outcome));

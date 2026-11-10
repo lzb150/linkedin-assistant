@@ -12,8 +12,9 @@ import { normalizeHeartbeat, staleJobs } from "./lib/heartbeat.mjs";
 import { normalizeHistory, median } from "./lib/source-health.mjs";
 import { readPackages } from "./lib/packages.mjs";
 import { packageItem, collapseItems } from "./lib/dashboard-render.mjs";
-import { readStore } from "./lib/job-state.mjs";
+import { readStore, STATE_SERVER_URL } from "./lib/job-state.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
+import { queuedFiles } from "./lib/telegram.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const now = Date.now();
@@ -77,20 +78,19 @@ function sources() {
 
 async function stateServer() {
   console.log("\nState server");
+  const host = new URL(STATE_SERVER_URL).host;
   try {
-    const res = await fetch("http://127.0.0.1:7777/health", { signal: AbortSignal.timeout(1500) });
-    line(res.ok ? "✓" : "✗", `127.0.0.1:7777 answers ${res.status}`);
+    const res = await fetch(`${STATE_SERVER_URL}/health`, { signal: AbortSignal.timeout(1500) });
+    line(res.ok ? "✓" : "✗", `${host} answers ${res.status}`);
   } catch (e) {
-    line("✗", `127.0.0.1:7777 not answering (${e.cause?.code || e.name}) — card edits stay in the browser; restart its launchd agent`);
+    line("✗", `${host} not answering (${e.cause?.code || e.name}) — card edits stay in the browser; restart its launchd agent`);
   }
 }
 
 function queues() {
   const pending = join(dir, "linkedin-pending");
   line("·", existsSync(pending) ? `LinkedIn deferred ${ago(statSync(pending).mtime.toISOString())}; the catch-up agent runs it once the Mac is awake` : "LinkedIn: nothing deferred");
-  const outbox = join(dir, "telegram-outbox");
-  const queued = existsSync(outbox) ? readdirSync(outbox).filter((f) => f.endsWith(".json")).length : 0;
-  line("·", `Telegram outbox: ${queued} queued`);
+  line("·", `Telegram outbox: ${queuedFiles(join(dir, "telegram-outbox")).length} queued`);
   const last = readRunStats(join(dir, "run-stats.jsonl")).at(-1);
   if (last) line("·", `last jobs run ${ago(last.at)}: ${last.considered} considered, ${last.written} written, ${last.failed} failed`);
 }

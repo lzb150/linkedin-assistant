@@ -20,8 +20,9 @@ import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
 import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, excludeList } from "./lib/filters.mjs";
+import { makeLocationFilter, excludeList } from "./lib/filters.mjs";
 import { readJobsConfig, normalizeJobsConfig } from "./lib/jobs-config.mjs";
+import { SOURCE_REGISTRY } from "./lib/sources/registry.mjs";
 import { newSummary, recordFound, recordOutcome, recordMerged, formatTable, formatRunBanner } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
@@ -30,13 +31,15 @@ import { fetchTgChannels } from "./lib/sources/tgchannels.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
-import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
-import { launchBrowser, acquireProfileLock, isProfileBusy, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { queueTelegram, alertMessage, clip } from "./lib/telegram.mjs";
+import { launchBrowser, isProfileBusy, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
 import { judgeMatches } from "./lib/llm-gate.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { darkWakeOnBattery } from "./lib/wake.mjs";
 import { heartbeat } from "./lib/heartbeat.mjs";
+import { readStore } from "./lib/job-state.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -108,14 +111,7 @@ function markLinkedInPending(why) {
 // both read jobs-seen.json, both write packages for the same vacancy, and the
 // last save would drop the other's entries. Second run exits quietly — 0 so
 // launchd does not flag it as a failure. Released on process exit.
-try {
-  acquireProfileLock(join(__dir, "jobs-run"));
-} catch (e) {
-  if (!isProfileBusy(e)) throw e;
-  log("another jobs.mjs run is active — exiting");
-  markLinkedInPending("another run holds the lock");
-  process.exit(0);
-}
+acquireRunLockOrExit(join(__dir, "jobs-run"), { log, name: "jobs.mjs", onBusy: () => markLinkedInPending("another run holds the lock") });
 
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
 const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
@@ -123,7 +119,7 @@ const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
 const notify = (msg, opts) =>
-  banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready", opts);
+  banner("Job assistant", clip(msg, 240) || "Jobs ready", opts);
 
 // jobs-seen.json stores identity keys (normalize(company)+title) with a
 // last-seen timestamp (90-day TTL), so a vacancy is "seen" regardless of
@@ -194,8 +190,8 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
 // reposts this run — the dashboard and closed-check own that file's errors.
 const closedFiles = new Set();
 try {
-  const state = readJson(join(__dir, "job-state.json"), {});
-  const closedUrls = new Set(Object.entries(state || {}).filter(([u, e]) => u !== "_meta" && e?.status === "closed").map(([u]) => u));
+  const state = readStore(join(__dir, "job-state.json"));
+  const closedUrls = new Set(Object.entries(state).filter(([, e]) => e?.status === "closed").map(([u]) => u));
   for (const list of packageIndex.values()) for (const p of list) if (closedUrls.has(p.url)) closedFiles.add(p.file);
 } catch (e) { log(`  · job-state.json unreadable (${e.message}) — no repost detection this run`); }
 
@@ -207,7 +203,8 @@ try {
 // until its `repost:<link>` stamp, like the gate. A job the location filter
 // below will drop is known too: its location comes from the listing, and it
 // is never stamped seen, so Djinni and Telegram fetched ~22 such pages an hour.
-const droppedForLocation = (job) => !filterByLocation([job], config.excludeLocation, CANDIDATE_COUNTRY, { countryOnly: COUNTRY_ONLY }).length;
+const keepsLocation = makeLocationFilter(config.excludeLocation, CANDIDATE_COUNTRY, { countryOnly: COUNTRY_ONLY });
+const droppedForLocation = (job) => !keepsLocation(job);
 const knownJob = (job) => droppedForLocation(job) || ((seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title))) && !freshRepost(job, { seen, packageIndex, closedFiles }));
 
 // 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
@@ -218,36 +215,43 @@ const knownJob = (job) => droppedForLocation(job) || ((seenEither(seen, identity
 // A source ignores what it does not need (DOU reads full RSS items, so none of
 // it); adding a board is one row here plus one module in lib/sources/.
 const SOURCE_OPTS = { skip: knownJob, countries: CANDIDATE_COUNTRY };
-const BROWSERLESS_SOURCES = [
-  { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
-  { name: "djinni", enabled: config.djinni?.enabled, fetch: fetchDjinni },
-  { name: "himalayas", enabled: config.himalayas?.enabled, fetch: fetchHimalayas },
-  { name: "tgchannels", enabled: config.tgchannels?.enabled, fetch: fetchTgChannels },
-];
-for (const s of BROWSERLESS_SOURCES) {
-  // Say it out loud: a source turned off by a typo looked exactly like a source
-  // that simply found nothing, and it never reached summary.sources so health
-  // monitoring could not flag it either.
-  // An explicit `enabled: false` is the owner's choice, not an outage: left out
-  // of health monitoring. A missing or misspelt section still is not, so the
-  // "absent" alert keeps catching the typo.
-  if (!s.enabled) {
-    log(`${s.name}: disabled in config — skipped`);
-    if (config[s.name]?.enabled === false) skippedSources.push(s.name);
-    continue;
-  }
-  if (CATCHUP) { skippedSources.push(s.name); continue; }   // they ran in the deferring run; the catch-up is for LinkedIn
-  log(`Gathering ${s.name}...`);
+const BROWSERLESS = { dou: fetchDou, djinni: fetchDjinni, himalayas: fetchHimalayas, tgchannels: fetchTgChannels };
+
+// One lifecycle for every source, LinkedIn included, so the health rules are
+// spelled once.
+// Off: said out loud — a source turned off by a typo looked exactly like a
+// source that simply found nothing, and it never reached summary.sources so
+// health monitoring could not flag it either. An explicit `enabled: false` is
+// the owner's choice, not an outage: left out of health monitoring. A missing
+// or misspelt section still is not, so the "absent" alert keeps catching the typo.
+function sourceOff(name) {
+  if (config[name]?.enabled ?? Boolean(SOURCE_REGISTRY[name].enabledDefault)) return false;
+  log(`${name}: disabled in config — skipped`);
+  if (config[name]?.enabled === false) skippedSources.push(name);
+  return true;
+}
+// Tried: its jobs are collected; a throw is logged and counted as 0 found, so
+// health monitoring alerts on a hard failure. → whether it succeeded.
+async function runSource(name, run) {
   sourcesTried++;
   try {
-    const found = await s.fetch(config[s.name], log, SOURCE_OPTS);
-    recordFound(summary, s.name, found.length);
+    const found = await run();
+    recordFound(summary, name, found.length);
     jobs.push(...found);
+    return true;
   } catch (e) {
     sourcesFailed++;
-    log(`${s.name} error:`, e.message);
-    recordFound(summary, s.name, 0); // a hard failure must count as 0 so health monitoring alerts
+    log(`${name} error:`, e.message);
+    recordFound(summary, name, 0);
+    return false;
   }
+}
+
+for (const [name, fetchSource] of Object.entries(BROWSERLESS)) {
+  if (sourceOff(name)) continue;
+  if (CATCHUP) { skippedSources.push(name); continue; }   // they ran in the deferring run; the catch-up is for LinkedIn
+  log(`Gathering ${name}...`);
+  await runSource(name, () => fetchSource(config[name], log, SOURCE_OPTS));
 }
 
 // 3) Browser source: LinkedIn (needs login) in a Playwright context. (Robota.ua,
@@ -275,39 +279,30 @@ if (CATCHUP && !LINKEDIN_DUE) rmSync(PENDING, { force: true });   // turned off 
 // the catch-up agent asked at its start (and exited on a DarkWake) seconds ago.
 const LINKEDIN_DEFERRED = LINKEDIN_DUE && !CATCHUP && darkWakeOnBattery();
 let linkedinRan = false;   // the feed was actually read this run (heartbeat "jobs-linkedin")
-if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); }
-else if (!config.linkedin?.enabled) {
-  log("linkedin: disabled in config — skipped");
-  if (config.linkedin?.enabled === false) skippedSources.push("linkedin");   // see the browserless loop above
-}
-else if (LINKEDIN_DEFERRED) {
-  skippedSources.push("linkedin");
-  markLinkedInPending("deferred (the Mac is in a DarkWake on battery)");
-}
-if (LINKEDIN_DUE && !LINKEDIN_DEFERRED) {
+async function gatherLinkedIn() {
+  if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); return; }
+  if (sourceOff("linkedin")) return;
+  if (LINKEDIN_DEFERRED) {
+    skippedSources.push("linkedin");
+    markLinkedInPending("deferred (the Mac is in a DarkWake on battery)");
+    return;
+  }
   let ctx, busy = false;
   try {
-    sourcesTried++;
-    ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
-    const page = ctx.pages()[0] || (await ctx.newPage());
-    // Own try/catch so a scrape failure is logged and counted as 0 for health monitoring.
-    try {
-      const found = await fetchLinkedInChecked(page, config.linkedin);
-      recordFound(summary, "linkedin", found.length);
-      linkedinRan = true;
-      jobs.push(...found);
-    } catch (e) { sourcesFailed++; log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
+    ctx = await launchBrowser(PROFILE);
+    linkedinRan = await runSource("linkedin", async () => fetchLinkedInChecked(ctx.pages()[0] || (await ctx.newPage()), config.linkedin));
   } catch (e) {
+    // Only the launch lands here (runSource catches the scrape), logged and
+    // bannered instead of an unhandled rejection.
     log("Browser sources error:", e.message);
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
-    // no 0-count either — leaving the source out of the summary keeps a
-    // skipped run from looking like a scraper outage to health monitoring.
-    if (isProfileBusy(e)) { busy = true; sourcesTried--; skippedSources.push("linkedin"); }   // not an outage: the source was never tried
+    // no 0-count either — the source was never tried, and leaving it out of the
+    // summary keeps a skipped run from looking like a scraper outage.
+    if (isProfileBusy(e)) { busy = true; skippedSources.push("linkedin"); }
     else {
-      sourcesFailed++;
-      if (!ctx) notify(`Browser launch failed: ${e.message}`);
-      // Launch/lock failure happens before the inner catch: record 0 so health monitoring sees the outage.
-      if (!summary.sources.linkedin) recordFound(summary, "linkedin", 0);
+      sourcesTried++; sourcesFailed++;
+      notify(`Browser launch failed: ${e.message}`);
+      recordFound(summary, "linkedin", 0);   // health monitoring must see the outage
     }
   } finally {
     // A throw here escapes the sibling catch and takes the whole run with it —
@@ -319,6 +314,7 @@ if (LINKEDIN_DUE && !LINKEDIN_DEFERRED) {
     else rmSync(PENDING, { force: true });
   }
 }
+await gatherLinkedIn();
 
 log(`Total jobs gathered: ${jobs.length}`);
 
@@ -326,7 +322,7 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Djinni "Тільки офіс · Польща", etc).
 {
   const before = jobs.length;
-  const keptLoc = filterByLocation(jobs, config.excludeLocation, CANDIDATE_COUNTRY, { countryOnly: COUNTRY_ONLY });
+  const keptLoc = jobs.filter(keepsLocation);
   if (keptLoc.length < before) {
     const kept = new Set(keptLoc);
     log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
