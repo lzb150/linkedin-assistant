@@ -140,14 +140,15 @@ plist не завантажили після перевстановлення а
 ## Резервна копія (і відновлення)
 
 Git тримає лише код. Пакети для відгуку, чернетки, усі файли стану,
-`jobs.config.json`, `skills.json`, `resume.txt`, `telegram.json`, `run.sh`, історія
+`jobs.config.json`, `skills.json`, `resume.txt`, `run.sh`, історія
 трафіку GitHub власника (`gh-traffic/`) і живі plist-и існують тільки на цьому диску, тож `backup.mjs` щоночі архівує їх
 (`com.example.backup.plist.example`, 21:00) в iCloud Drive —
 `~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, по
 одному `.tgz` на день, зберігаються 14 найновіших, менше 1 МБ кожен. `BACKUP_DIR`
 перенаправляє в інше місце (зовнішній диск, синхронізована тека); `BACKUP_KEEP`
 змінює кількість. Два профілі браузера не входять: 1,4 ГБ кешу Chromium, які
-відтворюють два запуски `node login.mjs`.
+відтворюють два запуски `node login.mjs`. `telegram.json` теж не входить — у ньому
+токен бота, якому не місце в хмарній теці; `node telegram-setup.mjs` запише його знову.
 
 Відновлення на новому Mac:
 
@@ -156,6 +157,7 @@ git clone git@github.com:lzb150/linkedin-assistant.git && cd linkedin-assistant
 npm ci && npx playwright install chromium
 tar -xzf ~/Library/Mobile\ Documents/com~apple~CloudDocs/linkedin-assistant-backup/linkedin-assistant-YYYY-MM-DD.tgz
 node login.mjs && node login.mjs djinni      # дві сесії в архіві відсутні
+node telegram-setup.mjs                      # лише якщо користуєтеся Telegram-сповіщеннями: токена в архіві немає
 ./build-jobs.sh                              # Jobs.app
 cp com.*.plist ~/Library/LaunchAgents/ && for p in com.*.plist; do launchctl load ~/Library/LaunchAgents/$p; done
 ```
