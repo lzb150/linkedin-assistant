@@ -80,6 +80,6 @@ Djinni (`https://djinni.co/my/inbox?bucket=unread`), ніколи не відк�
 
 ```bash
 cp com.example.djinni-inbox.plist.example \
-   ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # потім відредагуйте шляхи
+   ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist      # потім відредагуйте шляхи та Label
 launchctl load ~/Library/LaunchAgents/com.eugene.djinni-inbox.plist
 ```

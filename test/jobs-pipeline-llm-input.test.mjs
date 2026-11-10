@@ -176,3 +176,17 @@ case "$PROMPT" in *Beta*) echo '{"score": -5, "red_flags": "none", "cover": 5}' 
   assert.match(md, /^llm_score: 85$/m);
   assert.ok(md.includes(`\nllm_why: ⚠ ${first.slice(0, 200)}; ${flags.slice(1, 10).join("; ")}\n`), "no why: the line is the first ten flags, each cut at 200");
 });
+
+test("jobs.mjs: an unjudged title-only match waits for its description before the borderline package is written", async (t) => {
+  // Two LLM failures write the keyword-only package as borderline — final,
+  // never re-judged — even for a card scored on its title alone, whose
+  // description was then never read again.
+  const claude = "#!/bin/sh\ncat > /dev/null; exit 1\n";
+  const item = { title: "SDET Automation Engineer в Beta, Львів", link: "https://jobs.dou.ua/companies/beta/vacancies/8/", desc: "Playwright, TypeScript, API testing, CI/CD." };
+  const p = setupProject(t, await serveFeed(t, () => rss([item])), { claude, llm: { minScore: 70, borderlineMin: 50 } });
+  assert.match(await runJobs(p), /llm failed for: .* — deferred, next run/);
+  assert.match(await runJobs(p), /· borderline \[\d+ \/ llm failed\] dou: SDET Automation Engineer @ Beta \(no description — will retry\)/);
+  assert.deepEqual(mdFiles(p), [], "no package on the title alone");
+  await runJobs(p);
+  assert.equal(mdFiles(p).length, 1, "still no description on the second look: the package is written");
+});

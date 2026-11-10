@@ -33,7 +33,7 @@ test("status and note persist across a server restart", async (t) => {
 async function bootClient({ fetch, store, document }) {
   const ctx = vm.createContext({
     // unref'd: init() schedules advanceLastVisit 4 s out, which must not hold the test open.
-    setTimeout: (f, ms) => { const h = setTimeout(f, ms); h.unref?.(); return h; }, clearTimeout, Date, JSON, console, fetch,
+    setTimeout: (f, ms) => { const h = setTimeout(f, ms); h.unref?.(); return h; }, clearTimeout, Date, JSON, console, fetch, AbortSignal,
     localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
     document: document || { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
   });

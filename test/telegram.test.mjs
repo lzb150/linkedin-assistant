@@ -258,3 +258,10 @@ test("clip and alertMessage never cut an emoji in half: a lone surrogate made th
   assert.equal(clip("ab🚀", 4), "ab🚀", "a whole pair inside the limit stays");
   assert.doesNotMatch(alertMessage("t", `${"y".repeat(3499)}🚀`), lone);
 });
+
+test("alertMessage stays under Telegram's 4096 limit when escaping grows the text", () => {
+  // Cut to 3500 first and escaped after, an error full of quotes went to 4497 characters: a 400, alert dropped.
+  const msg = alertMessage("Job assistant", '"<&>"'.repeat(2000));
+  assert.ok(msg.length <= 4096, String(msg.length));
+  assert.doesNotMatch(msg, /&[a-z]*$/, "no entity cut in half");
+});

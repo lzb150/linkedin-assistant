@@ -142,6 +142,11 @@ async function flush() {
   const edits = closures(map, pending.splice(0));
   saved += edits.length;
   await save(map, edits);
+  // Dated now, not at the probe: settleReprobe reads a store entry updated more
+  // than a minute after this stamp as the owner's click, and on a slow run the
+  // save came later than that — the closure then never reopened.
+  const at = new Date().toISOString();
+  for (const { url } of edits) if (gone[url]) gone[url] = at;
   saveChecked();
 }
 

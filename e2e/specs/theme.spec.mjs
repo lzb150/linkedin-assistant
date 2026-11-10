@@ -2,7 +2,7 @@
 // theme on <html data-theme> and in localStorage, re-applied before paint.
 import { test, expect } from "../fixtures/dashboard.mjs";
 
-// --bg in dashboard.mjs: light-dark(#eeecf5, #07060d).
+// --bg in lib/dashboard.css: light-dark(#eeecf5, #07060d).
 const LIGHT_BG = "rgb(238, 236, 245)";
 const DARK_BG = "rgb(7, 6, 13)";
 

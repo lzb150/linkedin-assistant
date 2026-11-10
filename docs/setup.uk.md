@@ -144,7 +144,7 @@ Git тримає лише код. Пакети для відгуку, черне
 трафіку GitHub власника (`gh-traffic/`) і живі plist-и існують тільки на цьому диску, тож `backup.mjs` щоночі архівує їх
 (`com.example.backup.plist.example`, 21:00) в iCloud Drive —
 `~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, по
-одному `.tgz` на день, зберігаються 14 найновіших, ~5 МБ кожен. `BACKUP_DIR`
+одному `.tgz` на день, зберігаються 14 найновіших, менше 1 МБ кожен. `BACKUP_DIR`
 перенаправляє в інше місце (зовнішній диск, синхронізована тека); `BACKUP_KEEP`
 змінює кількість. Два профілі браузера не входять: 1,4 ГБ кешу Chromium, які
 відтворюють два запуски `node login.mjs`.

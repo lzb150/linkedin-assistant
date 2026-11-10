@@ -139,7 +139,7 @@ Git holds the code only. The application packages, drafts, every state file,
 owner's GitHub traffic history (`gh-traffic/`) and the live plists exist on this disk alone, so `backup.mjs` archives them nightly
 (`com.example.backup.plist.example`, 21:00) into iCloud Drive —
 `~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, one
-`.tgz` per day, newest 14 kept, ~5 MB each. `BACKUP_DIR` points it elsewhere
+`.tgz` per day, newest 14 kept, under 1 MB each. `BACKUP_DIR` points it elsewhere
 (an external disk, a synced folder); `BACKUP_KEEP` changes the count. The two
 browser profiles are left out: 1.4 GB of Chromium cache that two `node login.mjs`
 runs recreate.

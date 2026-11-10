@@ -183,6 +183,13 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
   // By link too: a channel's repost of this vacancy carries a title of its own.
   const link = linkKey(fm.url);
   if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
+  // And by the other boards' links it already lists ("source|url, source|url",
+  // split as the dashboard's altRow does): a repost of one of those under its
+  // own title was judged, and packaged, a second time.
+  for (const pair of String(fm.alt_links || "").split(/,\s*(?=[a-z]+\|)/)) {
+    const alt = linkKey(pair.slice(pair.indexOf("|") + 1).trim());
+    if (alt && !packageLinks.has(alt)) packageLinks.set(alt, fm.file);
+  }
 }
 // Packages whose vacancy the board reported inactive (closed-check.mjs): a
 // same-board re-listing of one of these under a new url is a repost, judged
