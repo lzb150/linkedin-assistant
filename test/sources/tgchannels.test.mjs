@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { channelUrl, isPublicHttps, resolvesPublic, publicLookup, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
+import { channelUrl, isPublicHttps, resolvesPublic, publicLookup, publicFetch, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 // A real t.me/s/remote_qa_jobs page (2026-10-17) cut to four posts: 384
@@ -256,4 +256,33 @@ test("parseChannel keeps each post's <time datetime> as `posted`", () => {
   const { jobs } = parseChannel(fixture, "remote_qa_jobs");
   for (const j of jobs) assert.match(j.posted, /^2026-(09|10)-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/, j.title);
   assert.ok(jobs[0].posted > jobs.at(-1).posted, "newest first, by stamp too");
+});
+
+// publicFetch against a local server: plain http and no lookup, through the transport seam.
+async function served(t, handler) {
+  const { createServer, request } = await import("node:http");
+  const server = createServer(handler);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  return { url: `http://127.0.0.1:${server.address().port}/`, transport: { request } };
+}
+
+test("publicFetch: an answer it cannot use rejects instead of ending the run", async (t) => {
+  // Thrown from the response callback these were uncaught: the process died on every run that met the post.
+  for (const head of [[600, {}], [200, { "content-encoding": "constructor" }], [200, { "content-encoding": "zstd" }]]) {
+    const { url, transport } = await served(t, (_req, res) => { res.writeHead(...head); res.end("x"); });
+    await assert.rejects(publicFetch(url, {}, transport), /unusable status|unsupported content-encoding/, JSON.stringify(head));
+  }
+});
+
+test("publicFetch: reads a plain body and a gzip one, whatever the header's case", async (t) => {
+  const { gzipSync } = await import("node:zlib");
+  const plain = await served(t, (_req, res) => { res.writeHead(404, { "content-type": "text/html" }); res.end("<p>gone</p>"); });
+  const res = await publicFetch(plain.url, {}, plain.transport);
+  assert.equal(res.status, 404);
+  assert.equal(await res.text(), "<p>gone</p>");
+  const zipped = await served(t, (_req, res) => { res.writeHead(200, { "content-encoding": "GZIP" }); res.end(gzipSync("<p>job</p>")); });
+  const unzipped = await publicFetch(zipped.url, {}, zipped.transport);
+  assert.equal(unzipped.headers.get("content-encoding"), null);
+  assert.equal(await unzipped.text(), "<p>job</p>");
 });
