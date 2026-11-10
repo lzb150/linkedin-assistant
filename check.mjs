@@ -71,6 +71,8 @@ const seen = loadSeenStore(SEEN_FILE);
 let drafted = 0;
 let scanned = 0;
 let unreadCount = 0;
+// Sender names of the listed cards this run has not opened (linkedinBadge).
+let unopened = [];
 // Threads ({ id, label }) remember() could not write to notify-state.json yet;
 // finish() retries them. Pending threads keep the Dock badge until clicked.
 const notified = [];
@@ -91,6 +93,8 @@ async function scan(page, ctx, signal) {
   // already dropped from the filtered list, by the open thread itself (`null`
   // card): opening it marked it read, so this run is the last chance to draft for it.
   const targets = verdict.scanOpenFirst ? [null, ...cards] : cards;
+  // A card without a readable name matches no pending label: it counts on top.
+  for (const card of cards) unopened.push(await readName(page, card, ""));
   if (verdict.scanOpenFirst) log("· auto-opened thread not in list — scanning it first");
   for (const card of targets) {
     // MAX caps opened threads; drafted threads are already counted in scanned.
@@ -107,6 +111,7 @@ async function scanThread(page, card, signal) {
   if (card && !(await openCard(page, card))) { log(`· could not open thread, skipping: ${name}`); return false; }
   const url = page.url();
   scanned++; // count only threads we actually opened, so a stalled LinkedIn doesn't burn the cap
+  if (card && unopened.includes(name)) unopened.splice(unopened.indexOf(name), 1);
 
   return handleThread({ url, name, ...await readThread(page) }, signal);
 }
@@ -173,8 +178,8 @@ async function countUnread(page, { listFound, settled }) {
 }
 
 // The card's sender name; the auto-opened thread (`null` card) has no card to read.
-async function readName(page, card) {
-  let name = "Recruiter";
+async function readName(page, card, fallback = "Recruiter") {
+  let name = fallback;
   try {
     const nameEl = await (card ? card.$(SEL.participantName) : page.$(SEL.threadParticipantName));
     if (nameEl) name = (await nameEl.innerText()).trim().split("\n")[0] || name;
@@ -318,7 +323,7 @@ function draftReply(thread, seenKey) {
 // clicked thread. Only a write that failed (or ran before a count) is left in
 // `notified` for finish() to retry.
 function remember(entry) {
-  if (counted && saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified: [entry], unreadCount, opened: scanned }))) return;
+  if (counted && saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified: [entry], unreadCount, opened: scanned, unopened }))) return;
   notified.push(entry);
 }
 
@@ -337,7 +342,7 @@ function finish({ held, outcome }) {
     // Read at finish, not at start: a Dock click during the run cleared the
     // threads bannered before it, and must stay cleared. `notified` holds
     // only what remember() could not write itself.
-    saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified, unreadCount, opened: scanned }));
+    saveBadge((prev) => linkedinBadge({ prevPending: prev.pending, notified, unreadCount, opened: scanned, unopened }));
   } else if (!SCAN_ALL) {
     // busy / logged-out already logged their own line; keep the badge either way.
     if (outcome === "failed") log("notify: scan failed before counting — keeping previous badge state");

@@ -37,7 +37,7 @@ let unreadThreads = []; // [{ id, label }] persisted so Jobs.app can open them
 
 const outcome = await runScan({ profile: PROFILE, app: "Djinni assistant", scan });
 
-async function scan(page) {
+async function scan(page, _ctx, signal) {
   if (await openUnread(page) === LOGGED_OUT) return LOGGED_OUT;
   // Keep the Dock-badge daemon (Jobs.app) alive.
   ensureJobsApp();
@@ -51,7 +51,7 @@ async function scan(page) {
   if (!scanned) log("⚠️  Empty list without .threads-empty — selector may have drifted; badge left unchanged.");
   else writeBadge();   // before the banner: a click on it reads this state (check.mjs does the same)
   bannerFresh(threads, bucketEmpty);
-  await bumpIfDue(page);
+  await bumpIfDue(page, signal);
 }
 
 async function openUnread(page) {
@@ -128,11 +128,12 @@ function bannerFresh(threads, bucketEmpty) {
 // Profile bump: Djinni allows one per 7 days (button state is the truth). One
 // /my/profile/ visit a day, hourly around the expected cooldown end
 // (state-throttled); a bump failure never breaks the unread scan above.
-async function bumpIfDue(page) {
+async function bumpIfDue(page, signal) {
   try {
     const bumpState = readBumpState(BUMP_STATE_FILE);
-    if (dueForCheck(bumpState)) {
-      const outcome = await bumpProfile(page);
+    if (dueForCheck(bumpState) && !signal?.aborted) {
+      const outcome = await bumpProfile(page, signal);
+      if (outcome === "aborted") return;   // nothing was pressed: the next run checks again
       writeJsonAtomic(BUMP_STATE_FILE, nextBumpState(bumpState, outcome));
       log(`bump: ${outcome}`);
       if (outcome === "bumped") notify("Djinni", "Profile bumped — back to the top of search results.");

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { channelUrl, isPublicHttps, resolvesPublic, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
+import { channelUrl, isPublicHttps, resolvesPublic, publicLookup, postFields, toJob, parseChannel, jobPostingText, fetchTgChannels, placeOf, forbidsCountry } from "../../lib/sources/tgchannels.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 // A real t.me/s/remote_qa_jobs page (2026-10-17) cut to four posts: 384
@@ -48,6 +48,17 @@ test("resolvesPublic: a public-looking name that resolves to loopback or the LAN
   assert.equal(await resolvesPublic("https://x.example/", to("93.184.216.34", "192.168.1.1")), false, "one inward address among several is enough");
   assert.equal(await resolvesPublic("https://x.example/", async () => { throw new Error("ENOTFOUND"); }), false);
   assert.equal(await resolvesPublic("https://x.example/", to()), false);
+});
+
+test("publicLookup: the socket is handed only public addresses, in the shape it asked for", () => {
+  const via = (addrs) => (_host, _opts, cb) => cb(null, addrs);
+  const run = (addrs, options = {}) => { let out; publicLookup("x.example", options, (...a) => { out = a; }, via(addrs)); return out; };
+  assert.deepEqual(run([{ address: "93.184.216.34", family: 4 }]), [null, "93.184.216.34", 4]);
+  assert.deepEqual(run([{ address: "93.184.216.34", family: 4 }], { all: true }), [null, [{ address: "93.184.216.34", family: 4 }]]);
+  // DNS rebinding: the name answered public for resolvesPublic, loopback for the connection.
+  assert.match(run([{ address: "127.0.0.1", family: 4 }])[0].message, /public address/);
+  assert.match(run([{ address: "93.184.216.34", family: 4 }, { address: "fd00::1", family: 6 }], { all: true })[0].message, /public address/);
+  assert.match(run([])[0].message, /public address/);
 });
 
 test("isPublicHttps: only a public https host on the default port", () => {
