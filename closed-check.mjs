@@ -9,14 +9,15 @@
 // with them (an entry without a live package is dead weight: 493 of 713 were).
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
+import { setTimeout as sleep } from "node:timers/promises";
+import { DAY_MS } from "./lib/local-day.mjs";
+import { readStoreOrExit, writeStore, mergeEntry, STATE_SERVER_URL } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
-import { log, notify } from "./lib/notify.mjs";
-import { heartbeat } from "./lib/heartbeat.mjs";
+import { log, stampHeartbeat } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
 import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
-import { acquireProfileLock, isProfileBusy } from "./lib/run-lock.mjs";
+import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
@@ -27,13 +28,7 @@ const dir = dirname(fileURLToPath(import.meta.url));
 // re-probed the same urls the next day. (job-state.json was already safe: those
 // writes re-read and replay. The stamp file was not.)
 // Second run exits quietly with 0, so launchd does not flag a benign overlap.
-try {
-  acquireProfileLock(join(dir, "closed-check"));
-} catch (e) {
-  if (!isProfileBusy(e)) throw e;
-  log("another closed-check.mjs run is active — exiting");
-  process.exit(0);
-}
+acquireRunLockOrExit(join(dir, "closed-check"), { log, name: "closed-check.mjs" });
 
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
@@ -69,8 +64,7 @@ const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, { ...c
 // payload a dashboard click sends, and the file is never written from here. A
 // server that is down (launchd restarting it) takes the direct path, as
 // before; one that goes away mid-run flips to it with a line in the log.
-// Test seam: STATE_SERVER points at a server on another port.
-const STATE_SERVER = process.env.STATE_SERVER || "http://127.0.0.1:7777";
+const STATE_SERVER = STATE_SERVER_URL;
 let viaServer = await (async () => {
   try {
     const res = await fetch(`${STATE_SERVER}/health`, { signal: AbortSignal.timeout(1000) });
@@ -119,23 +113,20 @@ const byUrl = new Map(packages.map((p) => [p.url, p]));
 // stateAtStart): a status set while we were probing (a concurrent
 // closed-check, a newer build's status) wins over the board's verdict —
 // candidates were New/Viewed at the start, re-check now.
-let pending = [];   // closed urls not yet applied to the store
+const pending = [];   // closed urls not yet applied to the store
 let saved = 0;
 // The one "may we still close this url?" rule, re-decided against whatever the
 // store holds now: only a candidate still New (no entry) or Viewed may be
 // closed, so any status set while we were probing wins. Both the mid-run flush
 // and the final replay below ask this, and they used to spell it two inverted ways.
 const closable = (map, url) => { const st = map[url]?.status; return !st || st === "viewed"; };
-// The closures of `pending` still allowed against `map`, as edits; the rest
-// are reported. Empties `pending` and counts the allowed ones as saved.
-function closures(map) {
+// The closures of `urls` still allowed against `map`, as edits; the rest are reported.
+function closures(map, urls) {
   const edits = [];
-  for (const url of pending) {
+  for (const url of urls) {
     if (!closable(map, url)) { log(`  · kept ${map[url].status}: ${url} (changed during the run)`); continue; }
     edits.push({ url, patch: CLOSE });
   }
-  pending = [];
-  saved += edits.length;
   return edits;
 }
 // Store first, check stamps after: a crash between the two must lose a
@@ -144,7 +135,9 @@ function closures(map) {
 // every closure found so far.
 async function flush() {
   const map = await readLive("closed-check: store unreadable mid-run — closures not saved");
-  await save(map, closures(map));
+  const edits = closures(map, pending.splice(0));
+  saved += edits.length;
+  await save(map, edits);
   saveChecked();
 }
 
@@ -169,15 +162,15 @@ for (const { url, source } of todo) {
   } catch (e) { tried[url] = new Date().toISOString(); log(`  · ${url} — ${e.message}`); }   // network trouble: not checked, retried tomorrow
   // Politeness pause after EVERY probe, failed ones too (a `continue` in the
   // catch used to skip it and hammer a board during a network blip).
-  await new Promise((r) => setTimeout(r, 1000));
+  await sleep(1000);
   if (++probed % 25 === 0) await flush();
 }
-const closedNow = pending.slice();   // closures() empties `pending`; kept to replay onto a fresher store below
 // Decided now, written below together with the prune: planArchive and the
 // prune count want the store as it will be once the closures are in.
 let stateMap = await readLive("closed-check: store unreadable at the end of the run — closures not saved");
-const closing = closures(stateMap);
+const closing = closures(stateMap, pending);   // `pending` is replayed onto a fresher store below
 const savedNow = closing.length;
+saved += savedNow;
 for (const { url, patch } of closing) stateMap = mergeEntry(stateMap, url, patch);
 // Archive BEFORE pruning, and prune by what actually moved: a package whose
 // rename failed is still in applications/ and needs its state entry, or it
@@ -189,7 +182,7 @@ const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap 
 // package list yet and must survive. Only when packages/ read as non-empty: an
 // unreadable applications/ must not wipe the store (cf. the 448-entry wipe).
 const live = new Set(packages.filter((p) => !archived.has(p.file)).map((p) => p.url));
-const staleBefore = Date.now() - 86400000;
+const staleBefore = Date.now() - DAY_MS;
 // A missing updatedAt counts as old enough — the same reading planArchive uses.
 // While the two disagreed, a legacy entry could be archived and then never
 // pruned, so it sat in the store forever with no package behind it.
@@ -207,7 +200,7 @@ if (savedNow || wouldPrune) {
   // edits — the closures and the prune — onto whatever is there. Both are
   // re-decided against the fresh entry, so a status set in the window wins.
   const out = await readLive("closed-check: store unreadable before the final write — closures not saved");
-  const edits = closedNow.filter((u) => closable(out, u)).map((url) => ({ url, patch: CLOSE }));
+  const edits = pending.filter((u) => closable(out, u)).map((url) => ({ url, patch: CLOSE }));
   if (mayPrune()) for (const url of Object.keys(out)) if (prunable(out, url)) { edits.push({ url, patch: CLEAR }); pruned++; }
   await save(out, edits);
 }
@@ -216,4 +209,4 @@ if (savedNow || wouldPrune) {
 if (mayPrune()) for (const m of [checked, tried]) for (const u of Object.keys(m)) if (!live.has(u)) delete m[u];
 saveChecked();
 log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
-heartbeat(HEARTBEAT_FILE, "closed-check", { log, alert: (m) => notify("Job assistant", m) });
+stampHeartbeat(HEARTBEAT_FILE, "closed-check");

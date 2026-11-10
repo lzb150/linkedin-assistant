@@ -14,13 +14,14 @@ import { notify } from "./lib/notify.mjs";
 import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
 import { buildReport } from "./lib/report.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
+import { DAY_MS } from "./lib/local-day.mjs";
 import { heartbeat } from "./lib/heartbeat.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const envDays = Number(process.env.REPORT_DAYS);
 const days = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 const now = new Date();
-const since = now.getTime() - days * 86400000;
+const since = now.getTime() - days * DAY_MS;
 
 const packages = readPackages(join(dir, "applications"));
 // jobs.mjs logs (run.sh: jobs_<date>.log, jobs_dou_<date>.log; jobs_full_ before 2026-09-11) touched inside the window.
