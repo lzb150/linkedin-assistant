@@ -406,8 +406,12 @@ for (const job of jobs) {
     case "seen": break;   // re-stamped below: the TTL is "last seen", so a vacancy still live after 90 days never resurfaces
     case "packaged": log(`  · already packaged (${g.file}) ${job.source}: ${job.title}`); break;
     case "dup":
-      try { appendAltLink(join(APPS, g.file), job.source, job.url); }
-      catch (e) { log(`  · alt-link append failed (${g.file}): ${e.message}`); }
+      // The copies dedupeJobs folded into this one too: they are stamped seen
+      // with it below, so a link not written now is never written.
+      for (const { source, url } of [job, ...(job.altLinks || [])]) {
+        try { appendAltLink(join(APPS, g.file), source, url); }
+        catch (e) { log(`  · alt-link append failed (${g.file}): ${e.message}`); }
+      }
       log(`  · dup-of-existing (${g.file}) ${job.source}: ${job.title}`);
       break;
     case "excluded": log(`  · skip [excluded:${g.term}] ${job.source}: ${job.title}`); break;
@@ -419,7 +423,13 @@ for (const job of jobs) {
         const first = matchedIds.get(id);
         // The copy with a description is the one worth judging: a title-only
         // first copy would be judged on its title alone, twice, and never read.
-        if (first.retry && !g.retry) Object.assign(first, { job, scored: g.scored, retry: false });
+        if (first.retry && !g.retry) {
+          // What dedupeJobs folded into the first copy goes with the judged one:
+          // dropped, those links never reached the package and the folded
+          // identities were not stamped, so the next run judged them again.
+          for (const k of ["altLinks", "mergedIds", "mergedKeys", "mergedTitles"]) if (first.job[k]?.length) job[k] = [...(job[k] || []), ...first.job[k]];
+          Object.assign(first, { job, scored: g.scored, retry: false });
+        }
         log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
         recordOutcome(summary, job.source, "seen");
         continue;

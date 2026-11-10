@@ -225,3 +225,32 @@ test("closed-check: a second overlapping run exits quietly instead of clobbering
   assert.doesNotMatch(out, /closed-check: probing/, "it stopped before touching anything");
   assert.equal(p.json("job-state.json")[U].status, "new", "the other run's state is untouched");
 });
+
+test("closed-check: a url closed on a 404 is probed once more a day later and reopened when the board answers again; a card touched since, and a note without a package, are left alone", async (t) => {
+  // One wrong 404 (a deploy, a soft block) used to lose a live vacancy for
+  // good: a closed url was never probed again and was archived 14 days later.
+  const srv = createServer((_req, res) => res.end("<html>vacancy is open</html>"));
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const [BACK, TOUCHED] = [`${base}/vacancies/1/`, `${base}/vacancies/2/`];
+  const ago = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+  const p = makeProject(t, {
+    scripts: ["closed-check.mjs"],
+    packages: { "a.md": pkg({ url: BACK }), "b.md": pkg({ url: TOUCHED }) },
+    state: { _meta: {},
+      [BACK]: { status: "closed", updatedAt: ago(48) },
+      [TOUCHED]: { status: "closed", updatedAt: ago(1) },                       // clicked after the closure: the owner's word
+      "https://example.com/archived/": { status: "viewed", note: "call Olena back", updatedAt: ago(24 * 40) } },
+    bins: quiet,
+  });
+  writeFileSync(p.path("closed-check-state.json"), JSON.stringify({ _gone: { [BACK]: ago(48), [TOUCHED]: ago(48) } }));
+
+  const out = await runScript(p, "closed-check.mjs", hosts(BACK));
+  assert.match(out, /↺ reopened \[200\]/);
+  const state = p.json("job-state.json");
+  assert.notEqual(state[BACK]?.status, "closed", "the board answers again: the card is back");
+  assert.equal(state[TOUCHED].status, "closed", "a card touched since the closure stays as the owner left it");
+  assert.equal(state["https://example.com/archived/"]?.note, "call Olena back", "a note outlives its package");
+  assert.deepEqual(p.json("closed-check-state.json")._gone, {}, "each closure gets one second look");
+});

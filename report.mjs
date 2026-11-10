@@ -23,7 +23,10 @@ const days = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 const now = new Date();
 const since = now.getTime() - days * DAY_MS;
 
-const packages = readPackages(join(dir, "applications"));
+// archive/ too: closed-check moves a closed package there after 14 days, and
+// with a window longer than that the per-source and LLM lines came out lower
+// than "packages written", which counts every package of the window.
+const packages = [...readPackages(join(dir, "applications")), ...readPackages(join(dir, "applications", "archive"))];
 // jobs.mjs logs (run.sh: jobs_<date>.log, jobs_dou_<date>.log; jobs_full_ before 2026-09-11) touched inside the window.
 const logsDir = join(dir, "logs");
 const logText = (existsSync(logsDir) ? readdirSync(logsDir) : [])

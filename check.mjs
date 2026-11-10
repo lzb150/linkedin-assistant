@@ -100,7 +100,7 @@ async function scan(page, ctx, signal) {
 }
 
 // Open one target (`null` card = the auto-opened thread) and handle it;
-// true = stop the scan (run deadline).
+// true = stop the scan (run deadline, or message selector drift).
 async function scanThread(page, card, signal) {
   const name = await readName(page, card);
   // The auto-opened thread is already open: nothing to click or verify.
@@ -245,7 +245,7 @@ async function waitForBubbles(page) {
   }
 }
 
-// Mark, banner and draft one opened thread; true = stop the scan (run deadline).
+// Mark, banner and draft one opened thread; true = stop the scan (run deadline, or message selector drift).
 function handleThread({ url, name, fullText, state, snippet, oldest, bubbleCount, extractFailed }, signal) {
   const threadId = threadIdFrom(url, name, oldest);
   const seenKey = messageKey(threadId, state);
@@ -267,6 +267,11 @@ function handleThread({ url, name, fullText, state, snippet, oldest, bubbleCount
   // badge entry just above (both written synchronously) are all that is left.
   if (signal?.aborted) { log(`· run deadline passed — ${name} ${SCAN_ALL ? "left undrafted" : "bannered, not drafted"}`); return true; }
   draftOrSkip(action, { name, url, snippet, fullText }, bubbleCount, seenKey);
+  // No bubbles at all is selector drift, and it will be the same for every
+  // other thread: opening them would only mark each one read in LinkedIn —
+  // the unread filter never lists it again — with no draft to show for it.
+  // Stop here, so the rest stay unread for the run after the selector is fixed.
+  if (action === "retry" && !bubbleCount) { log("· message selector drift — stopping the scan; the remaining unread threads stay unread"); return true; }
   return false;
 }
 
