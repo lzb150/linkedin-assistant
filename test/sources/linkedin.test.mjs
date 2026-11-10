@@ -374,3 +374,17 @@ test("fetchLinkedInJobs fails a search still rate-limited after the wait instead
   assert.ok(logs.some((l) => /LinkedIn search error: .*429/.test(l)), logs.join("\n"));
   assert.ok(!logs.some((l) => /found 0 cards/.test(l)), "a blank 429 page is not an empty result");
 });
+
+test("fetchLinkedInJobs keeps a description identical to the last card's when it is the same posting in another city, drops it for another posting", async () => {
+  // The stale-panel guard emptied every description equal to the previous
+  // card's — also the honest case of one vacancy listed once per city.
+  const page = fakePage([
+    { title: "SDET", href: "/jobs/view/1/", company: "Acme", location: "Kyiv" },
+    { title: "SDET", href: "/jobs/view/2/", company: "Acme", location: "Lviv" },
+    { title: "QA Lead", href: "/jobs/view/3/", company: "Beta", location: "Kyiv" },
+  ]);
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 3, searches: [{ keywords: "SDET" }] }, () => {}, { sleep: async () => {} });
+  assert.match(jobs[0].text, /Job description$/);
+  assert.match(jobs[1].text, /Job description$/, "the same posting in another city keeps its text");
+  assert.doesNotMatch(jobs[2].text, /Job description/, "another posting showing the last one's text is a stale panel");
+});

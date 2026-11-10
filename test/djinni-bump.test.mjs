@@ -108,3 +108,16 @@ test("bumpProfile: past the run deadline nothing is pressed", async () => {
   assert.equal(await bumpProfile(during, signal), "aborted");
   assert.deepEqual(during.calls, ["open"]);
 });
+
+test("bumpProfile: a page closed at the run deadline before the confirm is 'aborted', not a dated bump", async () => {
+  // runScan closes the browser at the deadline: the modal wait then throws,
+  // which read as "no modal, the click alone did it" → "clicked" → lastBumpAt
+  // stamped for a bump nobody confirmed.
+  const signal = { aborted: false };
+  const page = fakeProfilePage({ button: "enabled", modalText: "Bump my profile?" });
+  const closed = async () => { signal.aborted = true; throw new Error("Target page, context or browser has been closed"); };
+  Object.assign(page.modal, { waitFor: closed });
+  Object.assign(page, { waitForTimeout: closed, reload: closed });
+  assert.equal(await bumpProfile(page, signal), "aborted");
+  assert.deepEqual(page.calls, ["open"]);
+});
