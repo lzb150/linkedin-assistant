@@ -30,13 +30,22 @@ test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not clo
 });
 
 test("isClosed: per-source inactive markers (observed on live pages, 2026-09)", () => {
-  assert.equal(isClosed({ source: "dou", status: 200, html: "<div class='b-vacancy'>… Вакансія неактивна …</div>" }), true);
-  assert.equal(isClosed({ source: "djinni", status: 200, html: "<p>Ця вакансія зараз неактивна.</p>" }), true);
-  assert.equal(isClosed({ source: "linkedin", status: 200, html: "…See who Forte Group has hired for this role No longer accepting applications Report this job…" }), true);
+  // The boards' own markup around the words (live closed pages, 2026-11-10).
+  const DOU = '<div class="l-vacancy __inactive" itemprop="description">\n<h1 class="g-h2">General QA Engineer (вакансія неактивна)</h1>';
+  const DJINNI = '<div class="alert alert-secondary" role="alert">\n      <div class="fw-medium">\n        Ця вакансія зараз неактивна.\n      </div>';
+  const LINKEDIN = '<figure class="closed-job closed-job__flavor topcard__flavor-row">\n<span class="closed-job__icon"></span>\n<figcaption class="closed-job__flavor--closed">No longer accepting applications</figcaption>';
+  assert.equal(isClosed({ source: "dou", status: 200, html: DOU }), true);
+  assert.equal(isClosed({ source: "djinni", status: 200, html: DJINNI }), true);
+  assert.equal(isClosed({ source: "linkedin", status: 200, html: LINKEDIN }), true);
+  // The same words in the employer's description are not the board speaking:
+  // a live vacancy quoting them was closed, hidden and archived.
+  assert.equal(isClosed({ source: "dou", status: 200, html: '<div class="l-vacancy" itemprop="description"><p>Попередня вакансія неактивна, відгукуйтесь на цю.</p></div>' }), false);
+  assert.equal(isClosed({ source: "djinni", status: 200, html: "<div class=\"job-post__description\"><p>Ця вакансія зараз неактивна на інших сайтах.</p></div>" }), false);
+  assert.equal(isClosed({ source: "linkedin", status: 200, html: "<div class=\"description__text\">No longer accepting applications by email — apply here.</div>" }), false);
   assert.equal(isClosed({ source: "linkedin", status: 200, html: "<title>Join now | LinkedIn</title> authwall" }), false, "an authwall page is unknown, not closed");
   // a DOU marker on a Djinni page (job text quoting it) must not count
-  assert.equal(isClosed({ source: "djinni", status: 200, html: "вакансія неактивна" }), false);
-  assert.equal(isClosed({ source: "jooble", status: 200, html: "Ця вакансія зараз неактивна." }), false, "unsupported source is never closed by marker");
+  assert.equal(isClosed({ source: "djinni", status: 200, html: DOU }), false);
+  assert.equal(isClosed({ source: "jooble", status: 200, html: DJINNI }), false, "unsupported source is never closed by marker");
 });
 
 const now = new Date("2026-09-07T12:00:00Z");
