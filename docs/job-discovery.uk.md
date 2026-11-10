@@ -12,7 +12,12 @@
 node jobs.mjs              # усі джерела (за jobs.config.json)
 DOU_ONLY=1 node jobs.mjs   # пропустити скрейпінг LinkedIn (DOU, Djinni, Himalayas і Telegram працюють — повністю чисто щодо ToS)
 HEADFUL=1 node jobs.mjs    # видиме вікно Chrome (подивитися на частину з LinkedIn)
+ALL_SOURCES=1 node jobs.mjs  # читати всі дошки, навіть якщо щогодинний запуск щойно це зробив
 ```
+
+Повний запуск пропускає дошку, яку щогодинний запуск із `DOU_ONLY=1` читав
+протягом останніх 50 хвилин і знайшов на ній вакансії; у лозі названо кожну
+пропущену дошку.
 
 Заплановані прогони headless — без вікна браузера. Дошки, які Cloudflare блокує
 в headless Chrome (Work.ua, Robota.ua, Glassdoor), і Jooble з його API зі

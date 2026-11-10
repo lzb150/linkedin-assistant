@@ -38,7 +38,7 @@ import { loadSeenStore } from "./lib/seen-store.mjs";
 import { judgeMatches } from "./lib/llm-gate.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { darkWakeOnBattery } from "./lib/wake.mjs";
-import { heartbeat } from "./lib/heartbeat.mjs";
+import { heartbeat, normalizeHeartbeat } from "./lib/heartbeat.mjs";
 import { readStore } from "./lib/job-state.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -247,9 +247,32 @@ async function runSource(name, run) {
   }
 }
 
+// The full run (:45) used to sweep the boards the hourly run (:15) had read 30
+// minutes earlier: ~20 requests a time, 8 times a day, for nothing new. It now
+// leaves a board to the hourly run when that run finished within FRESH_BOARDS_MS
+// AND found something on this board — a board that read 0 or failed there is
+// read again here. A vacancy that is on LinkedIn too still becomes one package:
+// the hourly run's copy is in the seen store or the package index by now (the
+// "dup" gate appends the other link). ALL_SOURCES=1 reads every board anyway
+// (a manual run after a config change).
+const FRESH_BOARDS_MS = 50 * 60_000;
+const hourlyRunAgeMs = (() => {
+  if (DOU_ONLY || process.env.ALL_SOURCES === "1") return Infinity;
+  try {
+    const at = Date.parse(normalizeHeartbeat(readJson(HEARTBEAT_FILE, {})).jobs["jobs-dou"]?.at || "");
+    return Number.isFinite(at) ? Date.now() - at : Infinity;
+  } catch { return Infinity; }
+})();
+const readThisHour = (name) => hourlyRunAgeMs >= 0 && hourlyRunAgeMs < FRESH_BOARDS_MS && (health[name]?.at(-1) ?? 0) > 0;
+
 for (const [name, fetchSource] of Object.entries(BROWSERLESS)) {
   if (sourceOff(name)) continue;
   if (CATCHUP) { skippedSources.push(name); continue; }   // they ran in the deferring run; the catch-up is for LinkedIn
+  if (readThisHour(name)) {
+    log(`${name}: read ${Math.round(hourlyRunAgeMs / 60_000)} min ago by the hourly run — skipped (ALL_SOURCES=1 reads it anyway)`);
+    skippedSources.push(name);
+    continue;
+  }
   log(`Gathering ${name}...`);
   await runSource(name, () => fetchSource(config[name], log, SOURCE_OPTS));
 }

@@ -13,7 +13,11 @@ each strong match into `applications/`. **It never submits anything.**
 node jobs.mjs              # all sources (per jobs.config.json)
 DOU_ONLY=1 node jobs.mjs   # skip LinkedIn scraping (DOU, Djinni, Himalayas and Telegram still run — fully ToS-clean)
 HEADFUL=1 node jobs.mjs    # visible Chrome window (watch the LinkedIn part)
+ALL_SOURCES=1 node jobs.mjs  # read every board even if the hourly run just did
 ```
+
+A full run skips a board that the hourly `DOU_ONLY=1` run read within the last
+50 minutes and found jobs on; the log names each skipped board.
 
 Scheduled runs are headless — no browser window. Boards that Cloudflare blocks
 in headless Chrome (Work.ua, Robota.ua, Glassdoor) and Jooble's snippet-only API
