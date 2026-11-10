@@ -54,6 +54,14 @@ test("linkedinBadge: unread threads the run did not open still count", () => {
   assert.equal(linkedinBadge({ unreadCount: 0, opened: 2 }).count, 0, "opened > unread never goes negative");
 });
 
+test("linkedinBadge: an unopened unread thread that is already pending counts once", () => {
+  // Bannered earlier (still pending), then another message, and this run did not open it.
+  const prevPending = [{ id: "2-a", label: "Maria" }];
+  assert.equal(linkedinBadge({ prevPending, unreadCount: 1, opened: 0, unopened: ["Maria"] }).count, 1);
+  assert.equal(linkedinBadge({ prevPending, unreadCount: 2, opened: 0, unopened: ["Maria", "Maria"] }).count, 2, "one pending label covers one card");
+  assert.equal(linkedinBadge({ prevPending, unreadCount: 2, opened: 0, unopened: ["Oleh", ""] }).count, 3, "other senders and unnamed cards count on top");
+});
+
 test("keepBadgeAdding: an uncounted scan keeps the old count and adds each newly bannered thread", (t) => {
   const prev = { count: 3, pending: [{ id: "2-a", label: "Ann" }] };
   const out = keepBadgeAdding({ prev, notified: [{ id: "2-a", label: "Ann" }, { id: "2-b", label: "Bob" }] });
