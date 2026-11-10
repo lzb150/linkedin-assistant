@@ -35,9 +35,10 @@ export async function serveFeed(t, body) {
 }
 
 // `llm` overrides the llm config block, `packages` pre-existing applications/*.md,
-// `claude` replaces the fake CLI below.
-export function setupProject(t, feedUrl, { llm = {}, packages, claude, files = {} } = {}) {
+// `claude` replaces the fake CLI below, `playwright` the fake browser module.
+export function setupProject(t, feedUrl, { llm = {}, packages, claude, files = {}, playwright } = {}) {
   return makeProject(t, {
+    ...(playwright ? { playwright } : {}),
     scripts: ["jobs.mjs", "dashboard.mjs"],
     packages,
     files: {

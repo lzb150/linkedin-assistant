@@ -204,3 +204,22 @@ test("jobs.mjs: the full run leaves a board to an hourly run that read it within
   writeFileSync(p.path("last-success.json"), JSON.stringify(beat));
   assert.match(await runScript(p, "jobs.mjs"), /Gathering dou/, "an hourly run older than 50 minutes does not count");
 });
+
+test("jobs.mjs: LinkedIn failing alone does not fail a full run whose boards the hourly run just read", async (t) => {
+  // With the boards left to the hourly run, LinkedIn was the only source tried:
+  // its failure read as "every source failed" — exit 1 and no jobs-linkedin
+  // stamp — although the same failure never failed the run while the boards
+  // were read here.
+  const p = setupProject(t, await serveFeed(t, () => FEED), {
+    playwright: 'export const chromium = { launchPersistentContext: async () => { throw new Error("Executable doesn\'t exist at /x/chromium"); } };',
+  });
+  await runJobs(p);                                          // the hourly run reads DOU
+  const cfg = p.json("jobs.config.json");
+  cfg.linkedin = { enabled: true, searches: [] };
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+  const out = await runScript(p, "jobs.mjs");              // resolves ⇒ exit 0
+  assert.match(out, /dou: read 0 min ago by the hourly run — skipped/);
+  assert.match(out, /Browser sources error/);
+  assert.doesNotMatch(out, /All \d+ source\(s\) failed/);
+  assert.ok(p.json("last-success.json").jobs["jobs-linkedin"], "the full run still stamps its plist");
+});

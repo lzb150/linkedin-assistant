@@ -263,6 +263,7 @@ const hourlyRunAgeMs = (() => {
     return Number.isFinite(at) ? Date.now() - at : Infinity;
   } catch { return Infinity; }
 })();
+let boardsLeftToHourly = 0;   // skipped here because the hourly run just read them
 const readThisHour = (name) => hourlyRunAgeMs >= 0 && hourlyRunAgeMs < FRESH_BOARDS_MS && (health[name]?.at(-1) ?? 0) > 0;
 
 for (const [name, fetchSource] of Object.entries(BROWSERLESS)) {
@@ -271,6 +272,7 @@ for (const [name, fetchSource] of Object.entries(BROWSERLESS)) {
   if (readThisHour(name)) {
     log(`${name}: read ${Math.round(hourlyRunAgeMs / 60_000)} min ago by the hourly run — skipped (ALL_SOURCES=1 reads it anyway)`);
     skippedSources.push(name);
+    boardsLeftToHourly++;
     continue;
   }
   log(`Gathering ${name}...`);
@@ -479,8 +481,11 @@ if (llmFailed > 2) {
 }
 // launchd must see a failed run as failed (the convention djinni-check.mjs:144
 // already follows). "Failed" is only "every source we tried threw" — a quiet
-// run that gathered nothing because there was nothing new stays 0.
-const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
+// run that gathered nothing because there was nothing new stays 0. A board
+// left to the hourly run was read minutes ago, so it counts as one that
+// worked: without it LinkedIn failing alone failed the whole full run (exit 1,
+// no `jobs-linkedin` heartbeat), which it never did while the boards were read here.
+const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried && !boardsLeftToHourly;
 // Heartbeat: one stamp per launchd plist, and a shout once for any sibling
 // job that has stopped finishing — an unloaded plist or a broken node path was
 // silent until someone noticed the Monday digest missing. `jobs-dou` is the
