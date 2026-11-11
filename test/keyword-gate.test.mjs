@@ -155,6 +155,25 @@ test("findRepost: of several closed priors the newest counts on, whatever their 
   }
 });
 
+// The repost of a closed listing got its package, and that package is open: a
+// third url for the same vacancy (LinkedIn lists one vacancy once per city) is
+// not a repost of the old closed one again — each new url was judged, and
+// packaged, afresh. An archived closed prior stays in the index for months.
+test("findRepost: a closed prior that already has a later open package from the same board makes no repost", () => {
+  const j = job({ url: "https://jobs.dou.ua/9/" });
+  const closed = { file: "a.md", source: "dou", url: "https://jobs.dou.ua/1/", generated: "2026-09-01T00:00:00Z", archived: true };
+  const open = { file: "b.md", source: "dou", url: "https://jobs.dou.ua/2/", generated: "2026-10-01T00:00:00Z", reposts: 1 };
+  const closedFiles = new Set(["a.md"]);
+  assert.equal(findRepost(j, { packageIndex: new Map([[canonicalKey(j), [closed, open]]]), closedFiles }), null);
+  const g = keywordGate(j, ctx({ seen: new Set([identityKey(j)]), packageIndex: new Map([[canonicalKey(j), [closed, open]]]), closedFiles }));
+  assert.equal(g.kind, "seen", "the vacancy is known: its open package is the answer");
+  // An open package OLDER than the closure, or one from another board, says nothing about the re-listing.
+  const before = { ...open, generated: "2026-08-01T00:00:00Z" };
+  assert.equal(findRepost(j, { packageIndex: new Map([[canonicalKey(j), [closed, before]]]), closedFiles }).file, "a.md");
+  const elsewhere = { ...open, source: "djinni", url: "https://djinni.co/jobs/2/" };
+  assert.equal(findRepost(j, { packageIndex: new Map([[canonicalKey(j), [closed, elsewhere]]]), closedFiles }).file, "a.md");
+});
+
 test("stampKeys: a judged repost's marker is stamped, and re-stamped on every later run while the store holds it", () => {
   const seen = new Set();
   const j = job({ source: "dou", url: "https://jobs.dou.ua/9/", mergedIds: ["dou::other"] });
