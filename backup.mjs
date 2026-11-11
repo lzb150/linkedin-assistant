@@ -53,7 +53,7 @@ try {
   // mid-write never leaves a torn archive under the real name.
   execFileSync("tar", ["--no-xattrs", "-czf", tmp, "-C", ROOT, ...present], { stdio: ["ignore", "ignore", "pipe"] });
   // tar writes with the umask (0644), and the archive holds files kept 0600 on
-  // purpose (telegram.json, resume.txt, notes). The 0700 above only applies to
+  // purpose (resume.txt, drafts, notes). The 0700 above only applies to
   // a directory this run created; BACKUP_DIR may be an existing shared one.
   chmodSync(tmp, 0o600);
   renameSync(tmp, out);

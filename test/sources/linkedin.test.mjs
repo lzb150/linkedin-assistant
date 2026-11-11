@@ -1,6 +1,9 @@
 import { test } from "node:test";
+import { createRequire } from "node:module";
 import assert from "node:assert/strict";
 import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom, isRelisted, ageDate } from "../../lib/sources/linkedin-jobs.mjs";
+
+const { ageLabel } = createRequire(import.meta.url)("../../lib/dashboard-client-core.cjs");
 
 test("buildUrl includes keywords and location and always sorts by date", () => {
   const url = buildUrl({ keywords: "QA Automation", location: "Ukraine" });
@@ -175,6 +178,7 @@ test("fetchLinkedInJobs skips the click for cards the skip() predicate knows, st
   const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "SDET", location: "Ukraine" }] }, () => {},
     { sleep: async () => {}, skip: (j) => { seen.push(j); return j.title === "Known SDET"; } });
   assert.deepEqual(seen.map((j) => [j.source, j.title, j.company, j.url]), [["linkedin", "Known SDET", "Acme", "https://www.linkedin.com/jobs/view/1/"], ["linkedin", "New AQA", "Beta", "https://www.linkedin.com/jobs/view/2/"]], "predicate sees source + list fields + canonical url: the repost check needs the board");
+  assert.deepEqual(seen.map((j) => j.location), ["Kyiv", "Ukraine"], "and the location — the card's, else the search's — so a job the location filter will drop is not opened");
   assert.equal(page.calls.filter((c) => c.startsWith("click")).length, 1, "only the unknown card is opened");
   assert.equal(jobs.length, 2, "known card is still returned so the caller can re-stamp it as seen");
   assert.equal(jobs[0].text, "Known SDET at Acme. Kyiv.", "no description for a skipped card");
@@ -282,7 +286,15 @@ test("readCard reads a /jobs/search-results/ card's location from the title's bo
   assert.deepEqual(readCard(cardEl, {}), { title: "QA Engineer", href: "/jobs/view/7/", company: "Acme", location: "", posted: "" });
 });
 
-test("ageDate turns the top card's age into a date: the day for days and longer, the hour for hours", () => {
+// The day is the machine's local one, so each test names its time zone.
+function inZone(t, zone) {
+  const tz = process.env.TZ;
+  process.env.TZ = zone;
+  t.after(() => { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; });
+}
+
+test("ageDate turns the top card's age into a date: the day for days and longer, the hour for hours", (t) => {
+  inZone(t, "UTC");
   const now = Date.parse("2026-11-06T10:15:00Z");
   assert.equal(ageDate("Ukraine · 6 days ago · 10 people clicked apply", now), "2026-10-31T00:00:00.000Z");
   assert.equal(ageDate("Ukraine · Reposted 1 week ago · 3 people clicked apply", now), "2026-10-30T00:00:00.000Z");
@@ -292,9 +304,20 @@ test("ageDate turns the top card's age into a date: the day for days and longer,
   assert.equal(ageDate("", now), undefined);
 });
 
+// The day was floored in UTC while ages are counted in local days: a card read
+// between midnight and 02:00 (03:00 in summer) Kyiv time was dated a day early,
+// and the package said "2 d ago" of a vacancy posted yesterday, for good.
+test("ageDate floors a day-granular age to the local day, the one the dashboard counts in", (t) => {
+  inZone(t, "Europe/Kyiv");
+  const now = Date.parse("2026-11-11T22:30:00Z");   // 00:30 on 12 November in Kyiv
+  assert.equal(ageDate("Ukraine · 1 day ago · 10 people clicked apply", now), "2026-11-10T22:00:00.000Z", "midnight of 11 November, Kyiv time");
+  assert.equal(ageLabel("posted", ageDate("Ukraine · 1 day ago", now), now), "posted 1 d ago");
+});
+
 // The new UI's cards carry no <time>: every LinkedIn job lost its posted date until the top card's
 // age filled it ("Ukraine · 6 days ago · …", live 2026-11-06).
-test("fetchLinkedInJobs dates a card with no <time> from its top card, as `relisted` when reposted", async () => {
+test("fetchLinkedInJobs dates a card with no <time> from its top card, as `relisted` when reposted", async (t) => {
+  inZone(t, "UTC");
   const now = () => Date.parse("2026-11-06T10:15:00Z");
   const card = { title: "QA", href: "/jobs/view/4485318694/", company: "Ciklum", location: "Ukraine (Remote)", posted: "" };
   const page = fakePage([card]);
