@@ -265,3 +265,17 @@ test("alertMessage stays under Telegram's 4096 limit when escaping grows the tex
   assert.ok(msg.length <= 4096, String(msg.length));
   assert.doesNotMatch(msg, /&[a-z]*$/, "no entity cut in half");
 });
+
+// Each field was cut before escaping, and & < > " grow up to six times when
+// escaped: a posting made of them went past Telegram's 4096 characters, got a
+// 400 and was dropped — the match never reached the phone.
+test("jobMessage: a posting full of characters that grow when escaped still fits one Telegram message", () => {
+  const q = (n) => '"'.repeat(n);
+  const html = jobMessage({
+    title: q(300), company: "&".repeat(200), location: "<".repeat(200), source: "dou", url: `https://x.example/?${"a&".repeat(900)}`,
+    salary: q(80), llmScore: 80, why: q(400), redFlags: [q(200), q(200), q(200), q(200)], suspect: "injection (1 marker)", reposts: 2, posted: new Date().toISOString(),
+  });
+  assert.ok(html.length <= 4096, `message is ${html.length} characters`);
+  assert.doesNotMatch(html, /&(?!amp;|lt;|gt;|quot;)/, "no entity cut in half");
+  assert.match(html, /^<b>/, "a url too long to fit is left out, the title stays");
+});

@@ -211,3 +211,18 @@ test("scoreMessage: an anti-keyword lowers the score and is reported in penaltie
   assert.ok(r.score < clean.score, `${r.score} should be below ${clean.score}`);
   assert.deepEqual(r.penalties, ["unpaid", "internship"]);
 });
+
+// "+" and "#" were word characters on both sides of a term, so that "c" would
+// not match inside "c++" or "c#" — but that also hid a skill joined by "+" or
+// written as a hashtag, and the vacancy scored 0 and was buried as seen.
+test("scoreMessage: a skill joined by + or written as a hashtag still counts; c stays apart from c++ and c#", () => {
+  const p = { roles: ["sdet"], skills: { playwright: 5, typescript: 4, c: 1, "c++": 2, "c#": 2 }, synonyms: {}, antiKeywords: {}, maxSkills: 8, thresholds: { relevant: 8, maybe: 4 } };
+  const hits = (t) => scoreMessage(t, p).matchedSkills.sort();
+  assert.deepEqual(hits("QA Automation Engineer (Playwright+TypeScript)"), ["playwright", "typescript"]);
+  assert.deepEqual(hits("We hire! #playwright #typescript"), ["playwright", "typescript"]);
+  assert.equal(scoreMessage("#sdet wanted", p).matchedRole, "sdet");
+  assert.deepEqual(hits("backend in C++ here"), ["c++"]);
+  assert.deepEqual(hits("backend in C# here"), ["c#"]);
+  assert.deepEqual(hits("plain C, please"), ["c"]);
+  assert.equal(mentionsStem("шукаємо #автоматизація тестування", "автоматизація"), true);
+});
