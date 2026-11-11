@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
+import { filterByLocation, djinniEligible, candidateCountryList, excludeList, numberIn, knob, flag, sourceList, isHttpUrl, isSearchPhrase, isChannelName, isLinkedInSearch, namesCountry, DEFAULT_CANDIDATE_COUNTRY } from "../lib/filters.mjs";
 
 test("filterByLocation: foreign terms drop a job unless it is a remote DOU listing (offices); Djinni uses its eligible-countries rule", () => {
   const jobs = [
     { title: "A", source: "dou", location: "Київ" },
-    { title: "B", source: "dou", location: "Краків, Польща" },
+    { title: "B", source: "dou", location: "Краків (Польща)" },                    // DOU spells a foreign office "Місто (Країна)"
     { title: "C", source: "linkedin" }, // no location → kept
     { title: "D", source: "dou", location: "Київ, Варшава (Польща), віддалено" },   // DOU: offices + remote → kept
     { title: "E", source: "linkedin", location: "Poland (Remote)" },               // remote but not DOU → dropped
@@ -18,6 +18,80 @@ test("filterByLocation: foreign terms drop a job unless it is a remote DOU listi
   // Another candidate: living in Poland, F (Канада, Польща, Сербія) becomes eligible and H (Європи та Україна) does not
   const pl = filterByLocation(jobs, ["ukraine"], ["Poland", "Польща"]);
   assert.deepEqual(pl.map((j) => j.title), ["A", "B", "C", "D", "E", "F"]);
+});
+
+test("filterByLocation: a DOU listing naming a Ukrainian office stays in next to a foreign one; foreign-only is dropped", () => {
+  const exclude = ["за кордоном", "Польща", "Португалія"];
+  const jobs = [
+    { title: "A", source: "dou", location: "Київ, Львів, за кордоном" },
+    { title: "B", source: "dou", location: "Львів, Лісабон (Португалія), Люблін (Польща)" },
+    { title: "C", source: "dou", location: "за кордоном" },
+    { title: "D", source: "dou", location: "Лісабон (Португалія), Варшава (Польща)" },
+    { title: "E", source: "linkedin", location: "Kyiv, Poland" },   // not DOU: no office rule
+  ];
+  assert.deepEqual(filterByLocation(jobs, [...exclude, "poland"]).map((j) => j.title), ["A", "B"]);
+});
+
+test("filterByLocation: an English countries segment that says 'offices' or 'remotely' is still judged as countries", () => {
+  const jobs = [
+    { title: "A", source: "tgchannels", location: "Remote · Ukraine (offices in Kyiv and Lviv)" },
+    { title: "B", source: "tgchannels", location: "Remote · Ukraine, remotely" },
+    { title: "C", source: "tgchannels", location: "Remote · Poland (offices in Warsaw)" },
+  ];
+  assert.deepEqual(filterByLocation(jobs, [], undefined, { countryOnly: new Set(["tgchannels"]) }).map((j) => j.title), ["A", "B"]);
+  assert.deepEqual(filterByLocation(jobs, []).map((j) => j.title), ["A", "B"], "worldwide mode: Poland-only is closed to Ukraine");
+});
+
+test("filterByLocation: Himalayas is judged by its countries like Djinni, not by excludeLocation substrings", () => {
+  const jobs = [
+    { title: "A", source: "himalayas", location: "Remote · Worldwide" },
+    { title: "B", source: "himalayas", location: "Remote · Poland, Ukraine" },   // names Poland, but open to Ukraine → kept
+    { title: "C", source: "himalayas", location: "Remote · United States" },
+    { title: "D", source: "himalayas", location: "Remote · Ukraine" },
+  ];
+  assert.deepEqual(filterByLocation(jobs, ["poland"]).map((j) => j.title), ["A", "B", "D"]);
+  assert.deepEqual(filterByLocation(jobs, [], ["United States"]).map((j) => j.title), ["A", "C"]);
+});
+
+test("filterByLocation: a countryOnly source drops worldwide jobs too; the others keep them", () => {
+  const jobs = [
+    { title: "A", source: "himalayas", location: "Remote · Worldwide" },
+    { title: "B", source: "himalayas", location: "Remote · Poland, Ukraine" },
+    { title: "C", source: "tgchannels", location: "Remote · Worldwide" },
+    { title: "D", source: "tgchannels", location: "Remote" },   // no Location: it names no country either
+    { title: "E", source: "djinni", location: "Тільки віддалено · Весь світ · 5 років досвіду" },
+  ];
+  assert.deepEqual(filterByLocation(jobs, [], undefined, { countryOnly: new Set(["himalayas", "tgchannels"]) }).map((j) => j.title), ["B", "E"]);
+  assert.deepEqual(filterByLocation(jobs, [], undefined, { countryOnly: new Set(["himalayas"]) }).map((j) => j.title), ["B", "C", "D", "E"]);
+  assert.deepEqual(filterByLocation(jobs, []).map((j) => j.title), ["A", "B", "C", "D", "E"], "default: worldwide is kept");
+});
+
+test("filterByLocation: Telegram channel posts are judged by their Location like Djinni; a region alone names no country", () => {
+  const jobs = [
+    { title: "A", source: "tgchannels", location: "Remote · Worldwide" },
+    { title: "B", source: "tgchannels", location: "Remote · Europe or Ukraine" },   // names Ukraine → kept
+    { title: "C", source: "tgchannels", location: "Remote · Latin America" },
+    { title: "D", source: "tgchannels", location: "Remote · Europe" },
+    { title: "E", source: "tgchannels", location: "Remote" },   // no Location field: nothing to judge, the LLM gate decides
+  ];
+  assert.deepEqual(filterByLocation(jobs, ["poland"]).map((j) => j.title), ["A", "B", "E"]);
+});
+
+test("namesCountry: the countries segment names the candidate's country itself, not just the whole world", () => {
+  for (const yes of ["Remote · Ukraine", "Remote · Poland, Ukraine", "Remote · Europe or Ukraine", "Тільки віддалено · Україна · 2 роки досвіду"]) assert.equal(namesCountry(yes), true, yes);
+  for (const no of ["Remote · Worldwide", "Remote · Europe", "Remote", "", undefined, "Part-time · 3 роки досвіду", "Тільки віддалено · Весь світ"]) assert.equal(namesCountry(no), false, String(no));
+  assert.equal(namesCountry("Remote · Poland", ["Poland", "Польща"]), true, "candidateCountry from the config");
+  assert.equal(namesCountry("Remote · Poland", []), false, "an empty list falls back to the default, not to 'matches everything'");
+});
+
+test("isChannelName: a public channel username, with or without @", () => {
+  for (const ok of ["remote_qa_jobs", "@remote_qa_jobs", " qa_vacancies "]) assert.equal(isChannelName(ok), true, ok);
+  for (const no of ["", "qa", "1channel", "https://t.me/s/remote_qa_jobs", "t.me/remote_qa_jobs", "a".repeat(33), 42, null, ["remote_qa_jobs"]]) assert.equal(isChannelName(no), false, JSON.stringify(no));
+});
+
+test("isSearchPhrase: a non-empty string that is not a URL", () => {
+  for (const ok of ["SDET", "QA automation"]) assert.equal(isSearchPhrase(ok), true, ok);
+  for (const no of ["", "  ", "https://himalayas.app/jobs?q=SDET", 42, null, { keywords: "SDET" }]) assert.equal(isSearchPhrase(no), false, JSON.stringify(no));
 });
 
 test("djinniEligible: the countries segment must name Ukraine or the whole world; no segment means keep", () => {
@@ -121,4 +195,35 @@ test("knob reports a value it had to CLAMP, not just one it could not read", () 
   const none = [];
   knob("minScore", undefined, 25, [0, 100], (s) => none.push(s));
   assert.deepEqual(none, []);
+});
+
+test("flag: booleans pass, the strings true/false are read as meant, anything else is the default — all reported", () => {
+  const lines = [];
+  const say = (l) => lines.push(l);
+  assert.equal(flag("x", false, true, say), false);
+  assert.equal(flag("x", undefined, true, say), true);
+  assert.equal(lines.length, 0, "a real boolean or an absent key is quiet");
+  assert.equal(flag("dou.enabled", "false", true, say), false, "the string \"false\" is no longer truthy");
+  assert.equal(flag("x", " TRUE ", false, say), true);
+  assert.equal(flag("x", 1, false, say), false, "a number is not a switch: default");
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /dou\.enabled is "false", not true\/false — using false/);
+});
+
+test("sourceList: a LinkedIn search needs keywords; a non-list is no list; each drop is logged", () => {
+  // ["SDET"] (the Djinni/DOU shape) built a filterless LinkedIn search that
+  // scraped the whole newest-jobs feed; a bare string walked its characters.
+  const lines = [];
+  const log = (m) => lines.push(m);
+  const ok = { keywords: "SDET", location: "Ukraine", remote: true };
+  assert.deepEqual(sourceList("linkedin.searches", [ok, "SDET", { keywords: " " }, { location: "Ukraine" }, null, []], isLinkedInSearch, "{ keywords }", log), [ok]);
+  assert.equal(lines.length, 5, "every dropped item is reported");
+  assert.match(lines[0], /linkedin\.searches item "SDET" is not \{ keywords \} — skipped/);
+  lines.length = 0;
+  assert.deepEqual(sourceList("dou.feeds", "https://jobs.dou.ua/vacancies/feeds/", isHttpUrl, "a feed URL", log), []);
+  assert.match(lines[0], /dou\.feeds is ".+", not a list — ignored/);
+  lines.length = 0;
+  assert.deepEqual(sourceList("djinni.searches", undefined, isHttpUrl, "a search URL", log), [], "absent is empty, quietly");
+  assert.deepEqual(sourceList("djinni.searches", ["https://djinni.co/jobs/?all_keywords=AQA", "djinni.co/jobs"], isHttpUrl, "a search URL", log), ["https://djinni.co/jobs/?all_keywords=AQA"]);
+  assert.equal(lines.length, 1);
 });

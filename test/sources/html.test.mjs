@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assertLinear } from "../helpers/linear.mjs";
-import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody, oneLine } from "../../lib/sources/html.mjs";
+import { decodeEntities, stripHtml, composeText, fetchText, fetchFollow, bodyText, extractDivByClass, stripBlocks, pool, decodeBody, oneLine, isoDate } from "../../lib/sources/html.mjs";
 
 test("stripHtml strips tags before decoding, so escaped markup survives as text", () => {
   assert.equal(stripHtml("Use <b>&lt;Playwright&gt;</b> here"), "Use <Playwright> here");
@@ -30,10 +30,10 @@ test("decodeEntities drops NUL and lone surrogates, keeps valid code points", ()
 test("fetchText returns \"\" and logs on a non-2xx status", async () => {
   const logs = [];
   const fakeFetch = async () => ({ ok: false, status: 404, text: async () => "body" });
-  assert.equal(await fetchText("https://x/1", (l) => logs.push(l), "dou", fakeFetch), "");
+  assert.equal(await fetchText("https://x/1", (l) => logs.push(l), "dou", { doFetch: fakeFetch }), "");
   assert.match(logs[0], /dou 404: https:\/\/x\/1/);
   const okFetch = async () => ({ ok: true, status: 200, text: async () => "body" });
-  assert.equal(await fetchText("https://x/1", () => {}, "dou", okFetch), "body");
+  assert.equal(await fetchText("https://x/1", () => {}, "dou", { doFetch: okFetch }), "body");
 });
 
 // Redirect hops are what `redirect: "follow"` used to hide: the allowlist only
@@ -46,6 +46,14 @@ test("fetchFollow follows a same-host redirect and reads the final page", async 
   const res = await fetchFollow("https://djinni.co/jobs/1", {}, { doFetch });
   assert.equal(await bodyText(res), "body");
   assert.deepEqual(seen, ["https://djinni.co/jobs/1", "https://djinni.co/final"]);
+});
+
+test("fetchFollow and fetchText cancel the bodies they never read", async () => {
+  let cancelled = 0;
+  const body = { cancel: async () => { cancelled++; } };
+  const doFetch = async (u) => (u.endsWith("/final") ? { ok: false, status: 404, body } : { ...redirectTo("/final"), body });
+  assert.equal(await fetchText("https://djinni.co/jobs/1", () => {}, "djinni", { doFetch }), "");
+  assert.equal(cancelled, 2, "the redirect hop and the 404 body are both released");
 });
 
 test("fetchFollow refuses a redirect off the allowed host, and never requests it", async () => {
@@ -117,9 +125,21 @@ test("stripHtml ends a tag at the '>' outside its quoted attributes, not inside 
   assert.equal(stripHtml("<p unterminated"), "<p unterminated");
 });
 
+test("stripHtml: a quote opens a value only after '=' in an element tag; a comment ends at '-->'", () => {
+  assert.equal(stripHtml("<p>Hello</p><!-- don't remove --><p>We need <b>Playwright</b></p>"), "Hello We need Playwright");
+  assert.equal(stripHtml("<!-- a > b -->text"), "text", "a '>' inside a comment does not end it");
+  assert.equal(stripHtml("<!-->abrupt"), "abrupt");
+  assert.equal(stripHtml("<a title=don't href=x>link</a> after"), "link after");
+  assert.equal(stripHtml("<!DOCTYPE html><p>it's</p>"), "it's");
+  assert.equal(stripHtml('<a href="x>text'), "text", "a value still open at the end: the tag ends at its first '>'");
+  assert.equal(stripHtml("<p>kept</p><!-- unterminated"), "kept");
+});
+
 test("stripHtml stays linear on unterminated quotes (the scan has no bound to outgrow)", () => {
   assertLinear("open quotes", (n) => stripHtml('<a title="'.repeat(n)), 25_000);
   assertLinear("quoted > in tags", (n) => stripHtml('<a title="x > y">t'.repeat(n)), 25_000);
+  assertLinear("open quotes in unquoted values", (n) => stripHtml("<a b='x>".repeat(n)), 25_000);
+  assertLinear("comment openers", (n) => stripHtml("<!-- x --".repeat(n)), 25_000);
 });
 
 test("stripHtml drops tags longer than the bounded scan (inline SVG / data: URI)", () => {
@@ -238,6 +258,20 @@ test("sameSite refuses a scheme downgrade and non-http(s) schemes, not just a fo
   });
 });
 
+test("sameSite refuses a redirect to another port of the same host", async () => {
+  // Scheme + hostname passed a hop to https://djinni.co:8443/ — another
+  // service on that machine — although isPublicHttps (tgchannels.mjs) bans an
+  // explicit port on the apply link itself. The default port still matches.
+  const follow = (start, to) => fetchFollow(start, {}, {
+    doFetch: async (u) => (u === start
+      ? { status: 302, headers: { get: (h) => (h.toLowerCase() === "location" ? to : null) } }
+      : { status: 200, headers: { get: () => null }, text: async () => "body" }),
+  });
+  await assert.rejects(() => follow("https://djinni.co/jobs/1", "https://djinni.co:8443/jobs/1"), /off the allowed host/);
+  await assert.rejects(() => follow("https://djinni.co/jobs/1", "https://www.djinni.co:8443/jobs/1"), /off the allowed host/, "a subdomain on another port is no better");
+  assert.equal(await bodyText(await follow("https://djinni.co/jobs/1", "https://djinni.co:443/jobs/2")), "body", "the default port written out is the same port");
+});
+
 test("bodyText honours the charset from the BYTES when a response has no stream", async () => {
   // The old branch did Buffer.from(await res.text(), "binary") — but text() has
   // already decoded as UTF-8, so every replacement char it produced collapsed to
@@ -252,4 +286,38 @@ test("bodyText honours the charset from the BYTES when a response has no stream"
   // A stub with no arrayBuffer() gets text() as-is rather than a corrupted re-decode.
   const noBuf = { headers: { get: () => "text/html; charset=utf-8" }, text: async () => "plain" };
   assert.equal(await bodyText(noBuf), "plain");
+});
+
+test("orderedPool returns items and replays log lines in input order, whatever order workers finish in", async () => {
+  const { orderedPool } = await import("../../lib/sources/html.mjs");
+  const logged = [];
+  const out = await orderedPool([30, 0, 10], 3, async (ms, say) => {
+    await new Promise((r) => setTimeout(r, ms));
+    say(`line ${ms}`);
+    return ms === 10 ? undefined : [ms, ms + 1];   // a worker returning nothing contributes nothing
+  }, (l) => logged.push(l));
+  assert.deepEqual(out, [30, 31, 0, 1]);
+  assert.deepEqual(logged, ["line 30", "line 0", "line 10"]);
+});
+
+test("isoDate: RSS, ISO, unix seconds and Djinni's tooltip become ISO; garbage, the past and the far future do not", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  assert.equal(isoDate("Sat, 13 Jun 2026 10:45:36 +0300", now), "2026-06-13T07:45:36.000Z");
+  assert.equal(isoDate("2026-09-27T06:25:00+00:00", now), "2026-09-27T06:25:00.000Z");
+  assert.equal(isoDate(1791658143, now), new Date(1791658143 * 1000).toISOString(), "unix seconds");
+  assert.equal(isoDate(1791658143000, now), new Date(1791658143000).toISOString(), "unix ms");
+  assert.equal(isoDate("12:37 12.06.2026", now), "2026-06-12T09:37:00.000Z", "Djinni tooltip, Kyiv summer time (UTC+3)");
+  assert.equal(isoDate("12:37 12.01.2026", now), "2026-01-12T10:37:00.000Z", "Djinni tooltip, Kyiv winter time (UTC+2)");
+  assert.equal(isoDate("2026-10-29T11:00:00Z", now), "2026-10-29T11:00:00.000Z", "a day ahead is clock skew, kept");
+  for (const bad of ["", "yesterday", "1999-12-31", "2026-10-30T12:00:01Z", null, undefined, NaN, {}]) assert.equal(isoDate(bad, now), undefined, String(bad));
+  // A garbled tooltip must not roll over into a plausible date (Date.UTC alone made "00.13.2026" the 31st of December).
+  for (const bad of ["12:37 00.13.2026", "12:37 31.02.2026", "24:00 12.06.2026", "12:60 12.06.2026", "12:37 00.00.2026"]) assert.equal(isoDate(bad, now), undefined, bad);
+});
+
+test("isoDate refuses what Date.parse only guesses at", () => {
+  for (const v of ["5", "2026-02-31", "2026-13-01T10:00:00Z", "soon"]) assert.equal(isoDate(v, Date.parse("2026-11-10T00:00:00Z")), undefined, v);
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  assert.equal(isoDate("2026-11-09", now), "2026-11-09T00:00:00.000Z");
+  assert.equal(isoDate("2026-11-09T10:00:00+02:00", now), "2026-11-09T08:00:00.000Z");
+  assert.equal(isoDate("Mon, 09 Nov 2026 10:45:36 +0200", now), "2026-11-09T08:45:36.000Z");
 });

@@ -2,9 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Jobs.app badge daemon, started at login. `--background` = show the unread Dock badge only,
-  do not open the dashboard. `open -W` gives launchd a live pid; it exits 0 however the app
-  ended, so KeepAlive is unconditional — with a WRONG path launchd respawns `open` every 10 s
-  forever, so replace YOUR_USERNAME (launchd needs absolute paths) before loading. Install/uninstall: README → "Schedule it (launchd)".
+  do not open the dashboard. It MUST start through `open`: a bare binary exec gets
+  "Notifications are not allowed" from macOS, so banners never show. `open -W` waits for the
+  app, so KeepAlive restarts it when it exits. The sh loop first waits out an app that is
+  already running: `open` on a running app arrives as a Dock-click reopen (opens the unread
+  thread in the browser, clears the badge), and `launchctl kickstart -k` or unload stops only
+  this job, never the app — stop the app with `pkill -f Jobs.app/Contents/MacOS/jobs`.
+  `job[s]` keeps pgrep from matching this sh command line itself. With a WRONG path `open`
+  fails and launchd respawns it every 10 s forever, so replace YOUR_USERNAME
+  (launchd needs absolute paths) before loading. Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>
@@ -13,23 +19,23 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/open</string>
-    <string>-W</string>
-    <string>-g</string>
-    <string>-a</string>
-    <string>/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app</string>
-    <string>--args</string>
-    <string>--background</string>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>while pgrep -qf '/Users/YOUR_USERNAME/linkedin-assistant/Jobs.app/Contents/MacOS/job[s]'; do sleep 10; done; exec /usr/bin/open -W -g --stdout /Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.app-out.log --stderr /Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.app-err.log --env JOBS_DEBUG=1 -a /Users/YOUR_USERNAME/linkedin-assistant/Jobs.app --args --background</string>
   </array>
 
   <key>RunAtLoad</key>
   <true/>
 
   <!-- Relaunch whenever the daemon exits: `open -W` reports 0 even for a crash,
-       so SuccessfulExit=false would never fire. Stop it with launchctl unload. -->
+       so SuccessfulExit=false would never fire. -->
   <key>KeepAlive</key>
   <true/>
 
+  <!-- `open` detaches the app from launchd's stdio, so these two files only ever hold
+       open(1)'s own errors (a wrong path). The app's log (`jobs:` lines — badge changes,
+       Dock clicks, crashes) is logs/jobs-badge.app-{out,err}.log via `open --stdout/--stderr`;
+       run.sh truncates both at 10 MB. -->
   <key>StandardOutPath</key>
   <string>/Users/YOUR_USERNAME/linkedin-assistant/logs/jobs-badge.out.log</string>
   <key>StandardErrorPath</key>

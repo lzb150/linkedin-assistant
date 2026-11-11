@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeCompany, normalizeTitle, identityKey, canonicalKey, dedupeJobs } from "../lib/dedup.mjs";
+import { normalizeCompany, normalizeTitle, identityKey, canonicalKey, dedupeJobs, linkKey } from "../lib/dedup.mjs";
 
 test("normalizeCompany strips a company suffix so SoftServe LLC == SoftServe", () => {
   assert.equal(normalizeCompany("SoftServe LLC"), normalizeCompany("SoftServe"));
@@ -234,4 +234,100 @@ test("canonicalKey matches company-name variants across boards (first token), id
   assert.notEqual(identityKey(a), identityKey(b), "the seen set keeps the strict spelling");
   assert.equal(canonicalKey({ company: "", title: "SDET", url: "https://x.com/p/1" }), "x.com/p/1::sdet", "blank company still url-scoped");
   assert.equal(dedupeJobs([{ ...a, source: "dou", text: "long text here" }, { ...b, source: "djinni", text: "short" }]).mergedCount, 1);
+});
+
+test("dedupeJobs records the folded copies' own identity keys on their keeper", () => {
+  const li = { source: "linkedin", title: "Senior SDET", company: "EPAM Systems", url: "https://li/1", text: "a" };
+  const dou = { source: "dou", title: "Senior SDET", company: "EPAM", url: "https://dou/1", text: "a longer description" };
+  const { deduped } = dedupeJobs([li, dou]);
+  assert.equal(deduped.length, 1);
+  const [keeper] = deduped;
+  const other = keeper === li ? dou : li;
+  assert.notEqual(identityKey(other), identityKey(keeper), "the fixture's premise: one vacancy, two identity keys");
+  assert.deepEqual(keeper.mergedIds, [identityKey(other)]);
+});
+
+test("linkKey: one posting whatever the slash, the www or Djinni's title slug; '' for a non-URL", () => {
+  assert.equal(linkKey("https://djinni.co/jobs/830692-qa-automation-engineer-trading-and-fintech-in/"), "djinni.co/jobs/830692");
+  assert.equal(linkKey("https://djinni.co/jobs/830692-strong-junior-middle-qa-automation-engineer"), "djinni.co/jobs/830692");
+  assert.equal(linkKey("https://www.Boards.example/jobs/1/?utm_source=tg"), linkKey("https://boards.example/jobs/1"));
+  assert.notEqual(linkKey("https://boards.example/jobs/1"), linkKey("https://boards.example/jobs/2"));
+  // The posting id can live in the query: only tracking parameters are noise.
+  assert.notEqual(linkKey("https://careers.acme.com/jobs?gh_jid=111"), linkKey("https://careers.acme.com/jobs?gh_jid=222"));
+  assert.equal(linkKey("https://careers.acme.com/jobs/?utm_source=x&gh_jid=111&trk=a"), linkKey("https://careers.acme.com/jobs?fbclid=z&gh_jid=111"));
+  assert.equal(linkKey("https://a.example/j?b=2&a=1"), linkKey("https://a.example/j?a=1&b=2"), "parameter order does not matter");
+  assert.equal(linkKey("https://careers.acme.com/jobs/1/?refId=1&trackingId=2"), "careers.acme.com/jobs/1", "a link with only tracking keeps its query-less key");
+  assert.equal(linkKey("u-djinni"), "");
+  assert.equal(linkKey(undefined), "");
+});
+
+test("dedupeJobs folds a channel's repost of a board's job by link, under a title of its own", () => {
+  const djinni = { source: "djinni", company: "DevBrother", title: "Strong Junior/Middle QA Automation Engineer", url: "https://djinni.co/jobs/830692-strong-junior-middle-qa-automation-engineer/", text: "snippet" };
+  const tg = { source: "tgchannels", company: "DevBrother", title: "QA Automation Engineer (Trading and FinTech infrastructure)", url: "https://djinni.co/jobs/830692-qa-automation-engineer-trading-and-fintech-in", text: "the full JSON-LD description, longer" };
+  assert.notEqual(canonicalKey(djinni), canonicalKey(tg), "the fixture's premise: the titles do not match");
+  const { deduped, mergedCount } = dedupeJobs([djinni, tg]);
+  assert.equal(mergedCount, 1);
+  assert.deepEqual(deduped, [tg], "the longer text keeps");
+  assert.deepEqual(tg.altLinks, [{ source: "djinni", url: djinni.url }]);
+  assert.deepEqual(tg.mergedIds, [identityKey(djinni)]);
+  assert.deepEqual(tg.mergedTitles, [djinni.title], "the excludeTitle gate reads the folded title too");
+});
+
+test("dedupeJobs: a job matching one group by title and another by link joins the two", () => {
+  const a = { source: "dou", company: "Acme", title: "SDET", url: "https://jobs.dou.ua/companies/acme/vacancies/1/", text: "a" };
+  const b = { source: "tgchannels", company: "Acme", title: "Test Automation Engineer", url: "https://boards.example/jobs/9", text: "b" };
+  const c = { source: "linkedin", company: "Acme", title: "SDET", url: "https://boards.example/jobs/9/", text: "the longest text of the three" };
+  const { deduped, mergedCount } = dedupeJobs([a, b, c]);
+  assert.equal(mergedCount, 2);
+  assert.deepEqual(deduped, [c]);
+  assert.deepEqual(c.altLinks.map((l) => l.source).sort(), ["dou", "tgchannels"]);
+});
+
+test("dedupeJobs records a link-joined copy's own key and source; a canonical merge records none", () => {
+  const djinni = { source: "djinni", company: "Acme", title: "Strong Middle SDET (Playwright)", url: "https://djinni.co/jobs/9-strong-middle-sdet/", text: "s" };
+  const tg = { source: "tgchannels", company: "Acme", title: "QA Automation Engineer (FinTech)", url: "https://djinni.co/jobs/9-qa-automation-engineer", text: "the longer, enriched text" };
+  dedupeJobs([djinni, tg]);
+  assert.deepEqual(tg.mergedKeys, [{ key: canonicalKey(djinni), source: "djinni", url: djinni.url }]);
+  const dou = { source: "dou", company: "Acme", title: "SDET", url: "https://jobs.dou.ua/1/", text: "long text" };
+  dedupeJobs([dou, { source: "djinni", company: "Acme", title: "SDET", url: "https://djinni.co/jobs/1/", text: "t" }]);
+  assert.equal(dou.mergedKeys, undefined, "same key: nothing more to look up");
+});
+
+test("canonicalKey folds 'Quality Assurance' into 'QA' and the long SDET spelling into 'SDET'", () => {
+  assert.equal(
+    canonicalKey({ company: "madappgang", title: "Quality Assurance Automation Engineer" }),
+    canonicalKey({ company: "madappgang", title: "QA Automation Engineer" }),
+  );
+  assert.equal(
+    canonicalKey({ company: "Indigo", title: "SDET (Software Development Engineer in Test)" }),
+    canonicalKey({ company: "Indigo", title: "SDET" }),
+  );
+  assert.notEqual(
+    canonicalKey({ company: "madappgang", title: "Senior QA Automation Engineer" }),
+    canonicalKey({ company: "madappgang", title: "QA Automation Engineer" }),
+    "seniority still separates",
+  );
+});
+
+test("dedupeJobs: a keeper takes dates only from the copies folded into it, not from same-source siblings", () => {
+  // Two reqs of one board under one title stay separate vacancies; the group's
+  // earliest date used to be written onto both, making the newer one look old.
+  const a = { source: "dou", company: "Acme", title: "SDET", url: "u1", text: "x".repeat(50), posted: "2026-10-20T00:00:00.000Z" };
+  const b = { source: "dou", company: "Acme", title: "SDET", url: "u2", text: "x".repeat(40), posted: "2026-11-05T00:00:00.000Z" };
+  assert.deepEqual(dedupeJobs([a, b]).deduped.map((j) => j.posted), ["2026-10-20T00:00:00.000Z", "2026-11-05T00:00:00.000Z"], "nothing folded: dates untouched");
+  const c = { source: "djinni", company: "Acme", title: "SDET", url: "u3", text: "x".repeat(5), posted: "2026-10-01T00:00:00.000Z" };
+  const { deduped } = dedupeJobs([a, b, c]);
+  assert.equal(deduped.length, 2);
+  assert.equal(a.posted, "2026-10-01T00:00:00.000Z", "the keeper the djinni copy folded into takes its earlier date");
+  assert.equal(b.posted, "2026-11-05T00:00:00.000Z", "its sibling keeps its own");
+});
+
+test("dedupeJobs keeps the earliest `posted` of a merged group on the keeper", () => {
+  const { deduped } = dedupeJobs([
+    { source: "dou", company: "Acme", title: "SDET", url: "u1", text: "x".repeat(50), posted: "2026-10-20T00:00:00.000Z" },
+    { source: "djinni", company: "Acme", title: "SDET", url: "u2", text: "x".repeat(10), posted: "2026-10-18T00:00:00.000Z" },
+    { source: "himalayas", company: "Acme", title: "SDET", url: "u3", text: "x".repeat(5) },
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0].posted, "2026-10-18T00:00:00.000Z");
 });

@@ -28,6 +28,7 @@ notify-state.json
 
 # Built Dock app bundle (machine-specific paths baked in; rebuild locally)
 Jobs.app/
+.jobs-build.*/
 
 # Banner queue written by lib/notify.mjs, drained by Jobs.app
 banners/
@@ -68,12 +69,37 @@ closed-check-state.json
 .djinni-profile.lock/
 jobs-run.lock/
 closed-check.lock/
+# notify-state read-modify-write lock (lib/notify-state.mjs updateState, Jobs.app clearBadge)
+notify-state.json.lock/
+djinni-notify-state.json.lock/
+# heartbeat read-modify-write lock (lib/heartbeat.mjs, the same withLock)
+last-success.json.lock/
+*last-success.json.lock.stale-*/
+*notify-state.json.lock.stale-*/
 
 # Atomic-write temp files and quarantined corrupt state files
 *.tmp
-*.corrupt
+*.corrupt*
 
 # Local tooling scratch dirs
 .superpowers/
 .playwright-cli/
 run-stats.jsonl
+
+# LinkedIn deferred by a DarkWake run, cleared by the catch-up agent (jobs.mjs)
+linkedin-pending
+
+# Playwright e2e output (npm run test:e2e)
+test-results/
+playwright-report/
+
+# Telegram copy of the alerts (lib/telegram.mjs): bot token + chat id, the send queue and its lock
+telegram.json
+telegram-outbox/
+telegram-outbox.lock/
+
+# Last clean finish per launchd job (lib/heartbeat.mjs watchdog)
+last-success.json
+
+# Repo owner's GitHub traffic history (collector script + CSVs; archived by backup.mjs)
+gh-traffic/

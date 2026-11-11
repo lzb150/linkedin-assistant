@@ -1,21 +1,24 @@
 // closed-check.mjs
-// Daily: probe New/Viewed DOU, Djinni and LinkedIn vacancies and mark the ones the board
+// Every 3 hours by day (a url at most every 3 days): probe New/Viewed DOU, Djinni and LinkedIn vacancies and mark the ones the board
 // reports inactive as status "closed" in job-state.json, so they leave the
 // dashboard's New and Viewed views. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
-// Packages closed for 14+ days and Viewed packages left untouched for 30+ days
-// are moved to applications/archive/,
+// Packages closed for 14+ days, Viewed packages left untouched for 30+ days and
+// borderline packages generated 30+ days ago are moved to applications/archive/,
 // which nothing reads — keeps the dashboard small. Their job-state entries go
 // with them (an entry without a live package is dead weight: 493 of 713 were).
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readStoreOrExit, writeStore, mergeEntry } from "./lib/job-state.mjs";
+import { setTimeout as sleep } from "node:timers/promises";
+import { DAY_MS } from "./lib/local-day.mjs";
+import { readStoreOrExit, writeStore, mergeEntry, STATE_SERVER_URL } from "./lib/job-state.mjs";
 import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
-import { log } from "./lib/notify.mjs";
-import { isClosed, selectCandidates, planArchive, onBoardHost } from "./lib/closed.mjs";
-import { bodyText, fetchFollow } from "./lib/sources/html.mjs";
-import { readPackages, archivePackages } from "./lib/packages.mjs";
-import { acquireProfileLock } from "./lib/run-lock.mjs";
+import { log, stampHeartbeat } from "./lib/notify.mjs";
+import { isClosed, selectCandidates, selectReprobes, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
+import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
+import { readPackages, archivePackages, markClosed } from "./lib/packages.mjs";
+import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
+import { darkWakeOnBattery } from "./lib/wake.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
@@ -26,17 +29,12 @@ const dir = dirname(fileURLToPath(import.meta.url));
 // re-probed the same urls the next day. (job-state.json was already safe: those
 // writes re-read and replay. The stamp file was not.)
 // Second run exits quietly with 0, so launchd does not flag a benign overlap.
-try {
-  acquireProfileLock(join(dir, "closed-check"));
-} catch (e) {
-  if (!/profile busy/.test(e.message)) throw e;
-  log("another closed-check.mjs run is active — exiting");
-  process.exit(0);
-}
+acquireRunLockOrExit(join(dir, "closed-check"), { log, name: "closed-check.mjs" });
 
 const STATE = join(dir, "job-state.json");
 const APPS = join(dir, "applications");
-const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO }
+const CHECKED = join(dir, "closed-check-state.json");   // { url: lastCheckedISO, _tried: { url: lastUnansweredAttemptISO }, _gone: { url: closedOn404ISO } }
+const HEARTBEAT_FILE = join(dir, "last-success.json");
 
 // A package readPackages could not read is absent from `packages`, so it looks
 // dead to both prunes below and its card would come back as New with its
@@ -50,93 +48,212 @@ const mayPrune = () => packages.length && !partialRead;
 // fresh stamps hid the loss. Keep it untouched and stop stamping for this run.
 let checked = {};
 let checkedReadable = true;
+let gone = {};    // urls this checker closed on a 404/410, re-probed once a day later (lib/closed.mjs selectReprobes)
+let tried = {};   // urls whose probe got no answer: kept out of `checked`, but not re-probed before tomorrow (selectCandidates)
 try {
-  checked = readJson(CHECKED, null) || {};
+  ({ _tried: tried = {}, _gone: gone = {}, ...checked } = readJson(CHECKED, null) || {});
 } catch (e) {
   checkedReadable = false;
   log(`⚠ ${CHECKED} unreadable (${e.message}) — re-check stamps are not updated this run and the file is left untouched; fix or delete it`);
 }
-const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, checked); };
-const stateAtStart = readStoreOrExit(STATE, "skipping closed-vacancy check");
+const saveChecked = () => { if (checkedReadable) writeJsonAtomic(CHECKED, { ...checked, _tried: tried, _gone: gone }); };
 
-const todo = selectCandidates({ packages, stateMap: stateAtStart, checked });   // 150 per run, each url at most every 3 days
+// The dashboard edits job-state.json through the state server (POST /state:
+// one read-modify-write per request, serialised on its event loop), and this
+// script used to write the file beside it — a click landing in the
+// microseconds between our read and our write was lost. So while the server
+// answers GET /health, every edit goes through it, one POST each with the
+// payload a dashboard click sends, and the file is never written from here. A
+// server that is down (launchd restarting it) takes the direct path, as
+// before; one that goes away mid-run flips to it with a line in the log.
+const STATE_SERVER = STATE_SERVER_URL;
+let viaServer = await (async () => {
+  try {
+    const res = await fetch(`${STATE_SERVER}/health`, { signal: AbortSignal.timeout(1000) });
+    await discardBody(res);
+    return res.status === 200;
+  } catch { return false; }
+})();
+async function serverRead() {
+  const res = await fetch(`${STATE_SERVER}/state`, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) { await discardBody(res); throw new Error(`GET /state ${res.status}`); }
+  return res.json();
+}
+async function serverPatch(url, patch) {
+  const res = await fetch(`${STATE_SERVER}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, patch }), signal: AbortSignal.timeout(5000) });
+  await discardBody(res);
+  if (!res.ok) throw Object.assign(new Error(`POST /state ${res.status}`), { status: res.status });
+}
+const direct = (e) => { viaServer = false; log(`  · state server went away (${e.message}) — writing job-state.json directly`); };
+// The store as it is NOW: the server's copy while it is up, else the file.
+async function readLive(reason) {
+  if (viaServer) { try { return await serverRead(); } catch (e) { direct(e); } }
+  return readStoreOrExit(STATE, reason);
+}
+// A batch of edits — [{ url, patch }], each the payload a dashboard click
+// sends — into the store: one POST each through the server, or merged into
+// the fresh `map` and written once.
+async function save(map, edits) {
+  if (!edits.length) return;
+  if (viaServer) { try { return await saveViaServer(edits); } catch (e) { direct(e); } }
+  for (const { url, patch } of edits) map = mergeEntry(map, url, patch);
+  writeStore(STATE, map);
+}
+// One POST per edit. A 4xx is the server refusing THAT edit (a legacy key that
+// is no http url), not the server being gone: it is skipped and counted. Read
+// as an outage, it flipped the run to writing the file directly, over whatever
+// the server had saved meanwhile. Anything else throws, for the direct path.
+async function saveViaServer(edits) {
+  let rejected = 0;
+  for (const { url, patch } of edits) {
+    try { await serverPatch(url, patch); }
+    catch (e) { if (!(e.status >= 400 && e.status < 500)) throw e; rejected++; }
+  }
+  if (rejected) log(`  · state server rejected ${rejected} edit(s) — left as they are`);
+}
+const CLOSE = { status: "closed" };
+// The dashboard's own clearing patch: an entry with neither status nor note
+// is dropped by the store (mergeEntry), which is how a prune deletes one.
+const CLEAR = { status: "new", note: "" };
+
+const stateAtStart = await readLive("skipping closed-vacancy check");
+
+const todo = [
+  ...selectCandidates({ packages, stateMap: stateAtStart, checked, tried }),   // 150 per run, each url at most every 3 days
+  ...selectReprobes({ packages, stateMap: stateAtStart, gone, tried }),               // the second look at a 404 closure
+];
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
 const byUrl = new Map(packages.map((p) => [p.url, p]));
 
-// The probe loop runs for minutes; dashboard clicks land on job-state.json
-// meanwhile. Closures are applied to a FRESH read of the store (never to
-// stateAtStart), so the read-modify-write window is the microseconds between
-// the read and the write. A status set while we were probing (a concurrent
+// The probe loop runs for minutes; dashboard clicks land on the store
+// meanwhile. Closures are decided against a FRESH read of it (never against
+// stateAtStart): a status set while we were probing (a concurrent
 // closed-check, a newer build's status) wins over the board's verdict —
 // candidates were New/Viewed at the start, re-check now.
-// ponytail: still a race with a click in that same instant; POST to the state
-// server instead if it ever bites.
-let pending = [];   // closed urls not yet applied to the store
+const pending = [];   // closed urls not yet applied to the store
 let saved = 0;
 // The one "may we still close this url?" rule, re-decided against whatever the
 // store holds now: only a candidate still New (no entry) or Viewed may be
 // closed, so any status set while we were probing wins. Both the mid-run flush
 // and the final replay below ask this, and they used to spell it two inverted ways.
 const closable = (map, url) => { const st = map[url]?.status; return !st || st === "viewed"; };
-function applyClosures(stateMap) {
-  let n = 0;
-  for (const url of pending) {
-    if (!closable(stateMap, url)) { log(`  · kept ${stateMap[url].status}: ${url} (changed during the run)`); continue; }
-    stateMap = mergeEntry(stateMap, url, { status: "closed" });
-    n++;
+// The closures of `urls` still allowed against `map`, as edits; the rest are reported.
+function closures(map, urls) {
+  const edits = [];
+  for (const url of urls) {
+    if (!closable(map, url)) { log(`  · kept ${map[url].status}: ${url} (changed during the run)`); continue; }
+    edits.push({ url, patch: CLOSE });
   }
-  pending = [];
-  saved += n;
-  return { stateMap, n };
+  return edits;
 }
 // Store first, check stamps after: a crash between the two must lose a
 // re-probe, not a closure. Every 25 probes, not only at the end — a 150-url
 // run takes minutes, and a crash or a Mac falling asleep mid-run used to lose
 // every closure found so far.
-function flush() {
-  const { stateMap, n } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable mid-run — closures not saved"));
-  if (n) writeStore(STATE, stateMap);
+async function flush() {
+  const map = await readLive("closed-check: store unreadable mid-run — closures not saved");
+  const edits = closures(map, pending.splice(0));
+  saved += edits.length;
+  await save(map, edits);
+  // Dated now, not at the probe: settleReprobe reads a store entry updated more
+  // than a minute after this stamp as the owner's click, and on a slow run the
+  // save came later than that — the closure then never reopened.
+  const at = new Date().toISOString();
+  for (const { url } of edits) if (gone[url]) gone[url] = at;
   saveChecked();
 }
 
+// The second look at a url closed on a 404/410. A real answer settles it either
+// way; a 200 without the marker reopens the card — unless it was touched since
+// the closure (a click on it is the owner's word, and wins).
+const REOPEN = { status: "new" };
+async function settleReprobe(url, source, status, html) {
+  if (status !== 200 && status !== 404 && status !== 410) return;   // no answer: asked again tomorrow
+  const closedAt = Date.parse(gone[url] || "");
+  delete gone[url];
+  if (isClosed({ source, status, html })) return;
+  const map = await readLive("closed-check: store unreadable mid-run — reopening skipped");
+  const e = map[url];
+  if (e?.status !== "closed" || Date.parse(e.updatedAt || "") > closedAt + 60_000) return;
+  await save(map, [{ url, patch: REOPEN }]);
+  const p = byUrl.get(url);
+  log(`  ↺ reopened [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url} (the board answers again)`);
+}
+
+// A schedule the Mac slept through fires inside a DarkWake, and on battery
+// caffeinate does not hold it up (lib/wake.mjs): the Mac sleeps again under
+// the probes, each one fails, and a failed url waits a day (2026-11-11: 9 of
+// 14 lost, the run took 30 minutes). Asked before every probe, since the Mac
+// can fall asleep mid-run too; the urls left are simply still due, and the
+// plist fires several times a day, so the next run that finds the Mac awake
+// takes them.
 let probed = 0;
-for (const { url, source } of todo) {
+for (const { url, source, reprobe } of todo) {
+  if (darkWakeOnBattery()) {
+    log(`closed-check: the Mac is in a DarkWake on battery — ${todo.length - probed} url(s) left for the next run`);
+    break;
+  }
   try {
     // Every redirect hop is re-checked against the board host, not just the
     // frontmatter url: an open redirect on a board would otherwise aim this
     // daily job at anything the Mac can reach, the loopback state server included.
-    const res = await fetchFollow(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)" }, signal: AbortSignal.timeout(15_000) }, { allow: (u) => onBoardHost(source, u) });
-    const status = res.status, html = status === 200 ? await bodyText(res) : "";
-    checked[url] = new Date().toISOString();
-    if (isClosed({ source, status, html })) {
+    // Accept-Language names the marker's language (lib/closed.mjs).
+    const res = await fetchFollow(url, { headers: { "User-Agent": "Mozilla/5.0 (job-assistant)", "Accept-Language": MARKER_LANG[source] }, signal: AbortSignal.timeout(15_000) }, { allow: (u) => onBoardHost(source, u) });
+    const status = res.status, html = status === 200 ? await bodyText(res) : (await discardBody(res), "");
+    // Stamp only a real answer about the vacancy. A 429/5xx/Cloudflare page says
+    // nothing, and a stamp would park the url for the whole re-check window.
+    if (status === 200 || status === 404 || status === 410) checked[url] = new Date().toISOString();
+    else tried[url] = new Date().toISOString();
+    if (reprobe) await settleReprobe(url, source, status, html);
+    else if (isClosed({ source, status, html })) {
       pending.push(url);
+      if (status !== 200) gone[url] = new Date().toISOString();
       const p = byUrl.get(url);
       log(`  ✗ closed [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url}`);
     }
-  } catch (e) { log(`  · ${url} — ${e.message}`); }   // network trouble: not checked, retried next run
+  } catch (e) { tried[url] = new Date().toISOString(); log(`  · ${url} — ${e.message}`); }   // network trouble: not checked, retried tomorrow
   // Politeness pause after EVERY probe, failed ones too (a `continue` in the
   // catch used to skip it and hammer a board during a network blip).
-  await new Promise((r) => setTimeout(r, 1000));
-  if (++probed % 25 === 0) flush();
+  await sleep(1000);
+  if (++probed % 25 === 0) await flush();
 }
-const closedNow = pending.slice();   // applyClosures empties `pending`; kept to replay onto a fresher store below
-let { stateMap, n: savedNow } = applyClosures(readStoreOrExit(STATE, "closed-check: store unreadable at the end of the run — closures not saved"));
+// Decided now, written below together with the prune: planArchive and the
+// prune count want the store as it will be once the closures are in.
+let stateMap = await readLive("closed-check: store unreadable at the end of the run — closures not saved");
+const closing = closures(stateMap, pending);   // `pending` is replayed onto a fresher store below
+const savedNow = closing.length;
+saved += savedNow;
+for (const { url, patch } of closing) stateMap = mergeEntry(stateMap, url, patch);
 // Archive BEFORE pruning, and prune by what actually moved: a package whose
 // rename failed is still in applications/ and needs its state entry, or it
 // reappears as New on the dashboard.
-const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap }), { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ days
+const toArchive = planArchive({ packages, stateMap });
+// Which of them are archived as closed, and since when (the state entry is pruned below).
+const closedAt = new Map(packages.filter((p) => stateMap[p.url]?.status === "closed").map((p) => [p.file, stateMap[p.url].updatedAt || new Date().toISOString()]));
+const archived = new Set(archivePackages(APPS, toArchive, { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ / borderline 30+ days
+// A package archived as closed says so itself: jobs.mjs reads `closed:` in
+// archive/ to know a later re-listing as a repost. Written after the move, in
+// archive/: a package whose rename failed stays in applications/ unmarked (it
+// may yet be clicked back to Viewed), and nothing else writes a file there.
+for (const file of archived) {
+  if (!closedAt.has(file)) continue;
+  try { markClosed(join(APPS, "archive"), file, closedAt.get(file)); }
+  catch (err) { log(`  · could not mark ${file} closed: ${err.message}`); }
+}
 // State entries for urls with no live package (archived now or earlier, pruned,
 // or never had one) are dropped — if untouched for a day: a package jobs.mjs
 // wrote during the probe, already clicked on the dashboard, is not in our
 // package list yet and must survive. Only when packages/ read as non-empty: an
 // unreadable applications/ must not wipe the store (cf. the 448-entry wipe).
 const live = new Set(packages.filter((p) => !archived.has(p.file)).map((p) => p.url));
-const staleBefore = Date.now() - 86400000;
+const staleBefore = Date.now() - DAY_MS;
 // A missing updatedAt counts as old enough — the same reading planArchive uses.
 // While the two disagreed, a legacy entry could be archived and then never
 // pruned, so it sat in the store forever with no package behind it.
 const stale = (e) => { const t = Date.parse(e?.updatedAt || ""); return !Number.isFinite(t) || t < staleBefore; };
-const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]);
+// An entry with a note is kept: the note is the owner's own text, and pruning
+// it with the package left it only in the snapshots and backups.
+const prunable = (map, u) => u !== "_meta" && !live.has(u) && stale(map[u]) && !map[u]?.note;
 // Counted on the map we actually write, not on the one read before the renames:
 // the first pass used to prune `stateMap`, which is then thrown away, so the
 // logged number could disagree with what was really removed.
@@ -144,17 +261,22 @@ const wouldPrune = mayPrune() ? Object.keys(stateMap).filter((u) => prunable(sta
 let pruned = 0;
 if (savedNow || wouldPrune) {
   // archivePackages just spent one renameSync per archived package, and a
-  // dashboard click lands on job-state.json meanwhile. Writing the map read
-  // before those renames would clobber it, so re-read now and replay our own
-  // two edits — the closures and the prune — onto whatever is there. Both are
+  // dashboard click lands on the store meanwhile. Writing the map read before
+  // those renames would clobber it, so re-read now and replay our own two
+  // edits — the closures and the prune — onto whatever is there. Both are
   // re-decided against the fresh entry, so a status set in the window wins.
-  let out = readStoreOrExit(STATE, "closed-check: store unreadable before the final write — closures not saved");
-  for (const u of closedNow) if (closable(out, u)) out = mergeEntry(out, u, { status: "closed" });
-  if (mayPrune()) for (const u of Object.keys(out)) if (prunable(out, u)) { delete out[u]; pruned++; }
-  writeStore(STATE, out);
+  const out = await readLive("closed-check: store unreadable before the final write — closures not saved");
+  const edits = pending.filter((u) => closable(out, u)).map((url) => ({ url, patch: CLOSE }));
+  if (mayPrune()) for (const url of Object.keys(out)) if (prunable(out, url)) { edits.push({ url, patch: CLEAR }); pruned++; }
+  await save(out, edits);
+  // Dated at the save, as flush() does: settleReprobe reads a store entry
+  // updated more than a minute after this stamp as the owner's click.
+  const at = new Date().toISOString();
+  for (const { url, patch } of edits) if (patch === CLOSE && gone[url]) gone[url] = at;
 }
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
-if (mayPrune()) for (const u of Object.keys(checked)) if (!live.has(u)) delete checked[u];
+if (mayPrune()) for (const m of [checked, tried, gone]) for (const u of Object.keys(m)) if (!live.has(u)) delete m[u];
 saveChecked();
-log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
+log(`closed-check: ${saved} closed, ${probed} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
+stampHeartbeat(HEARTBEAT_FILE, "closed-check");

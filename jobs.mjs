@@ -1,95 +1,126 @@
-// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board)
-// and LinkedIn (scrape), scores them against your resume, and
+// Job discovery + matching. Finds vacancies on DOU (RSS), Djinni (jobs board),
+// Himalayas (JSON API), public Telegram channels (web preview) and LinkedIn
+// (scrape), scores them against your resume, and
 // writes an application package for each RELEVANT match. IT NEVER SUBMITS
 // ANYTHING — you review and apply manually.
 //
 // Run:  node jobs.mjs              (all sources per jobs.config.json)
 //       HEADFUL=1 node jobs.mjs    (watch the LinkedIn part)
-//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU + Djinni still run)
+//       DOU_ONLY=1 node jobs.mjs   (skip LinkedIn scraping; DOU, Djinni, Himalayas and Telegram still run)
+//       LINKEDIN_CATCHUP=1 node jobs.mjs  (LinkedIn only, and only when a DarkWake run deferred it)
 
-import { readFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { scoreMessage } from "./lib/relevance.mjs";
-import { buildApplication, appendAltLink } from "./lib/application.mjs";
+import { keywordGate, titleExcluder, seenEither, freshRepost, marker, firstTime, stampKeys } from "./lib/keyword-gate.mjs";
+import { fullstackStackExcluder } from "./lib/fullstack-stack.mjs";
+import { profileError } from "./lib/relevance.mjs";
+import { appendAltLink } from "./lib/application.mjs";
 import { appendRunStat } from "./lib/run-stats.mjs";
-import { llmJSON, buildJobPrompt, numericScore, llmRejects, injectionMarkers, sanitizeVacancyText } from "./lib/llm.mjs";
-import { detectLang } from "./lib/lang.mjs";
-import { dedupeJobs, identityKey, canonicalKey } from "./lib/dedup.mjs";
+import { dedupeJobs, identityKey, canonicalKey, linkKey } from "./lib/dedup.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { filterByLocation, candidateCountryList, excludeList, knob as configKnob } from "./lib/filters.mjs";
-import {
-  newSummary, recordFound, recordOutcome, recordMerged, recordTop,
-  formatTable, formatRunBanner,
-} from "./lib/run-summary.mjs";
+import { makeLocationFilter, excludeList } from "./lib/filters.mjs";
+import { readJobsConfig, normalizeJobsConfig } from "./lib/jobs-config.mjs";
+import { SOURCE_REGISTRY } from "./lib/sources/registry.mjs";
+import { newSummary, recordFound, recordOutcome, recordMerged, formatTable, formatRunBanner } from "./lib/run-summary.mjs";
 import { fetchDou } from "./lib/sources/dou.mjs";
 import { fetchDjinni } from "./lib/sources/djinni.mjs";
+import { fetchHimalayas } from "./lib/sources/himalayas.mjs";
+import { fetchTgChannels } from "./lib/sources/tgchannels.mjs";
 import { fetchLinkedInJobs } from "./lib/sources/linkedin-jobs.mjs";
-import { pool } from "./lib/sources/html.mjs";
 import { currentCounts, normalizeHistory, detectDegradations, appendHistory, formatAlert } from "./lib/source-health.mjs";
 import { log, notify as banner } from "./lib/notify.mjs";
-import { launchBrowser, acquireProfileLock, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { queueTelegram, alertMessage, clip } from "./lib/telegram.mjs";
+import { launchBrowser, isProfileBusy, closeBounded, LINKEDIN_LOGGED_OUT } from "./lib/browser.mjs";
+import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
 import { loadSeenStore } from "./lib/seen-store.mjs";
-import { writeJsonAtomic, writeTextAtomic, readJson } from "./lib/json-file.mjs";
+import { judgeMatches } from "./lib/llm-gate.mjs";
+import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
+import { darkWakeOnBattery } from "./lib/wake.mjs";
+import { heartbeat, normalizeHeartbeat } from "./lib/heartbeat.mjs";
+import { readStore } from "./lib/job-state.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-// Run-wide lock (jobs-run.lock/): two overlapping runs (launchd + manual) would
-// both read jobs-seen.json, both write packages for the same vacancy, and the
-// last save would drop the other's entries. Second run exits quietly — 0 so
-// launchd does not flag it as a failure. Released on process exit.
-try {
-  acquireProfileLock(join(__dir, "jobs-run"));
-} catch (e) {
-  if (!/profile busy/.test(e.message)) throw e;
-  log("another jobs.mjs run is active — exiting");
+// LinkedIn deferred by a DarkWake run (see lib/wake.mjs). The marker is the
+// whole state: a regular run writes it instead of scraping, and the catch-up
+// agent (LINKEDIN_CATCHUP=1, every 15 min) scrapes LinkedIn only while it
+// exists and the Mac is fully awake, then removes it. Any LinkedIn attempt
+// clears it, so a real failure is still left to health monitoring instead of
+// being retried every 15 minutes.
+const PENDING = join(__dir, "linkedin-pending");
+const CATCHUP = process.env.LINKEDIN_CATCHUP === "1";
+if (CATCHUP && !existsSync(PENDING)) process.exit(0);   // the common case: nothing deferred, not worth a log line
+if (CATCHUP && darkWakeOnBattery()) {
+  log("linkedin catch-up: still in a DarkWake on battery — LinkedIn stays pending");
   process.exit(0);
 }
+
 const PROFILE = join(__dir, ".browser-profile");
 const APPS = join(__dir, "applications");
 // Fresh clone has no applications/ yet; readPackages/writeTextAtomic below need it.
 mkdirSync(APPS, { recursive: true, mode: 0o700 });   // packages quote recruiter/job text — owner-only (mode applies at creation; existing dirs keep theirs)
 const SEEN_FILE = join(__dir, "jobs-seen.json");
 const HEALTH_FILE = join(__dir, "source-health.json");
+const HEARTBEAT_FILE = join(__dir, "last-success.json");   // last clean finish per launchd job (lib/heartbeat.mjs)
 const DOU_ONLY = process.env.DOU_ONLY === "1";
 
-const config = JSON.parse(readFileSync(join(__dir, "jobs.config.json"), "utf8"));
+// Hand-edited like skills.json, and parsed just as early: one trailing comma
+// killed both launchd agents at import with a raw SyntaxError that never named
+// the file, before the run lock or a banner — noticed only by reading logs/.
+// Nothing sensible runs without it, so the run stops, but says why. The banner
+// is the 3-hourly run's alone: the catch-up agent would repeat it every 15 min.
+// Flags, lists, numeric knobs and misspelt keys are all handled in
+// lib/jobs-config.mjs, once, so every section below sees normalized values.
+let rawConfig;
+try {
+  rawConfig = readJobsConfig(join(__dir, "jobs.config.json"));
+} catch (e) {
+  log(`⚠ jobs.config.json unusable (${e.message}) — fix the JSON; nothing was scanned`);
+  if (!CATCHUP) banner("Job assistant", "jobs.config.json is broken — fix the JSON (details in logs/)");
+  process.exit(1);
+}
+// skills.json is the same kind of file, but lib/relevance.mjs degrades to an
+// empty profile so check.mjs still loads. Here an empty profile scores every
+// vacancy 0 and stamp() would bury each one for the 90-day TTL, so the run stops
+// before gathering. The banner is the 3-hourly run's alone, as above.
+if (profileError) {
+  log(`⚠ skills.json unusable (${profileError}) — regenerate it: node make-skills.mjs; nothing was scanned`);
+  if (!CATCHUP) banner("Job assistant", "skills.json is broken — run: node make-skills.mjs (details in logs/)");
+  process.exit(1);
+}
+const {
+  config, minScore: MIN_SCORE, sourceMinScore: SOURCE_MIN_SCORE,
+  llmMinScore: LLM_MIN_SCORE, llmBorderlineMin: LLM_BORDERLINE_MIN, llmMaxPerRun: LLM_MAX_PER_RUN, llmConcurrency: LLM_CONCURRENCY, llmTimeoutMs: LLM_TIMEOUT_MS, llmModel: LLM_MODEL,
+  candidateCountry: CANDIDATE_COUNTRY, alsoCountries: ALSO_COUNTRIES, countryOnly: COUNTRY_ONLY,
+} = normalizeJobsConfig(rawConfig, { log });
+const LLM = config.llm || {};
+
+// A run that was due to scrape LinkedIn but could not (the run lock or the
+// browser profile was busy) leaves the catch-up marker behind, so the 15-minute
+// catch-up agent retries it instead of LinkedIn waiting 3 hours for the next slot.
+const LINKEDIN_DUE = !DOU_ONLY && Boolean(config.linkedin?.enabled);
+function markLinkedInPending(why) {
+  if (!LINKEDIN_DUE) return;
+  try { writeFileSync(PENDING, `${new Date().toISOString()}\n`); log(`linkedin: ${why} — left pending for the catch-up agent`); }
+  catch (e) { log("linkedin: pending marker not written:", e.message); }
+}
+
+// Run-wide lock (jobs-run.lock/): two overlapping runs (launchd + manual) would
+// both read jobs-seen.json, both write packages for the same vacancy, and the
+// last save would drop the other's entries. Second run exits quietly — 0 so
+// launchd does not flag it as a failure. Released on process exit.
+acquireRunLockOrExit(join(__dir, "jobs-run"), { log, name: "jobs.mjs", onBusy: () => markLinkedInPending("another run holds the lock") });
 
 // Resume text grounds the LLM prompts. Missing file → LLM disabled this run.
 const RESUME_TXT = existsSync(join(__dir, "resume.txt")) ? readFileSync(join(__dir, "resume.txt"), "utf8") : "";
-// Normalized once so the two gates that read it — the Djinni country filter and
-// the LLM prompt — can never disagree (an empty/typo'd candidateCountry used to
-// leave the filter rejecting everything while the prompt still said Ukraine).
-const CANDIDATE_COUNTRY = candidateCountryList(config.candidateCountry);
-const LLM = config.llm || {};
-// Every numeric knob goes through here: a value that is not a number used to
-// switch its gate off silently (`score < "abc"` is false for every score).
-// It falls back to the default and says so once, in this run's log.
-const knob = (name, v, fallback, range) => configKnob(name, v, fallback, range, log);
-const MIN_SCORE = knob("minScore", config.minScore, 25);
-// A source may set its own minScore — it overrides the global.
-const SOURCE_MIN_SCORE = Object.fromEntries(["dou", "djinni", "linkedin"].map((s) => [s, knob(`${s}.minScore`, config[s]?.minScore, MIN_SCORE)]));
-const LLM_MIN_SCORE = knob("llm.minScore", LLM.minScore, 0, [0, 100]);   // 0 = advisory-only, as when unset
-const LLM_MAX_PER_RUN = knob("llm.maxPerRun", LLM.maxPerRun, 15, [1, Infinity]);   // 0 must not mean "defer everything forever"
-const LLM_CONCURRENCY = knob("llm.concurrency", LLM.concurrency, 3, [1, Infinity]);   // 0 must not mean zero workers (every verdict empty, gate bypassed)
 const llmOn = Boolean(LLM.enabled) && RESUME_TXT.length > 0;
 if (LLM.enabled && !RESUME_TXT) log("llm: enabled in config but resume.txt is missing — LLM re-scoring off this run");
 
-// A misspelt key is not a no-op, it is a silently different run: "llm" typo'd
-// turns the whole LLM gate off (every keyword-passer gets a package) and a
-// typo'd source name drops that source entirely — both with a clean log. Names
-// we do not recognise are therefore reported rather than ignored. `_`-prefixed
-// keys are the documentation blocks the shipped config is full of.
-const KNOWN_TOP = new Set(["minScore", "requireRole", "candidateCountry", "excludeTitle", "excludeLocation", "llm", "dou", "djinni", "linkedin"]);
-const KNOWN_LLM = new Set(["enabled", "model", "maxPerRun", "concurrency", "minScore"]);
-const unknownIn = (obj, known) => Object.keys(obj || {}).filter((k) => !k.startsWith("_") && !known.has(k));
-for (const k of unknownIn(config, KNOWN_TOP)) log(`⚠ config: unknown top-level key "${k}" — ignored (misspelt? known keys: ${[...KNOWN_TOP].join(", ")})`);
-for (const k of unknownIn(LLM, KNOWN_LLM)) log(`⚠ config: unknown llm.${k} — ignored (misspelt? known keys: ${[...KNOWN_LLM].join(", ")})`);
-
-const notify = (msg) =>
-  banner("Job assistant", (msg || "").replace(/\s+/g, " ").trim().slice(0, 240) || "Jobs ready");
+const notify = (msg, opts) =>
+  banner("Job assistant", clip(msg, 240) || "Jobs ready", opts);
 
 // jobs-seen.json stores identity keys (normalize(company)+title) with a
 // last-seen timestamp (90-day TTL), so a vacancy is "seen" regardless of
@@ -122,53 +153,157 @@ let jobs = [];
 let sourcesTried = 0, sourcesFailed = 0;
 const RUN_STATS = join(__dir, "run-stats.jsonl");   // one line per run; the weekly digest reads this instead of parsing its own log
 const summary = newSummary();
+const skippedSources = [];   // left out of this run on purpose — not "absent" to health monitoring
 
-// Seniority terms we never apply to. Matched as whole words in the TITLE only,
-// so a senior role whose description mentions "junior" (e.g. "mentor junior
-// engineers") is kept, while "Junior AQA"/"QA Intern"/"Trainee QA" are dropped.
-// Regexes compiled once at load, not per job. Same normalization as the two
-// lists in lib/filters.mjs: a hand-edited excludeTitle that is not an array
-// used to throw here, before a single job was gathered.
-const EXCLUDE_TITLE = excludeList(config.excludeTitle).map((term) => ({
-  term,
-  re: new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i"),
-}));
-function excludedByTitle(title) {
-  const t = (title || "").toLowerCase();
-  return EXCLUDE_TITLE.find(({ re }) => re.test(t))?.term;
+// Seniority terms we never apply to, matched as whole words in the TITLE only
+// (see lib/keyword-gate.mjs). Same normalization as the two lists in
+// lib/filters.mjs: a hand-edited excludeTitle that is not an array used to
+// throw here, before a single job was gathered.
+const excludedByTitle = titleExcluder(excludeList(config.excludeTitle));
+// Fullstack roles naming a backend language we do not work in. Not run through
+// excludeList: that lowercases, and the exact-case term "Go" must stay "Go"
+// (coerceInPlace already made it a list of strings).
+const excludedByStack = fullstackStackExcluder(config.excludeFullstackStack);
+
+// Canonical-key index of existing packages (cross-run dedup): the same vacancy
+// resurfacing on ANOTHER board must not spawn a second package — its link is
+// appended to the existing one instead. Same source = a distinct req, allowed.
+// Built before gathering: knownJob below asks it about reposts.
+const packageIndex = new Map();
+const packageLinks = new Map();
+// One package into packageIndex under its canonical key; `extra` marks an archived one.
+function indexPackage(fm, extra = {}) {
+  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
+  if (!packageIndex.has(key)) packageIndex.set(key, []);
+  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "", generated: fm.generated || "", reposts: Number(fm.reposts) || 0, ...extra });
+}
+for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable package skipped: ${f} (${e?.message})`) })) {
+  // "—" is the blank-company placeholder; canonicalKey scopes those by url,
+  // so pass the url along instead of filtering on a truthy company.
+  // The url is carried too: "same source = a distinct req" is only true when
+  // the URL differs. After a seen-store quarantine every live vacancy looks new
+  // again, and without the url check each one got re-scored (a paid LLM call)
+  // and written a SECOND time — the filename embeds a fresh minute stamp, so it
+  // could never collide and the duplicate was invisible.
+  // A list per key: two same-source reqs can share one, and keeping only the
+  // last one read lost the other's url — the same-url guard below then missed it.
+  if (!fm.title) continue;
+  indexPackage(fm);
+  // By link too: a channel's repost of this vacancy carries a title of its own.
+  const link = linkKey(fm.url);
+  if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
+  // And by the other boards' links it already lists ("source|url, source|url",
+  // split as the dashboard's altRow does): a repost of one of those under its
+  // own title was judged, and packaged, a second time.
+  for (const pair of String(fm.alt_links || "").split(/,\s*(?=[a-z]+\|)/)) {
+    const alt = linkKey(pair.slice(pair.indexOf("|") + 1).trim());
+    if (alt && !packageLinks.has(alt)) packageLinks.set(alt, fm.file);
+  }
+}
+// Packages whose vacancy the board reported inactive (closed-check.mjs): a
+// same-board re-listing of one of these under a new url is a repost, judged
+// afresh (lib/keyword-gate.mjs findRepost). An unreadable store just means no
+// reposts this run — the dashboard and closed-check own that file's errors.
+const closedFiles = new Set();
+try {
+  const state = readStore(join(__dir, "job-state.json"));
+  const closedUrls = new Set(Object.entries(state).filter(([, e]) => e?.status === "closed").map(([u]) => u));
+  for (const list of packageIndex.values()) for (const p of list) if (closedUrls.has(p.url)) closedFiles.add(p.file);
+} catch (e) { log(`  · job-state.json unreadable (${e.message}) — no repost detection this run`); }
+// Closed packages closed-check has archived (14 days after the closure) still
+// count as closed priors: their state entry is gone and nothing else reads
+// archive/, so a vacancy re-listed after that was buried as "seen" for as long
+// as the board kept listing it. They carry `closed:` (lib/packages.mjs
+// markClosed) and are marked `archived`, so the package gates never call a
+// vacancy "packaged" or a dup of a file that is no longer in applications/.
+for (const fm of readPackages(join(APPS, "archive"), { warn: (f, e) => log(`  · unreadable archived package skipped: ${f} (${e?.message})`) })) {
+  if (!fm.closed || !fm.title) continue;
+  indexPackage(fm, { archived: true });
+  closedFiles.add(fm.file);
 }
 
 // Known before it is opened: already in the seen store (either key spelling) or
 // excluded by title. LinkedIn skips the click + 1.8 s and Djinni the detail-page
 // fetch for such jobs (most of every run); the scoring loop still re-stamps
-// the seen entry because the job is returned from its list fields.
-// ponytail: keys stamped before 2026-08-28 had + and # stripped ("c++" → "c");
-// accept that spelling too until they age out of the 90-day TTL (~2026-11-28).
-const legacyIdOf = (id) => id.replace(/[+#]+/g, " ").replace(/\s+/g, " ").trim();
-const knownJob = (job) => { const id = identityKey(job); return seen.has(id) || seen.has(legacyIdOf(id)) || Boolean(excludedByTitle(job.title)); };
+// the seen entry because the job is returned from its list fields. A repost of
+// a closed package is not known: it needs its description read again — once,
+// until its `repost:<link>` stamp, like the gate. A job the location filter
+// below will drop is known too: its location comes from the listing, and it
+// is never stamped seen, so Djinni and Telegram fetched ~22 such pages an hour.
+const keepsLocation = makeLocationFilter(config.excludeLocation, CANDIDATE_COUNTRY, { countryOnly: COUNTRY_ONLY });
+const droppedForLocation = (job) => !keepsLocation(job);
+const knownJob = (job) => droppedForLocation(job) || ((seenEither(seen, identityKey(job)) || Boolean(excludedByTitle(job.title))) && !freshRepost(job, { seen, packageIndex, closedFiles }));
 
-// 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board).
+// 1–2) Browserless sources: DOU (RSS, always on), Djinni (public jobs board),
+// Himalayas (public JSON API, remote jobs open to candidateCountry), Telegram
+// channels (public web preview of job channels).
 // Same gather/record/collect shape.
-const BROWSERLESS_SOURCES = [
-  { name: "dou", enabled: config.dou?.enabled !== false, fetch: fetchDou }, // on unless explicitly disabled
-  { name: "djinni", enabled: config.djinni?.enabled, fetch: (cfg, lg) => fetchDjinni(cfg, lg, { skip: knownJob }) },
-];
-for (const s of BROWSERLESS_SOURCES) {
-  // Say it out loud: a source turned off by a typo looked exactly like a source
-  // that simply found nothing, and it never reached summary.sources so health
-  // monitoring could not flag it either.
-  if (!s.enabled) { log(`${s.name}: disabled in config — skipped`); continue; }
-  log(`Gathering ${s.name}...`);
+// One contract for every source: fetch(sectionConfig, log, { skip, countries, doFetch }).
+// A source ignores what it does not need (DOU reads full RSS items, so none of
+// it); adding a board is one row here plus one module in lib/sources/.
+const SOURCE_OPTS = { skip: knownJob, countries: CANDIDATE_COUNTRY };
+const BROWSERLESS = { dou: fetchDou, djinni: fetchDjinni, himalayas: fetchHimalayas, tgchannels: fetchTgChannels };
+
+// One lifecycle for every source, LinkedIn included, so the health rules are
+// spelled once.
+// Off: said out loud — a source turned off by a typo looked exactly like a
+// source that simply found nothing, and it never reached summary.sources so
+// health monitoring could not flag it either. An explicit `enabled: false` is
+// the owner's choice, not an outage: left out of health monitoring. A missing
+// or misspelt section still is not, so the "absent" alert keeps catching the typo.
+function sourceOff(name) {
+  if (config[name]?.enabled ?? Boolean(SOURCE_REGISTRY[name].enabledDefault)) return false;
+  log(`${name}: disabled in config — skipped`);
+  if (config[name]?.enabled === false) skippedSources.push(name);
+  return true;
+}
+// Tried: its jobs are collected; a throw is logged and counted as 0 found, so
+// health monitoring alerts on a hard failure. → whether it succeeded.
+async function runSource(name, run) {
   sourcesTried++;
   try {
-    const found = await s.fetch(config[s.name], log);
-    recordFound(summary, s.name, found.length);
+    const found = await run();
+    recordFound(summary, name, found.length);
     jobs.push(...found);
+    return true;
   } catch (e) {
     sourcesFailed++;
-    log(`${s.name} error:`, e.message);
-    recordFound(summary, s.name, 0); // a hard failure must count as 0 so health monitoring alerts
+    log(`${name} error:`, e.message);
+    recordFound(summary, name, 0);
+    return false;
   }
+}
+
+// The full run (:45) used to sweep the boards the hourly run (:15) had read 30
+// minutes earlier: ~20 requests a time, 8 times a day, for nothing new. It now
+// leaves a board to the hourly run when that run finished within FRESH_BOARDS_MS
+// AND found something on this board — a board that read 0 or failed there is
+// read again here. A vacancy that is on LinkedIn too still becomes one package:
+// the hourly run's copy is in the seen store or the package index by now (the
+// "dup" gate appends the other link). ALL_SOURCES=1 reads every board anyway
+// (a manual run after a config change).
+const FRESH_BOARDS_MS = 50 * 60_000;
+const hourlyRunAgeMs = (() => {
+  if (DOU_ONLY || process.env.ALL_SOURCES === "1") return Infinity;
+  try {
+    const at = Date.parse(normalizeHeartbeat(readJson(HEARTBEAT_FILE, {})).jobs["jobs-dou"]?.at || "");
+    return Number.isFinite(at) ? Date.now() - at : Infinity;
+  } catch { return Infinity; }
+})();
+let boardsLeftToHourly = 0;   // skipped here because the hourly run just read them
+const readThisHour = (name) => hourlyRunAgeMs >= 0 && hourlyRunAgeMs < FRESH_BOARDS_MS && (health[name]?.at(-1) ?? 0) > 0;
+
+for (const [name, fetchSource] of Object.entries(BROWSERLESS)) {
+  if (sourceOff(name)) continue;
+  if (CATCHUP) { skippedSources.push(name); continue; }   // they ran in the deferring run; the catch-up is for LinkedIn
+  if (readThisHour(name)) {
+    log(`${name}: read ${Math.round(hourlyRunAgeMs / 60_000)} min ago by the hourly run — skipped (ALL_SOURCES=1 reads it anyway)`);
+    skippedSources.push(name);
+    boardsLeftToHourly++;
+    continue;
+  }
+  log(`Gathering ${name}...`);
+  await runSource(name, () => fetchSource(config[name], log, SOURCE_OPTS));
 }
 
 // 3) Browser source: LinkedIn (needs login) in a Playwright context. (Robota.ua,
@@ -188,39 +323,50 @@ async function fetchLinkedInChecked(page, cfg) {
   log("Gathering LinkedIn jobs (scraping, modest)...");
   return fetchLinkedInJobs(page, cfg, log, { skip: knownJob });
 }
-if (DOU_ONLY) log("linkedin: skipped (DOU_ONLY=1)");
-else if (!config.linkedin?.enabled) log("linkedin: disabled in config — skipped");
-if (!DOU_ONLY && config.linkedin?.enabled) {
-  let ctx;
+if (CATCHUP && !LINKEDIN_DUE) rmSync(PENDING, { force: true });   // turned off since it was deferred: nothing to catch up
+// The feed needs more than a DarkWake's 5–10 s, so a run here only ever timed
+// out and reported LinkedIn as 0 found. Defer it and leave it out of health
+// monitoring: it was not tried, so it did not break. Asked here, after the
+// boards, so a Mac that woke fully meanwhile is not deferred on a stale answer;
+// the catch-up agent asked at its start (and exited on a DarkWake) seconds ago.
+const LINKEDIN_DEFERRED = LINKEDIN_DUE && !CATCHUP && darkWakeOnBattery();
+let linkedinRan = false;   // the feed was actually read this run (heartbeat "jobs-linkedin")
+async function gatherLinkedIn() {
+  if (DOU_ONLY) { log("linkedin: skipped (DOU_ONLY=1)"); skippedSources.push("linkedin"); return; }
+  if (sourceOff("linkedin")) return;
+  if (LINKEDIN_DEFERRED) {
+    skippedSources.push("linkedin");
+    markLinkedInPending("deferred (the Mac is in a DarkWake on battery)");
+    return;
+  }
+  let ctx, busy = false;
   try {
-    sourcesTried++;
-    ctx = await launchBrowser(PROFILE); // inside try: a launch/lock failure logs + notifies instead of an unhandled rejection
-    const page = ctx.pages()[0] || (await ctx.newPage());
-    // Own try/catch so a scrape failure is logged and counted as 0 for health monitoring.
-    try {
-      const found = await fetchLinkedInChecked(page, config.linkedin);
-      recordFound(summary, "linkedin", found.length);
-      jobs.push(...found);
-    } catch (e) { sourcesFailed++; log("LinkedIn error:", e.message); recordFound(summary, "linkedin", 0); }
+    ctx = await launchBrowser(PROFILE);
+    linkedinRan = await runSource("linkedin", async () => fetchLinkedInChecked(ctx.pages()[0] || (await ctx.newPage()), config.linkedin));
   } catch (e) {
+    // Only the launch lands here (runSource catches the scrape), logged and
+    // bannered instead of an unhandled rejection.
     log("Browser sources error:", e.message);
     // "profile busy" = benign overlap with check.mjs/login.mjs: no banner, and
-    // no 0-count either — leaving the source out of the summary keeps a
-    // skipped run from looking like a scraper outage to health monitoring.
-    if (/profile busy/.test(e.message)) sourcesTried--;   // not an outage: the source was never tried
+    // no 0-count either — the source was never tried, and leaving it out of the
+    // summary keeps a skipped run from looking like a scraper outage.
+    if (isProfileBusy(e)) { busy = true; skippedSources.push("linkedin"); }
     else {
-      sourcesFailed++;
-      if (!ctx) notify(`Browser launch failed: ${e.message}`);
-      // Launch/lock failure happens before the inner catch: record 0 so health monitoring sees the outage.
-      if (!summary.sources.linkedin) recordFound(summary, "linkedin", 0);
+      sourcesTried++; sourcesFailed++;
+      notify(`Browser launch failed: ${e.message}`);
+      recordFound(summary, "linkedin", 0);   // health monitoring must see the outage
     }
   } finally {
     // A throw here escapes the sibling catch and takes the whole run with it —
     // dedup, scoring and every package write included, after the scraping was
     // already paid for. Closing a browser is never worth that.
-    try { await ctx?.close(); } catch (e) { log("browser close failed:", e.message); }
+    await closeBounded(ctx, { log });   // bounded: a hung close held both locks forever
+    // Busy = not tried: it stays (or becomes) pending for the next 15-minute tick.
+    if (busy) markLinkedInPending("browser profile busy");
+    else rmSync(PENDING, { force: true });
   }
 }
+await gatherLinkedIn();
 
 log(`Total jobs gathered: ${jobs.length}`);
 
@@ -228,7 +374,7 @@ log(`Total jobs gathered: ${jobs.length}`);
 // marks them "за кордоном", Djinni "Тільки офіс · Польща", etc).
 {
   const before = jobs.length;
-  const keptLoc = filterByLocation(jobs, config.excludeLocation, CANDIDATE_COUNTRY);
+  const keptLoc = jobs.filter(keepsLocation);
   if (keptLoc.length < before) {
     const kept = new Set(keptLoc);
     log(`Location filter: dropped ${before - keptLoc.length} foreign-location job(s)`);
@@ -245,187 +391,93 @@ recordMerged(summary, mergedCount);
 log(`Deduped: merged ${mergedCount} cross-source duplicate(s) → ${jobs.length} unique`);
 
 
-// Canonical-key index of existing packages (cross-run dedup): the same vacancy
-// resurfacing on ANOTHER board must not spawn a second package — its link is
-// appended to the existing one instead. Same source = a distinct req, allowed.
-const packageIndex = new Map();
-for (const fm of readPackages(APPS, { warn: (f) => log(`  · unreadable package skipped: ${f}`) })) {
-  // "—" is the blank-company placeholder; canonicalKey scopes those by url,
-  // so pass the url along instead of filtering on a truthy company.
-  // The url is carried too: "same source = a distinct req" is only true when
-  // the URL differs. After a seen-store quarantine every live vacancy looks new
-  // again, and without the url check each one got re-scored (a paid LLM call)
-  // and written a SECOND time — the filename embeds a fresh minute stamp, so it
-  // could never collide and the duplicate was invisible.
-  if (fm.title) packageIndex.set(canonicalKey({ company: fm.company, title: fm.title, url: fm.url }), { file: fm.file, source: fm.source || "", url: fm.url || "" });
-}
 
 // 5a) Score all unseen jobs locally (cheap) and collect the gate-passers.
 // Keyword gate: per-source/global minScore + requireRole. Passers go to 5b,
 // where the LLM applies a second gate (llm.minScore).
-let written = 0, considered = 0, llmFailed = 0, llmDropped = 0;
+let considered = 0;
 const matches = [];
+// Same-source copies with different urls share one identity and reach this gate
+// together (the seen store is only stamped after the LLM gate). Judge an identity
+// once per run: the next run would call the second "seen" anyway, and the
+// one-shot markers (llm-retry:, title-only-*:) are keyed on identity, so the
+// second copy would also inherit the first one's deferral.
+const matchedIds = new Map();   // identity → its entry in matches
+// Stamp a job seen together with the copies dedupeJobs folded into it.
+const stamp = (job, id) => { for (const k of stampKeys(job, id, seen)) seen.add(k); };
+// A job turned down on its title alone (no description yet) stays unseen so
+// the next run re-reads it — once. The second title-only "no" stamps it seen:
+// a description that never loads (a short posting, selector drift) used to be
+// re-scraped, and re-judged by the paid LLM, every run forever. `gate` keeps
+// the keyword and LLM markers apart; neither key reads as seen. Returns true
+// on the first one: the caller holds the job back for the re-read.
+function titleOnlyNo(job, id, gate) {
+  const first = firstTime(seen, marker.titleOnly(gate, id));
+  if (!first) stamp(job, id);
+  return first;
+}
 for (const job of jobs) {
-  const id = identityKey(job);
-  const legacyId = legacyIdOf(id);
-  // Re-stamp on every sighting so the TTL is "last seen", not "first seen" —
-  // a vacancy still live after 90 days must not resurface as new.
-  if (seen.has(id) || seen.has(legacyId)) { recordOutcome(summary, job.source, "seen"); seen.add(id); continue; }
-  const existing = packageIndex.get(canonicalKey(job));
-  // Same source AND same url = the very package we already wrote (the seen
-  // store lost it, the package did not). Re-stamp and move on: no re-score, no
-  // second file. A different url from the same source is still a distinct req.
-  if (existing && existing.source === job.source && existing.url && existing.url === job.url) {
-    log(`  · already packaged (${existing.file}) ${job.source}: ${job.title}`);
-    recordOutcome(summary, job.source, "seen");
-    seen.add(id);
-    continue;
+  const g = keywordGate(job, {
+    seen, packageIndex, packageLinks, closedFiles, excludedByTitle, excludedByStack,
+    minScore: SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE,
+    requireRole: config.requireRole,
+  });
+  const { id } = g;
+  if (g.considered) considered++;
+  if (g.repost) {
+    // Judged afresh, but this new url only once: its marker is stamped with the
+    // final outcome (excluded/low here, drop or package in the LLM gate) — never
+    // on a deferral — and re-stamped by every later run that lists it (stampKeys).
+    job.repost = g.repost;
+    log(`  · repost ×${g.repost.reposts} of closed ${g.repost.file}: ${job.source}: ${job.title}`);
   }
-  if (existing && existing.source !== job.source) {
-    try { appendAltLink(join(APPS, existing.file), job.source, job.url); }
-    catch (e) { log(`  · alt-link append failed (${existing.file}): ${e.message}`); }
-    log(`  · dup-of-existing (${existing.file}) ${job.source}: ${job.title}`);
-    recordOutcome(summary, job.source, "seen");
-    seen.add(id);
-    continue;
+  switch (g.kind) {
+    case "seen": break;   // re-stamped below: the TTL is "last seen", so a vacancy still live after 90 days never resurfaces
+    case "packaged": log(`  · already packaged (${g.file}) ${job.source}: ${job.title}`); break;
+    case "dup":
+      // The copies dedupeJobs folded into this one too: they are stamped seen
+      // with it below, so a link not written now is never written.
+      for (const { source, url } of [job, ...(job.altLinks || [])]) {
+        try { appendAltLink(join(APPS, g.file), source, url); }
+        catch (e) { log(`  · alt-link append failed (${g.file}): ${e.message}`); }
+      }
+      log(`  · dup-of-existing (${g.file}) ${job.source}: ${job.title}`);
+      break;
+    case "excluded": log(`  · skip [excluded:${g.term}] ${job.source}: ${job.title}`); break;
+    case "low":
+      log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
+      break;
+    case "match":
+      if (matchedIds.has(id)) {   // no stamp: the judged copy's outcome stamps (or defers) the identity for both
+        const first = matchedIds.get(id);
+        // The copy with a description is the one worth judging: a title-only
+        // first copy would be judged on its title alone, twice, and never read.
+        if (first.retry && !g.retry) {
+          // What dedupeJobs folded into the first copy goes with the judged one:
+          // dropped, those links never reached the package and the folded
+          // identities were not stamped, so the next run judged them again.
+          for (const k of ["altLinks", "mergedIds", "mergedKeys", "mergedTitles"]) if (first.job[k]?.length) job[k] = [...(job[k] || []), ...first.job[k]];
+          Object.assign(first, { job, scored: g.scored, retry: false });
+        }
+        log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
+        recordOutcome(summary, job.source, "seen");
+        continue;
+      }
+      matchedIds.set(id, { id, job, scored: g.scored, retry: g.retry });
+      matches.push(matchedIds.get(id));
+      continue;
   }
-  considered++;
-  const excluded = excludedByTitle(job.title);
-  if (excluded) {
-    log(`  · skip [excluded:${excluded}] ${job.source}: ${job.title}`);
-    recordOutcome(summary, job.source, "excluded");
-    seen.add(id);
-    continue;
-  }
-  const scored = scoreMessage(job.text);
-  // Cold applications: strict gate — high score AND an automation/SDET role match.
-  const minScore = SOURCE_MIN_SCORE[job.source] ?? MIN_SCORE;
-  const needRole = config.requireRole ? Boolean(scored.matchedRole) : true;
-  if (scored.score < minScore || !needRole) {
-    // A card whose description failed to load (LinkedIn panel timeout) scores
-    // on its title alone; marking it seen would bury it for the 90-day TTL.
-    // Leave it unseen so the next run re-reads the description.
-    const noDesc = (job.text || "").length < 300;
-    log(`  · skip [${scored.score}${scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${noDesc ? " (no description — will retry)" : ""}`);
-    recordOutcome(summary, job.source, "low");
-    if (!noDesc) seen.add(id);
-    continue;
-  }
-  matches.push({ id, job, scored });
+  recordOutcome(summary, job.source, { seen: "seen", packaged: "seen", dup: "seen", excluded: "excluded", low: "low" }[g.kind]);
+  if (g.retry) titleOnlyNo(job, id, "kw");   // a "low" with no description: re-read once with it
+  else stamp(job, id);
 }
 
 // 5b) Strongest keyword matches first: LLM re-score + tailored letter (capped
-// per run), then write the package. LLM fit below llm.minScore → dropped;
-// LLM failure → keyword-only package; past the per-run cap → deferred to the
-// next run (not written, not marked seen) so the weakest matches — the likeliest
-// false positives — never bypass the LLM gate.
-matches.sort((a, b) => b.scored.score - a.scored.score);
-const writtenList = [];
-const label = (job) => `${job.title} @ ${job.company}`;
-const toScore = llmOn ? matches.slice(0, LLM_MAX_PER_RUN) : matches;
-for (const { job, scored } of matches.slice(toScore.length)) {
-  log(`  · deferred [${scored.score}] ${job.source}: ${label(job)} — llm.maxPerRun reached, next run`);
-}
-// Score a few CLI calls at a time (~20 s each on sonnet, ~55 s on haiku; 15 in
-// sequence used to take 14 min) while the loop below consumes verdicts in score
-// order and writes each package as soon as its verdict is in — so a crash or a
-// sleeping Mac mid-scoring keeps every package already paid for, exactly like
-// the old sequential loop.
-const verdict = new Map();   // m → Promise<llm result | null>
-let scoring = Promise.resolve();
-if (llmOn) {
-  const resolvers = new Map(toScore.map((m) => { let res; verdict.set(m, new Promise((r) => { res = r; })); return [m, res]; }));
-  scoring = pool(toScore, LLM_CONCURRENCY, async (m) => {
-    // Every promise must settle. A throw in here used to leave `await
-    // verdict.get(m)` pending forever — the run deadlocked mid-scoring with an
-    // unhandled rejection on `scoring` — so a failure resolves null, which the
-    // consumer already treats as "llm failed, keyword-only package".
-    try {
-      resolvers.get(m)(await llmJSON(buildJobPrompt(RESUME_TXT, m.job, detectLang(m.job.text), { country: CANDIDATE_COUNTRY[0] }), { model: LLM.model || "sonnet", log }));
-    } catch (e) {
-      log(`  · llm threw for: ${m.job.title} — ${e?.message}`);
-      resolvers.get(m)(null);
-    }
-  });
-}
-for (const m of toScore) {
-  const { id, job, scored } = m;
-  const lbl = label(job);
-  let llm = null;
-  if (llmOn) {
-    const res = await verdict.get(m);
-    // Normalize the score once at the trust boundary; downstream (log,
-    // package frontmatter, writtenList) can rely on a rounded number.
-    const n = res ? numericScore(res.score) : null;
-    if (n !== null) {
-      // `score` was the only model-controlled field bounded here; `why` and
-      // `red_flags` went into the package verbatim, so a posting could steer
-      // the model into writing an arbitrarily long line there (fmValue keeps it
-      // to one line, but not to a sane length). Bound everything that crosses.
-      // Built as an explicit allow-list, NOT `{...res}`: the spread carried
-      // every other key of the model's JSON through verbatim, so a posting
-      // could have the model emit its own `suspect` ("verified clean") and
-      // forge the very field that exists to warn about it. These six are the
-      // only keys anything downstream reads.
-      llm = {
-        score: Math.min(100, Math.max(0, Math.round(n))),
-        why: String(res.why ?? "").slice(0, 300),
-        red_flags: (Array.isArray(res.red_flags) ? res.red_flags : []).slice(0, 10).map((f) => String(f).slice(0, 200)),
-        cover: typeof res.cover === "string" ? res.cover : "",
-        model: LLM.model || "sonnet",
-      };
-      // A posting that talks to the screener may well have talked it into this
-      // score. Record that alongside the number instead of letting an inflated
-      // score look like an ordinary good match. Scan the SANITIZED text: it is
-      // what the model actually saw, and composeText builds job.text as
-      // "<title> at <company>. <location>. <desc>", so every field
-      // buildJobPrompt puts in the prompt is already in here. Scanning the raw
-      // field let a posting split a payload with "<vacancy>" tokens and slip
-      // past the markers while the model read the reassembled sentence.
-      // (Reviewed 2026-09-17: passing the fields in separately as well only
-      // double-counts the markers and inflates the suspect line.)
-      const marks = injectionMarkers(sanitizeVacancyText(job.text));
-      if (marks.length) { llm.suspect = `injection (${marks.length} marker${marks.length === 1 ? "" : "s"})`; log(`  · ⚠ vacancy text addresses the screener — flagged: ${job.title}`); }
-    }
-    else { llmFailed++; log(`  · llm failed for: ${job.title} — keyword-only package`); }
-  }
-  if (llmRejects(llm, LLM_MIN_SCORE)) {
-    llmDropped++;
-    log(`  · skip [${scored.score} / llm ${llm.score}] ${job.source}: ${lbl}`);
-    recordOutcome(summary, job.source, "low");
-    seen.add(id);   // persisted with the next written package, or at the end of the loop
-    continue;
-  }
-  // Skip the one package the way every other per-item failure in this loop
-  // does. Unwrapped, a single ENOSPC/EACCES threw mid-loop and took the rest of
-  // the run with it: the remaining matches, run stats, source health, the
-  // dashboard refresh and the end-of-run banner.
-  // buildApplication is INSIDE the try, not one line above it: composing the
-  // package is per-item work too, and a throw there (a scraped field of an
-  // unexpected shape) had the whole blast radius this try exists to prevent.
-  let filename, markdown;
-  try {
-    ({ filename, markdown } = buildApplication(job, scored, llm));
-    writeTextAtomic(join(APPS, filename), markdown);   // a crash mid-write must not leave a frontmatter-less package
-  } catch (e) {
-    log(`  · package build/write failed (${filename || lbl}): ${e.message}`);
-    continue;
-  }
-  log(`  ✓ MATCH [${scored.score}${llm ? ` / llm ${llm.score}` : ""}] ${job.source}: ${lbl}`);
-  recordOutcome(summary, job.source, "written");
-  recordTop(summary, scored.score, lbl);
-  writtenList.push({ score: scored.score, llmScore: llm ? llm.score : null, label: lbl });
-  seen.add(id);
-  // Persist after every WRITTEN package: a crash mid-run must not forget one
-  // (the next run would re-score and re-pay the LLM for it). Each save
-  // rewrites and fsyncs the whole store, so the drop path above does not
-  // pay for it — a dropped id lost to a crash costs one repeated verdict.
-  seen.save();
-  written++;
-}
-await scoring;   // every worker has finished (all verdicts were consumed above; this just joins the pool)
-
-seen.save();
+// per run), then the package write — lib/llm-gate.mjs.
+const { written, borderline, writtenList, llmFailed, llmDropped, llmDeferred, llmFallback, llmCalls, llmMs } = await judgeMatches(matches, {
+  llm: { on: llmOn, minScore: LLM_MIN_SCORE, borderlineMin: LLM_BORDERLINE_MIN, maxPerRun: LLM_MAX_PER_RUN, concurrency: LLM_CONCURRENCY, model: LLM_MODEL, resume: RESUME_TXT, country: CANDIDATE_COUNTRY[0], alsoCountries: ALSO_COUNTRIES, timeoutMs: LLM_TIMEOUT_MS },
+  seen, stamp, titleOnlyNo, summary, appsDir: APPS, log,
+});
 
 // The weekly digest used to reconstruct these four numbers by regex-matching the
 // log lines above — anchored to their exact wording and leading-space count, so
@@ -439,8 +491,8 @@ seen.save();
 // the file is created (or rotated) fell inside that window and was counted
 // twice, once from each source. Writing the stat first makes the ordering
 // deterministic in the direction that cannot double-count.
-appendRunStat(RUN_STATS, { considered, written, dropped: llmDropped, failed: llmFailed });
-log(`Done. Considered ${considered} new, wrote ${written} application package(s) to ${APPS}`);
+appendRunStat(RUN_STATS, { considered, written, borderline, dropped: llmDropped, failed: llmFailed, llmCalls, llmMs });
+log(`Done. Considered ${considered} new, wrote ${written} application package(s)${borderline ? ` + ${borderline} borderline` : ""} to ${APPS}`);
 
 // Per-source digest of this run (scraper health + the day's catch).
 log("\n" + formatTable(summary));
@@ -448,31 +500,52 @@ log("\n" + formatTable(summary));
 // Scraper-health: alert if a source came in far below its recent norm, then
 // append this run's counts to the history. An LLM failing more than twice in
 // one run is a breakage too (a single flake is not).
-// DOU_ONLY deliberately skips linkedin every run: without this filter its
-// history (from a full run) makes the "absent" rule below fire as a false
-// "disabled or misspelt?" alert on every single DOU_ONLY run.
-const healthForRun = DOU_ONLY
-  ? Object.fromEntries(Object.entries(health).filter(([source]) => source !== "linkedin"))
-  : health;
-const degraded = detectDegradations(healthForRun, summary);
+const degraded = detectDegradations(health, summary, { skipped: skippedSources });
 if (degraded.length) alerts.push(formatAlert(degraded));
-if (llmFailed > 2) alerts.push(`⚠️ LLM failed ${llmFailed}× — keyword-only packages`);
+if (llmFailed > 2) {
+  const fate = [llmDeferred && `${llmDeferred} deferred to the next run`, llmFallback && `${llmFallback} keyword-only`].filter(Boolean).join(", ");
+  alerts.push(`⚠️ LLM failed ${llmFailed}× — ${fate}`);
+}
+// launchd must see a failed run as failed (the convention djinni-check.mjs:144
+// already follows). "Failed" is only "every source we tried threw" — a quiet
+// run that gathered nothing because there was nothing new stays 0. A board
+// left to the hourly run was read minutes ago, so it counts as one that
+// worked: without it LinkedIn failing alone failed the whole full run (exit 1,
+// no `jobs-linkedin` heartbeat), which it never did while the boards were read here.
+const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried && !boardsLeftToHourly;
+// Heartbeat: one stamp per launchd plist, and a shout once for any sibling
+// job that has stopped finishing — an unloaded plist or a broken node path was
+// silent until someone noticed the Monday digest missing. `jobs-dou` is the
+// hourly DOU_ONLY plist's alone: the 3-hourly full run reads the boards too,
+// and stamping it there kept a dead hourly plist looking alive. The full run
+// is `jobs-linkedin` whether or not LinkedIn itself ran (disabled in config,
+// deferred to the catch-up agent): the stamp says the plist fired and
+// finished, source health says what it read — with LinkedIn disabled the full
+// run used to stamp nothing, so its own dead plist went unnoticed. The
+// catch-up agent (every 15 min) stamps only when it scraped.
+const heartbeatJob = DOU_ONLY ? "jobs-dou" : (!CATCHUP || linkedinRan) ? "jobs-linkedin" : null;
+if (!runFailed && heartbeatJob) heartbeat(HEARTBEAT_FILE, heartbeatJob, { log, alert: (m) => alerts.push(m) });
 // Never write back a baseline we could not read: that is the silent reset.
-if (healthReadable) writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary)));
+// Guarded like the package write: an ENOSPC/EACCES here used to take down the
+// dashboard refresh, the banner and the exit code below with it.
+if (healthReadable) {
+  try { writeJsonAtomic(HEALTH_FILE, appendHistory(health, currentCounts(summary))); }
+  catch (e) { log(`⚠ ${HEALTH_FILE} not written (${e.message}) — this run is missing from the health baseline`); }
+}
 
 // Refresh the HTML dashboard so applications/index.html always reflects current packages.
+// stderr is piped, not ignored: e.message alone was "Command failed: …", with
+// the actual stack from dashboard.mjs thrown away.
 try {
-  execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: "ignore", timeout: 60_000 });
+  execFileSync(process.execPath, [join(__dir, "dashboard.mjs")], { stdio: ["ignore", "ignore", "pipe"], timeout: 60_000 });
 } catch (e) {
-  log("dashboard refresh skipped:", e.message);
+  log("dashboard refresh skipped:", e.message, String(e.stderr || "").trim().slice(-300));
 }
 
 // One banner per run: breakage alerts + the new packages. Silent when neither.
+// Telegram already has every package as its own message, so it gets only the alerts.
 const bannerText = formatRunBanner(writtenList, alerts);
-if (bannerText) notify(bannerText);
-// launchd must see a failed run as failed (the convention djinni-check.mjs:144
-// already follows). "Failed" is only "every source we tried threw" — a quiet
-// run that gathered nothing because there was nothing new stays 0.
-const runFailed = sourcesTried > 0 && sourcesFailed === sourcesTried;
+if (bannerText) notify(bannerText, { toTelegram: false });
+if (alerts.length) queueTelegram(alertMessage("Job assistant", alerts.join("\n")));
 if (runFailed) log(`All ${sourcesTried} source(s) failed — exiting 1 so the scheduler sees it`);
 process.exit(runFailed ? 1 : 0);

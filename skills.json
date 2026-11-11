@@ -6,6 +6,8 @@
     "fullstack developer", "full stack developer", "full-stack developer",
     "fullstack engineer", "full stack engineer", "full-stack engineer",
     "javascript developer", "typescript developer", "web developer",
+    "node.js developer", "node.js engineer", "nodejs developer", "nodejs engineer", "nestjs developer",
+    "node.js розробник", "node.js разработчик",
     "software engineer", "software developer", "ui engineer", "ui developer",
     "фронтенд розробник", "фронтенд-розробник", "фулстек розробник", "фулстек-розробник",
     "веб розробник", "веб-розробник", "react розробник", "javascript розробник",
@@ -18,7 +20,7 @@
     "react": 5,
     "next.js": 5,
     "typescript": 5,
-    "node.js": 4,
+    "node.js": 5,
     "nestjs": 4,
     "javascript": 4,
     "micro-frontend": 4,
@@ -29,7 +31,7 @@
     "zustand": 3,
     "a/b testing": 3,
     "web vitals": 3,
-    "postgresql": 3,
+    "postgresql": 4,
     "prisma": 3,
     "rest": 3,
     "sse": 2,
@@ -40,7 +42,7 @@
     "vitest": 2,
     "scss": 1,
     "react native": 1,
-    "express": 2,
+    "express": 3,
     "i18n": 2,
     "llm": 3,
     "mcp": 2,
@@ -48,7 +50,7 @@
     "storybook": 2,
     "tailwind": 2,
     "styled components": 1,
-    "sql": 2,
+    "sql": 3,
     "graphql": 2,
     "api": 2,
     "angular": 2,
@@ -56,10 +58,16 @@
     "cloudflare": 2,
     "docker": 2,
     "ci/cd": 2,
-    "mongodb": 1,
+    "mongodb": 2,
     "aws": 1,
     "react testing library": 1,
-    "canvas": 1
+    "canvas": 1,
+    "playwright": 2,
+    "gcp": 1,
+    "openapi": 1,
+    "redis": 1,
+    "kafka": 1,
+    "rabbitmq": 1
   },
   "_synonymsComment": "Cross-language equivalents and spelling variants. A skill's weight (from 'skills') counts ONCE if the key OR any synonym matches. Latin tech terms appear in Latin in UA/RU text, so most need only spelling variants.",
   "synonyms": {
@@ -81,7 +89,11 @@
     "redux": ["redux toolkit", "rtk query"],
     "mongodb": ["mongoose"],
     "react query": ["tanstack query", "tanstack"],
-    "react testing library": ["testing library"]
+    "react testing library": ["testing library"],
+    "gcp": ["google cloud", "google cloud platform", "pub/sub"],
+    "openapi": ["swagger"],
+    "kafka": ["apache kafka"],
+    "rabbitmq": ["rabbit mq"]
   },
   "_maxSkillsComment": "Only the N highest-weight matched skills count toward the score — guards against keyword-stuffed postings outscoring real matches. Role bonus and antiKeywords are not capped. Omit to use the default (8).",
   "maxSkills": 8,
@@ -102,8 +114,8 @@
   },
   "_profileComment": "How the FALLBACK cover letters describe your specialization, per language (LLM letters ignore this — they are grounded in resume.txt). Cyrillic phrases sit in genitive position — 'досвід в …' / 'опыт в …' — so word them to fit that case.",
   "profile": {
-    "en": "frontend and full-stack development (React, Next.js, TypeScript, Node.js)",
-    "uk": "фронтенд- та фулстек-розробці (React, Next.js, TypeScript, Node.js)",
-    "ru": "фронтенд- и фулстек-разработке (React, Next.js, TypeScript, Node.js)"
+    "en": "full-stack development (Node.js, TypeScript, PostgreSQL, React, Next.js)",
+    "uk": "фулстек-розробці (Node.js, TypeScript, PostgreSQL, React, Next.js)",
+    "ru": "фулстек-разработке (Node.js, TypeScript, PostgreSQL, React, Next.js)"
   }
 }

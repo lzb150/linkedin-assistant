@@ -90,6 +90,17 @@ test("detectDegradations reports a healthy source that stopped running at all", 
   assert.deepEqual(detectDegradations({ dou: [10, 10, 10] }, summaryOf({ dou: 12 })), []);
 });
 
+test("detectDegradations does not call a source absent when the run skipped it on purpose", () => {
+  // Every hourly DOU_ONLY run left linkedin out by design and got
+  // "linkedin: not run at all — disabled or misspelt?" for it.
+  assert.deepEqual(detectDegradations({ linkedin: [26, 25, 28, 27, 26] }, summaryOf({ dou: 57 }), { skipped: ["linkedin"] }), []);
+  // Skipping one source does not hide another that really vanished.
+  assert.deepEqual(
+    detectDegradations({ linkedin: [26, 25, 28], djinni: [90, 90, 90] }, summaryOf({ dou: 57 }), { skipped: ["linkedin"] }),
+    [{ source: "djinni", found: 0, median: 90, reason: "absent", runs: 3 }],
+  );
+});
+
 test("formatAlert renders an absent source with a config hint", () => {
   assert.equal(
     formatAlert([{ source: "djinni", found: 0, median: 20, reason: "absent", runs: 5 }]),

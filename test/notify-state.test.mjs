@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, utimesSync, statSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { writeState } from "../lib/notify-state.mjs";
+import { writeState, readBadge, linkedinBadge, keepBadgeAdding, updateState, clearStale } from "../lib/notify-state.mjs";
 import { tmpDir } from "./helpers/e2e.mjs";
 
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
@@ -24,4 +24,146 @@ test("writeState clamps negative/fractional count and defaults pending to []", (
   writeState(p, { count: 2.9, pending: "nope" });
   assert.equal(read(p).count, 2);
   assert.deepEqual(read(p).pending, []);
+});
+
+test("readBadge: missing, corrupt or wrong-shaped files read as no pending", (t) => {
+  const dir = tmpDir(t);
+  assert.deepEqual(readBadge(join(dir, "none.json")).pending, []);
+  writeFileSync(join(dir, "bad.json"), "{not json");
+  assert.deepEqual(readBadge(join(dir, "bad.json")).pending, []);
+  writeFileSync(join(dir, "odd.json"), JSON.stringify({ pending: [{ id: 1 }, null, { id: "2-x", label: "A" }] }));
+  assert.deepEqual(readBadge(join(dir, "odd.json")).pending, [{ id: "2-x", label: "A" }]);
+});
+
+test("linkedinBadge: a bannered thread keeps the badge after the scan that read it", () => {
+  // 2026-10-06: bannered at 19:17, the 20:14 scan saw 0 unread and dropped the badge.
+  const first = linkedinBadge({ notified: [{ id: "2-a", label: "Maria" }], unreadCount: 1, opened: 1 });
+  assert.deepEqual(first, { count: 1, pending: [{ id: "2-a", label: "Maria" }] });
+  const next = linkedinBadge({ prevPending: first.pending, unreadCount: 0, opened: 0 });
+  assert.deepEqual(next, first, "still 1 until a Dock click clears the file");
+});
+
+test("linkedinBadge: a repeat banner for a thread counts once, with the newest label", () => {
+  const s = linkedinBadge({ prevPending: [{ id: "2-a", label: "old" }, { id: "2-b", label: "B" }], notified: [{ id: "2-a", label: "new" }], unreadCount: 1, opened: 1 });
+  assert.equal(s.count, 2);
+  assert.deepEqual(s.pending.map((p) => [p.id, p.label]), [["2-b", "B"], ["2-a", "new"]]);
+});
+
+test("linkedinBadge: unread threads the run did not open still count", () => {
+  assert.equal(linkedinBadge({ notified: [{ id: "2-a", label: "A" }], unreadCount: 15, opened: 12 }).count, 4);
+  assert.equal(linkedinBadge({ unreadCount: 0, opened: 2 }).count, 0, "opened > unread never goes negative");
+});
+
+test("linkedinBadge: an unopened unread thread that is already pending counts once", () => {
+  // Bannered earlier (still pending), then another message, and this run did not open it.
+  const prevPending = [{ id: "2-a", label: "Maria" }];
+  assert.equal(linkedinBadge({ prevPending, unreadCount: 1, opened: 0, unopened: ["Maria"] }).count, 1);
+  assert.equal(linkedinBadge({ prevPending, unreadCount: 2, opened: 0, unopened: ["Maria", "Maria"] }).count, 2, "one pending label covers one card");
+  assert.equal(linkedinBadge({ prevPending, unreadCount: 2, opened: 0, unopened: ["Oleh", ""] }).count, 3, "other senders and unnamed cards count on top");
+});
+
+test("keepBadgeAdding: an uncounted scan keeps the old count and adds each newly bannered thread", (t) => {
+  const prev = { count: 3, pending: [{ id: "2-a", label: "Ann" }] };
+  const out = keepBadgeAdding({ prev, notified: [{ id: "2-a", label: "Ann" }, { id: "2-b", label: "Bob" }] });
+  assert.deepEqual(out.pending.map((p) => p.id), ["2-a", "2-b"]);
+  assert.equal(out.count, 4, "2-a was already counted; 2-b adds one");
+  const dir = tmpDir(t);
+  writeState(join(dir, "s.json"), out);
+  assert.deepEqual(readBadge(join(dir, "s.json")), { count: 4, pending: out.pending });
+  assert.deepEqual(readBadge(join(dir, "none.json")), { count: 0, pending: [] });
+});
+
+test("updateState is a locked read-modify-write: the lock is released, a stale one is taken over", (t) => {
+  const p = join(tmpDir(t), "notify-state.json");
+  writeState(p, { count: 1, pending: [{ id: "a", label: "A" }] });
+  const s = updateState(p, (prev) => linkedinBadge({ prevPending: prev.pending, notified: [{ id: "b", label: "B" }] }));
+  assert.deepEqual(read(p).pending.map((x) => x.id), ["a", "b"]);
+  assert.equal(s.count, 2);
+  assert.ok(!existsSync(`${p}.lock`), "released");
+  // A crashed holder's lock (older than 10 s) does not block the write.
+  mkdirSync(`${p}.lock`);
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(`${p}.lock`, old, old);
+  updateState(p, (prev) => ({ count: prev.count + 1, pending: prev.pending }));
+  assert.equal(read(p).count, 3);
+  assert.ok(!existsSync(`${p}.lock`), "stale lock taken over and released");
+});
+
+test("updateState waits for a live lock, then writes anyway rather than lose the update", (t) => {
+  const p = join(tmpDir(t), "notify-state.json");
+  mkdirSync(`${p}.lock`);   // fresh: a holder that never lets go
+  const t0 = Date.now();
+  updateState(p, () => ({ count: 1, pending: [] }));
+  assert.ok(Date.now() - t0 >= 1900, "waited for the holder");
+  assert.equal(read(p).count, 1);
+  assert.ok(existsSync(`${p}.lock`), "someone else's lock is left alone");
+});
+
+test("clearStale deletes only the lock it saw stale; a fresh one taken in between is put back", (t) => {
+  // Two writers both saw the crashed holder's lock stale. The first removed it
+  // and took a fresh one; the second must not delete that fresh lock.
+  const dir = tmpDir(t);
+  const lock = join(dir, "notify-state.json.lock");
+  mkdirSync(lock);
+  clearStale(lock, statSync(lock));
+  assert.ok(!existsSync(lock), "the lock it saw is gone");
+  mkdirSync(lock);   // the other writer's fresh lock
+  clearStale(lock, { ino: 0, mtimeMs: 0 });   // stat-ed some other inode (0 is never a real one): not this lock
+  assert.ok(existsSync(lock), "the fresh lock is put back");
+  assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
+});
+
+test("clearStale puts back a fresh lock that reused the stale one's inode", (t) => {
+  // Linux hands a freed inode straight to the next mkdir: the other writer's
+  // fresh lock can carry the inode stat-ed as stale. Only its mtime differs.
+  const dir = tmpDir(t);
+  const lock = join(dir, "notify-state.json.lock");
+  mkdirSync(lock);
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(lock, old, old);
+  const stale = statSync(lock);
+  utimesSync(lock, new Date(), new Date());   // same inode, fresh mtime: a live lock
+  clearStale(lock, stale);
+  assert.ok(existsSync(lock), "the fresh lock is put back");
+  assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
+});
+
+test("updateState releases only its own lock, not one a third writer took after it was moved aside", (t) => {
+  // Another writer's clearStale moved B's live lock aside by mistake and C
+  // took the free path. B's release by path deleted C's lock mid-write.
+  const dir = tmpDir(t);
+  const p = join(dir, "notify-state.json");
+  const lock = `${p}.lock`;
+  let cIno;
+  updateState(p, (prev) => {
+    renameSync(lock, `${lock}.aside`);            // B's lock moved by mistake
+    mkdirSync(lock); cIno = statSync(lock).ino;   // C holds the path now
+    return prev;
+  });
+  assert.equal(statSync(lock).ino, cIno, "C's lock survives B's release");
+});
+
+test("updateState leaves a lock that reused its inode: the mtime tells them apart", (t) => {
+  // B's lock was cleared by mistake and C's mkdir got the freed inode back
+  // (Linux does this at once). An inode-only release deleted C's lock.
+  const p = join(tmpDir(t), "notify-state.json");
+  const lock = `${p}.lock`;
+  updateState(p, (prev) => {
+    const later = new Date(Date.now() + 5_000);
+    utimesSync(lock, later, later);   // same inode, new mtime: C's lock now
+    return prev;
+  });
+  assert.ok(existsSync(lock), "C's lock survives B's release");
+});
+
+test("clearStale never replaces a lock a third writer took during the put-back", (t) => {
+  // A moved B's live lock aside by mistake; C took the free path before A put
+  // it back. A rename put-back would silently replace C's empty directory.
+  const dir = tmpDir(t);
+  const lock = join(dir, "notify-state.json.lock");
+  mkdirSync(lock);   // B's live lock
+  let cIno;
+  clearStale(lock, 0, { beforePutBack: () => { mkdirSync(lock); cIno = statSync(lock).ino; } });
+  assert.equal(statSync(lock).ino, cIno, "C keeps its lock");
+  assert.deepEqual(readdirSync(dir), ["notify-state.json.lock"], "nothing left aside");
 });

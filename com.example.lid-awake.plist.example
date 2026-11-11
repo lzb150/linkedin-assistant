@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Optional system LaunchDaemon (root, not a per-user agent): keeps a Mac on the charger
+  awake with the lid closed, so the scheduled runs and the Telegram alerts go on while
+  you are away. Every 10 s:
+    on the charger: pmset -a disablesleep 1 (no sleep, lid closed included; the screen still turns off)
+    on battery:     pmset -a disablesleep 0 (normal sleep), and pmset sleepnow if the lid
+                    is already closed, so an unplugged Mac in a bag does not stay awake.
+  Nothing to edit. Install/uninstall: docs/setup.md → "Keep the Mac awake with the lid closed".
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.lid-awake</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>if /usr/bin/pmset -g ps | /usr/bin/head -1 | /usr/bin/grep -q "AC Power"; then want=1; else want=0; fi; cur="$(/usr/bin/pmset -g | /usr/bin/awk '/SleepDisabled/ {print $2}')"; if [ "$cur" != "$want" ]; then /usr/bin/pmset -a disablesleep "$want"; if [ "$want" = 0 ] &amp;&amp; /usr/sbin/ioreg -r -k AppleClamshellState -d 1 | /usr/bin/grep -q '"AppleClamshellState" = Yes'; then /usr/bin/pmset sleepnow; fi; fi</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>

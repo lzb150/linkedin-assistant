@@ -1,0 +1,176 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { parse, toItem, collapseItems, scoreBand, langAttr, badge, renderCard, sourceChips, ageLabel } from "../lib/dashboard-render.mjs";
+
+const md = (fm, body = "# x\n") => `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n${body}`;
+
+test("parse prefers the cover delimiters and falls back to the pre-delimiter heading scan", () => {
+  const delimited = parse(md({ title: "SDET" }, "# x\n<!--cover:start-->\nHello\n## Action inside the letter\n<!--cover:end-->\n## Action\n"));
+  assert.equal(delimited.cover, "Hello\n## Action inside the letter");
+  const legacy = parse(md({ title: "SDET" }, "# x\n## Cover note (en)\nOld letter\n## Action\n- apply\n"));
+  assert.equal(legacy.cover, "Old letter");
+  assert.equal(parse("no frontmatter"), null);
+});
+
+test("toItem defaults the source, parses scores once, and rejects a non-numeric llm_score", () => {
+  const it = toItem({ fm: { score: "x", llm_score: "8a" }, cover: "" });
+  assert.equal(it.source, "dou");
+  assert.equal(it.score, 0);
+  assert.equal(it.llm, null);
+  assert.equal(toItem({ fm: { source: "djinni", score: "41", llm_score: "77" } }).llm, 77);
+});
+
+test("toItem/renderCard: tier borderline → data-tier + a tag; anything else is a match", () => {
+  const b = toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", llm_score: "62", tier: "borderline" }, cover: "" });
+  assert.equal(b.tier, "borderline");
+  assert.equal(toItem({ fm: { tier: "gold" }, cover: "" }).tier, "match");
+  const html = renderCard(b, 0, { llmInUse: true });
+  assert.match(html, /<article class="card"[^>]* data-tier="borderline"/);
+  assert.match(html, /<span class="tier"><span class="sr-only">tier <\/span>borderline<\/span> <span class="llm">/);
+  const kw = renderCard(toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", tier: "borderline" }, cover: "" }), 0, { llmInUse: true });
+  assert.match(kw, /class="tier">.*borderline.*<span class="llm unverified">/, "no verdict: the tag sits next to the AI ? badge");
+  assert.doesNotMatch(renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30" }, cover: "" }), 0, {}), /data-tier|class="tier"/);
+});
+
+test("collapseItems keeps the newest package per identity and sorts llm desc, then score desc", () => {
+  const it = (fm) => toItem({ fm, cover: "" });
+  const out = collapseItems([
+    it({ company: "A", title: "T", url: "https://a/1", generated: "2026-09-01", score: "40", llm_score: "80" }),
+    it({ company: "A", title: "T", url: "https://a/2", generated: "2026-09-02", score: "40", llm_score: "90" }),
+    it({ company: "B", title: "U", url: "https://b/1", generated: "2026-09-01", score: "60" }),
+    it({ company: "C", title: "V", url: "https://c/1", generated: "2026-09-01", score: "50" }),
+  ]);
+  assert.deepEqual(out.map((x) => x.fm.url), ["https://a/2", "https://b/1", "https://c/1"]);
+});
+
+test("scoreBand, langAttr and badge's unknown-source fallback", () => {
+  assert.deepEqual([40, 39, 30, 29].map(scoreBand), ["hi", "mid", "mid", "lo"]);
+  assert.equal(langAttr("Senior SDET"), "");
+  assert.equal(langAttr("Тестувальник автоматизації"), ' lang="uk"');
+  assert.match(badge("dou"), /--src:#c93c33/);
+  assert.match(badge("tgchannels"), />Telegram</, "the label, not the source key");
+  assert.match(badge("constructor"), /#6e7781">constructor</, "unknown source: gray, raw name, no prototype lookup");
+  assert.match(badge("<b>"), />&lt;b&gt;</);
+});
+
+test("renderCard: injection note is visible text, not a hover title; a bad url renders read-only", () => {
+  const fm = { source: "dou", title: "SDET", company: "Acme", url: "https://a/1", llm_score: "80", llm_suspect: "injection (2 markers)" };
+  const html = renderCard(toItem({ fm, cover: "" }), 0);
+  assert.match(html, /⚠ injection \(2 markers\) — the posting addresses the screener/);
+  assert.doesNotMatch(html, /title="/);
+  assert.match(html, /data-url="https:\/\/a\/1"/);
+  const ro = renderCard(toItem({ fm: { ...fm, url: "javascript:alert(1)" }, cover: "" }), 1);
+  assert.doesNotMatch(ro, /data-url=|status-seg|note-wrap/);
+  // No link at all: an href="#" anchor named "Open job" opened the dashboard itself.
+  assert.doesNotMatch(ro, /href="#"|Open job/);
+  assert.match(ro, /<span class="apply" aria-disabled="true">No usable link<\/span>/);
+  const alt = renderCard(toItem({ fm: { ...fm, alt_links: "djinni|javascript:alert(1), dou|https://b/2" }, cover: "" }), 2);
+  assert.doesNotMatch(alt, /href="#"/);
+  assert.match(alt, /href="https:\/\/b\/2"/);
+});
+
+test("renderCard: a flagged package without an LLM score still shows the injection note", () => {
+  const fm = { source: "dou", title: "SDET", company: "Acme", url: "https://a/1", llm_suspect: "injection (1 marker)" };
+  const html = renderCard(toItem({ fm, cover: "" }), 0);
+  assert.match(html, /⚠ injection \(1 marker\) — the posting addresses the screener, and the LLM gave no usable verdict/);
+  assert.doesNotMatch(html, /class="llm"/);
+});
+
+test("renderCard: a package without a verdict is marked unverified when the LLM is in use, and left alone when it never was", () => {
+  // A keyword-only package written while the LLM was down skipped the fit
+  // gate, and its cover note is the generic template: say so on the card.
+  const fm = { source: "dou", title: "SDET", company: "Acme", url: "https://a/1", score: "36" };
+  const html = renderCard(toItem({ fm, cover: "" }), 0, { llmInUse: true });
+  assert.match(html, /class="llm unverified"/);
+  assert.match(html, /no LLM verdict/);
+  const quiet = renderCard(toItem({ fm, cover: "" }), 0, { llmInUse: false });
+  assert.doesNotMatch(quiet, /unverified|no LLM verdict/);
+});
+
+test("renderCard: a url past the server's length limit renders read-only; middle-click marks Viewed", () => {
+  const long = `https://a/${"x".repeat(2100)}`;
+  const ro = renderCard(toItem({ fm: { source: "dou", title: "SDET", url: long }, cover: "" }), 0);
+  assert.doesNotMatch(ro, /data-url=|status-seg|note-wrap|autoStatus/);
+  const live = renderCard(toItem({ fm: { source: "dou", title: "SDET", url: "https://a/1" }, cover: "" }), 1);
+  assert.match(live, /onauxclick="if\(event\.button===1\) autoStatus\(/);
+  // The letter marks Viewed from a summary click, never from toggle (find-in-page opens it too).
+  assert.match(live, /<summary onclick="if\(!this\.parentElement\.open\) autoStatus\(/);
+  assert.doesNotMatch(live, /ontoggle/);
+  assert.match(live, /<span class="sr-only card-status" lang="en"><\/span><\/h2>/, "the English cue is not read in the title's language");
+});
+
+test("renderCard: a remote-board card whose countries name the candidate's country is marked; worldwide and Djinni are not", () => {
+  const card = (source, location, opts) => renderCard(toItem({ fm: { source, title: "SDET", url: "https://a/1", location }, cover: "" }), 0, opts);
+  assert.match(card("himalayas", "Remote · Poland, Ukraine"), /<span class="listed"><span aria-hidden="true">✓ <\/span>Ukraine listed<\/span>/);
+  assert.match(card("tgchannels", "Remote · Europe or Ukraine"), /Ukraine listed/);
+  assert.doesNotMatch(card("himalayas", "Remote · Worldwide"), /class="listed"/);
+  assert.doesNotMatch(card("djinni", "Тільки віддалено · Україна · 2 роки досвіду"), /class="listed"/, "on Djinni it is the norm, not a signal");
+  assert.match(card("himalayas", "Remote · Poland", { countries: ["Poland", "Польща"] }), /Poland listed/, "label from the first candidateCountry entry");
+  assert.match([toItem({ fm: { source: "himalayas", title: "SDET", url: "https://a/1", location: "Remote · Ukraine" }, cover: "" })].map(renderCard)[0], /Ukraine listed/, "map(renderCard) passes the array as the third argument: default countries");
+});
+
+test("renderCard: a long remote-board country list collapses to a disclosure; worldwide and office lists stay whole", () => {
+  const card = (source, location) => renderCard(toItem({ fm: { source, title: "SDET", url: "https://a/1", location }, cover: "" }), 0);
+  const long = "Remote · Belarus, Belgium, Cyprus, Denmark, Estonia, Finland, Ukraine";
+  const html = card("himalayas", long);
+  assert.match(html, new RegExp(`<details class="places"><summary>Remote · ~7 countries</summary> ${long}</details>`), "the full list opens from the keyboard too");
+  assert.match(html, /Ukraine listed/, "the mark still reads the full list");
+  assert.match(card("himalayas", "Remote · Poland, Ukraine"), /<span>Remote · Poland, Ukraine<\/span>/, "a short list is shown as is");
+  const world = "Remote · Worldwide, Poland, Germany, Spain, Portugal, Romania, Bulgaria";
+  assert.match(card("tgchannels", world), new RegExp(`<span>${world}</span>`), "open to everyone stays on screen");
+  assert.doesNotMatch(card("tgchannels", "Office · Kyiv, Lviv, Odesa, Dnipro, Kharkiv, Vinnytsia, Lutsk"), /countries/, "a city list is not countries");
+  assert.doesNotMatch(card("dou", "Київ, Харків, Львів, Дніпро, Одеса, Вінниця, віддалено"), /countries/, "DOU cities are not a country list");
+});
+
+test("sourceChips lists each source on disk once, sorted, with its label", () => {
+  const items = [{ source: "linkedin" }, { source: "dou" }, { source: "linkedin" }, { source: "newboard" }];
+  const html = sourceChips(items);
+  assert.deepEqual([...html.matchAll(/data-src="([^"]+)"/g)].map((m) => m[1]), ["dou", "linkedin", "newboard"]);
+  assert.match(html, />LinkedIn</);
+  assert.match(html, />newboard</);
+});
+
+test("ageLabel and the card's posted / reposted cues", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  assert.equal(ageLabel("posted", "2026-10-28T01:00:00Z", now), "posted today");
+  assert.equal(ageLabel("posted", "2026-10-25T12:00:00Z", now), "posted 3 d ago");
+  assert.equal(ageLabel("posted", "2026-09-01T12:00:00Z", now), "posted 8 w ago");
+  assert.equal(ageLabel("posted", "nope", now), "");
+  // Calendar days, not 24 h blocks (built from local parts: the label is local).
+  const lateNight = new Date(2026, 9, 27, 23, 50).toISOString(), after = new Date(2026, 9, 28, 0, 30).getTime();
+  assert.equal(ageLabel("posted", lateNight, after), "posted 1 d ago");
+  assert.equal(toItem({ fm: { posted: "2026-10-27" }, cover: "" }).posted, new Date(2026, 9, 27).toISOString(), "a bare date is a local calendar date");
+  const it = toItem({ fm: { title: "QA", company: "Beta", url: "https://x.test/1", score: "30", posted: "2026-10-25T12:00:00Z", reposts: "2" }, cover: "" });
+  assert.equal(it.posted, "2026-10-25T12:00:00.000Z");
+  assert.equal(it.reposts, 2);
+  const html = renderCard(it, 0, { now });
+  assert.match(html, /<time datetime="2026-10-25T12:00:00\.000Z" data-kind="posted">posted 3 d ago<\/time><\/span>/);
+  assert.match(html, /<span class="repost"[^>]*>reposted ×2<span class="sr-only"> \([^<]+\)<\/span><\/span>/);
+  const bare = renderCard(toItem({ fm: { title: "QA", url: "https://x.test/1", score: "30", posted: "soon", reposts: "x" }, cover: "" }), 0, { now });
+  assert.doesNotMatch(bare, /class="posted"|class="repost"/, "garbage frontmatter renders nothing");
+  // `new Date(2026, 1, 30)` rolls over to 2 March, and Date.parse reads "5" as 2001.
+  for (const posted of ["2026-02-30", "2026-13-45", "5"]) assert.equal(toItem({ fm: { posted }, cover: "" }).posted, "", posted);
+});
+
+test("a card LinkedIn re-listed says relisted, with the re-listing's age, never posted", () => {
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  assert.equal(ageLabel("relisted", "2026-10-30T00:00:00Z", now), "relisted 1 d ago");
+  const it = toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", relisted: "2026-10-30T00:00:00Z" }, cover: "" });
+  const html = renderCard(it, 0, { now });
+  assert.match(html, /<span class="posted" title="[^"]*first posting date[^"]*"><time datetime="2026-10-30T00:00:00\.000Z" data-kind="relisted">relisted 1 d ago<\/time><span class="sr-only"> \([^<]*first posting date\)<\/span><\/span>/);
+  assert.doesNotMatch(html, />posted /);
+});
+
+test("a card whose board gives only its last update says updated", () => {
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  assert.equal(ageLabel("updated", "2026-10-30T17:01:00Z", now), "updated 1 d ago");
+  const html = renderCard(toItem({ fm: { title: "QA", company: "Acme", url: "https://x.test/1", score: "30", updated: "2026-10-30T17:01:00Z" }, cover: "" }), 0, { now });
+  assert.match(html, /<span class="posted" title="[^"]*last update[^"]*"><time datetime="2026-10-30T17:01:00\.000Z" data-kind="updated">updated 1 d ago<\/time><span class="sr-only"> \([^<]*last update[^<]*\)<\/span><\/span>/);
+});
+
+test("a hand-edited CRLF package keeps its whole letter, and a rolled-over full stamp is no date", () => {
+  const crlf = md({ title: "SDET" }, "# x\n<!--cover:start-->\nHello\n## Action inside the letter\n<!--cover:end-->\n## Action\n").replace(/\n/g, "\r\n");
+  assert.equal(parse(crlf).cover, "Hello\n## Action inside the letter");
+  assert.equal(toItem({ fm: { posted: "2026-02-30T10:00:00Z" }, cover: "" }).posted, "");
+  assert.equal(toItem({ fm: { posted: "2026-02-27T10:00:00Z" }, cover: "" }).posted, "2026-02-27T10:00:00.000Z");
+});

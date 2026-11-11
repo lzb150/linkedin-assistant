@@ -1,5 +1,5 @@
 {
-  "_comment": "Drop-in skills.json for a backend/full-stack TypeScript-Node developer. Activate with: cp skills.developer.json.example skills.json — then update the searches in jobs.config.json, resume.txt and RESUME_PATH (see README, 'Adapting to another profession').",
+  "_comment": "Drop-in skills.json for a backend/full-stack TypeScript-Node developer. Activate with: cp skills.developer.json.example skills.json — then update the searches in jobs.config.json, resume.txt and RESUME_PATH (see docs/specialization.md).",
   "roles": [
     "software engineer", "software developer", "backend developer", "backend engineer",
     "full stack developer", "full stack engineer", "node.js developer", "typescript developer",

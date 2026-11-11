@@ -7,16 +7,16 @@
 //     badge (cleared when the total is 0).
 //   - On a foreground (user) launch or a Dock-icon click: if Djinni has unread
 //     messages it opens that conversation (a single unread opens the thread, a
-//     few open Djinni's unread bucket), else if LinkedIn has unread messages it
-//     opens the LinkedIn inbox filtered to unread; either way that badge is
-//     cleared at once (the next hourly scan restores it if anything is still
-//     unread); otherwise it opens the jobs dashboard
-//     (node dashboard.mjs --open), preserving the old applet's behaviour.
+//     few open Djinni's unread bucket), else if the LinkedIn badge is up it
+//     opens the bannered thread (several: the inbox; none bannered: the unread
+//     filter); either way that badge is cleared at once (the next scan restores
+//     it for anything new or still unread); otherwise it opens the jobs
+//     dashboard (node dashboard.mjs --open), preserving the old applet's behaviour.
 //   - Launched with --background (by the login LaunchAgent or check.mjs) it runs
 //     the badge daemon only and does NOT open the dashboard.
 //   - Posts macOS banners queued by lib/notify.mjs as banners/*.json
 //     ({title, message}); each file is deleted once posted. Clicking a banner
-//     behaves like a Dock-icon click (Djinni unread or the dashboard).
+//     behaves like a Dock-icon click (Djinni, the LinkedIn thread, or the dashboard).
 //
 // Build with build-jobs.sh. Set JOBS_DEBUG=1 for stderr logging.
 
@@ -64,12 +64,80 @@ func djinniUnread() -> (count: Int, ids: [String]) {
 }
 
 // The user just opened the unread thread/bucket, so the badge would otherwise
-// sit there until the next hourly djinni-check run. Zero the state now (same
-// shape djinni-check writes, atomically); that scan restores the real count if
-// anything is still unread. Banner de-dup lives in djinni-seen.json, so this
-// never causes a repeat banner.
-func clearBadge(_ path: String) {
-    let state: [String: Any] = ["count": 0, "pending": [], "updatedAt": ISO8601DateFormatter().string(from: Date()), "clearedBy": "activation"]
+// sit there until the next hourly scan. Zero the state now (same shape the
+// scripts write, atomically); that scan restores the real count if anything is
+// still unread. Used for both files. Neither causes a repeat banner: Djinni
+// de-dups in djinni-seen.json, LinkedIn in seen.json (per newest message).
+// `opened` (LinkedIn): the pending ids this click opened. The file is re-read
+// here and every OTHER pending thread is kept: check.mjs may have bannered one
+// between the click and this write, and since seen.json already has it, a
+// blanket clear dropped it from the badge for good.
+// The read-modify-write runs under `<path>.lock/`, the mkdir lock check.mjs
+// takes (lib/notify-state.mjs updateState): unlocked, a banner written between
+// the read and the replace was lost from the badge. Held for milliseconds; a
+// lock older than 10 s is a crashed holder, and after 2 s the clear goes ahead
+// unlocked rather than leave the badge up.
+func withStateLock(_ path: String, _ body: () -> Void) {
+    let lock = path + ".lock"
+    var held: NSNumber? = nil   // inode of the directory we created
+    var gaveUp = false
+    let start = Date()
+    while held == nil && !gaveUp && Date().timeIntervalSince(start) < 2 {
+        do {
+            try FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
+            held = (try? FileManager.default.attributesOfItem(atPath: lock))?[.systemFileNumber] as? NSNumber
+            if held == nil { gaveUp = true }   // vanished at once: go ahead unlocked
+        } catch {
+            // Only "already exists" means someone holds it; any other error
+            // means this directory cannot hold a lock at all: go ahead unlocked.
+            guard (error as NSError).code == NSFileWriteFileExistsError else { break }
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: lock) else { continue }   // released since: retry now
+            if let m = attrs[.modificationDate] as? Date, Date().timeIntervalSince(m) > 10 {
+                clearStaleLock(lock, inode: attrs[.systemFileNumber] as? NSNumber)
+                continue
+            }
+            usleep(20_000)
+        }
+    }
+    // Released by identity, as in lib/notify-state.mjs updateState: if another
+    // writer's clearStaleLock moved ours aside by mistake, the directory now at
+    // `lock` belongs to a third writer still inside its read-modify-write.
+    defer {
+        if let ino = held,
+           (try? FileManager.default.attributesOfItem(atPath: lock))?[.systemFileNumber] as? NSNumber == ino {
+            try? FileManager.default.removeItem(atPath: lock)
+        }
+    }
+    body()
+}
+
+// Same takeover as lib/notify-state.mjs clearStale: move the stale lock aside
+// and delete it only if it is still the one stat-ed (same inode). A fresh lock
+// another writer took in between is put back by creating the directory again
+// (never replaces: a third writer that took the free path keeps its lock), and
+// the moved directory is always removed so no `.stale-*` litter is left.
+func clearStaleLock(_ lock: String, inode: NSNumber?) {
+    let aside = lock + ".stale-\(getpid())-\(Int(Date().timeIntervalSince1970 * 1000))"
+    guard (try? FileManager.default.moveItem(atPath: lock, toPath: aside)) != nil else { return }
+    let moved = (try? FileManager.default.attributesOfItem(atPath: aside))?[.systemFileNumber] as? NSNumber
+    if inode == nil || moved != inode {
+        try? FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
+    }
+    try? FileManager.default.removeItem(atPath: aside)
+}
+
+func clearBadge(_ path: String, opened: [String]? = nil) {
+    withStateLock(path) { clearBadgeLocked(path, opened: opened) }
+}
+
+private func clearBadgeLocked(_ path: String, opened: [String]?) {
+    var keep: [[String: Any]] = []
+    if let opened = opened,
+       let data = FileManager.default.contents(atPath: path),
+       let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+        keep = ((obj["pending"] as? [[String: Any]]) ?? []).filter { !opened.contains(($0["id"] as? String) ?? "") }
+    }
+    let state: [String: Any] = ["count": keep.count, "pending": keep, "updatedAt": ISO8601DateFormatter().string(from: Date()), "clearedBy": "activation"]
     guard let data = try? JSONSerialization.data(withJSONObject: state) else { return }
     let tmp = path + ".tmp"
     do {
@@ -85,7 +153,8 @@ func clearBadge(_ path: String) {
 // Decide what a Dock-icon activation (click or foreground launch) opens:
 //   - Djinni has unread -> open that conversation (one unread opens the thread,
 //     several open Djinni's unread bucket).
-//   - else LinkedIn has unread -> open the LinkedIn inbox filtered to unread.
+//   - else the LinkedIn badge is up -> open the bannered thread (several: the
+//     inbox; none bannered, only unread over the scan cap: the unread filter).
 //   - otherwise -> open the jobs dashboard (the original behaviour).
 func handleActivation() {
     let (count, ids) = djinniUnread()
@@ -100,15 +169,33 @@ func handleActivation() {
         clearBadge(djinniStatePath)
         return
     }
-    // LinkedIn unread (check.mjs writes a count only): open the inbox filtered to
-    // unread and clear at once; the hourly scan restores the count if any remain.
+    // LinkedIn: `pending` holds the threads bannered since the last click — the
+    // scan already read them, so the unread filter would show none of them. One
+    // thread opens itself, several the inbox; nothing bannered (only unopened
+    // unread over the MAX cap) the unread filter. Clear at once; the hourly scan
+    // restores the count of anything still unread.
     if unreadCountAt(statePath) > 0 {
-        dbg("activation -> LinkedIn unread inbox")
-        openURL("https://www.linkedin.com/messaging/?filter=unread")
-        clearBadge(statePath)
+        let ids = pendingIds(statePath)
+        // Thread ids are url-safe base64 ("2-MDg1…XzEwMA=="); anything else in the
+        // file must not be spliced into a url.
+        let safe = ids.count == 1 && ids[0].range(of: "^[A-Za-z0-9_=-]+$", options: .regularExpression) != nil
+        let url = safe ? "https://www.linkedin.com/messaging/thread/\(ids[0])/"
+            : ids.isEmpty ? "https://www.linkedin.com/messaging/?filter=unread"
+            : "https://www.linkedin.com/messaging/"
+        dbg("activation -> LinkedIn (ids=\(ids.count)) \(url)")
+        openURL(url)
+        clearBadge(statePath, opened: ids)
         return
     }
     openDashboard()
+}
+
+// The string `id`s of one notify-state file's `pending` list (missing/invalid -> []).
+func pendingIds(_ path: String) -> [String] {
+    guard let data = FileManager.default.contents(atPath: path),
+          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return [] }
+    return ((obj["pending"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }
 }
 
 // Read the "count" field from one notify-state JSON file (missing/invalid -> 0).
@@ -149,12 +236,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // because nothing depends on the poll landing at an exact instant.
         timer?.tolerance = 1.0
         // A foreground (user) launch opens Djinni if there are unread messages,
-        // otherwise the dashboard.
+        // else the LinkedIn thread or inbox if any, otherwise the dashboard.
         if !isBackground { handleActivation() }
     }
 
     // Dock-icon click while already running -> Djinni unread thread/bucket if any,
-    // otherwise the dashboard.
+    // else the LinkedIn thread or inbox if any, otherwise the dashboard.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         // Two agents (check.mjs, djinni-check.mjs) fire at the same minute; when the
         // daemon was down both miss pgrep and both `open` it. The second `open`

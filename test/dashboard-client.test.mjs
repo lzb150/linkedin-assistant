@@ -29,33 +29,11 @@ test("status and note persist across a server restart", async (t) => {
   assert.match(html, /<html>/);
 });
 
-test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
-  const { port } = await startStateServer(t);
-  // Same postState as lib/dashboard-client-dom.js: a non-ok response throws with .status.
-  async function postState(body) {
-    const r = await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!r.ok) { const e = new Error("post failed " + r.status); e.status = r.status; throw e; }
-    return r.json();
-  }
-  let state = {}, offline = false;
-  const patches = [
-    { url: "javascript:alert(1)", patch: { status: "viewed" } },          // 400
-    { url: "https://example.com/jobs/1/", patch: { status: "closed" } }, // ok
-  ];
-  try {
-    for (const body of patches) {
-      try { state = await postState(body); }
-      catch (e) { if (e.status >= 400 && e.status < 500) continue; throw e; }
-    }
-  } catch { offline = true; }
-  assert.equal(offline, false);
-  assert.equal(state["https://example.com/jobs/1/"].status, "closed");
-});
-
 // Boot the inlined client (core + dom) in a vm against a fake window.
 async function bootClient({ fetch, store, document }) {
   const ctx = vm.createContext({
-    setTimeout, clearTimeout, Date, JSON, console, fetch,
+    // unref'd: init() schedules advanceLastVisit 4 s out, which must not hold the test open.
+    setTimeout: (f, ms) => { const h = setTimeout(f, ms); h.unref?.(); return h; }, clearTimeout, Date, JSON, console, fetch, AbortSignal,
     localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
     document: document || { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
   });
@@ -65,6 +43,112 @@ async function bootClient({ fetch, store, document }) {
   return { ctx, run: (code) => vm.runInContext(code, ctx) };
 }
 const fakeCard = (url) => ({ dataset: { url }, classList: { toggle() {} }, querySelectorAll: () => [], querySelector: () => null });
+
+test("a rejected (4xx) offline patch is skipped, the rest still reach the server", async (t) => {
+  // Runs the real initState push loop: a 4xx drops that one patch and moves on,
+  // only a network failure means offline.
+  const { port, statePath } = await startStateServer(t);
+  const BAD = "javascript:alert(1)", GOOD = "https://example.com/jobs/1/";
+  const store = new Map([
+    ["jobStatus", JSON.stringify({ _meta: {}, [BAD]: { status: "viewed" }, [GOOD]: { status: "closed" } })],
+    ["jobStatusDirty", JSON.stringify([BAD, GOOD])],
+  ]);
+  const c = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  assert.equal(c.run("online"), true, "a 4xx is not offline");
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), []);
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk[GOOD].status, "closed");
+  assert.ok(!(BAD in onDisk));
+});
+
+// A DOM just rich enough for the card/filter code: real cards, the header's
+// status and source buttons, and the elements applyFilter writes to.
+function fakeDom(cards) {
+  const el = (extra = {}) => ({ textContent: "", hidden: false, value: "", ...extra });
+  const btn = (dataset) => ({ dataset, classList: { toggle() {} }, setAttribute(k, v) { this[k] = v; } });
+  const doc = {
+    activeElement: null,
+    querySelector: () => null,
+    getElementById: (id) => ids[id] ?? null,
+    querySelectorAll: (sel) => ({
+      ".card": cards,
+      ".filter-seg button": [btn({ filter: "new" }), btn({ filter: "viewed" })],
+      ".src-seg button": [btn({ src: "all" }), btn({ src: "dou" }), btn({ src: "djinni" })],
+    })[sel] || [],
+    documentElement: { dataset: {} },
+  };
+  const ids = {
+    q: el({ focus() { doc.activeElement = ids.q; } }),
+    shown: el(), "no-match": el({ hidden: true }), "cnt-new": el(), "cnt-viewed": el(),
+  };
+  return { doc, ids };
+}
+function domCard({ url, generated = "", source = "dou", search = "" }) {
+  const btn = (status) => ({ dataset: { status }, classList: { toggle() {} }, setAttribute(k, v) { this[k] = v; } });
+  const card = {
+    dataset: { url, generated, source, search }, style: {}, classes: new Set(),
+    classList: { toggle: (c, on) => (on ? card.classes.add(c) : card.classes.delete(c)) },
+    cue: { textContent: "" }, dot: { hidden: true }, ribbon: null, inner: { blur() {} },
+    buttons: [btn("new"), btn("viewed")],
+    contains: (x) => x === card.inner,
+    querySelectorAll: (sel) => (sel === ".status-seg button" ? card.buttons : []),
+    querySelector: (sel) => ({
+      ".card-status": card.cue, ".note-has": card.dot, ".ribbon": card.ribbon,
+      ".titles h2": { insertAdjacentHTML: () => { card.ribbon = { remove: () => { card.ribbon = null; } }; } },
+    })[sel] ?? null,
+  };
+  return card;
+}
+
+test("cards: counts, status cues, NEW ribbon, filtering, no-match and focus relocation run in the real client", async () => {
+  const A = "https://a/1", B = "https://b/1", C = "https://c/1";
+  const store = new Map([["jobStatus", JSON.stringify({
+    _meta: { lastVisit: "2026-09-10T00:00:00Z" },
+    [A]: { status: "viewed", note: "called back" },
+    [B]: { status: "closed" },
+  })]]);
+  const cards = [
+    domCard({ url: A, generated: "2026-09-01T00:00:00Z", search: "sdet acme" }),
+    domCard({ url: B, generated: "2026-09-01T00:00:00Z", source: "djinni", search: "qa beta" }),
+    domCard({ url: C, generated: "2026-09-20T00:00:00Z", source: "djinni", search: "playwright gamma" }),
+  ];
+  const [a, b, c] = cards;
+  const { doc, ids } = fakeDom(cards);
+  const client = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
+  await new Promise((r) => setImmediate(r));   // init() continues after `ready`
+
+  // renderCard mirrors state into the DOM.
+  assert.equal(a.cue.textContent, ", viewed");
+  assert.equal(b.cue.textContent, ", closed");
+  assert.equal(a.dot.hidden, false, "note dot for a card with a note");
+  assert.equal(a.buttons[1]["aria-pressed"], "true");
+  assert.equal(a.buttons[0]["aria-pressed"], "false");
+  // markFreshness: only the card generated after the last visit gets the ribbon.
+  assert.ok(c.ribbon && c.classes.has("fresh"));
+  assert.ok(!a.ribbon && !a.classes.has("fresh"));
+  // applyFilter with the New+Viewed default: closed hidden, counts per header button.
+  assert.equal(ids["cnt-new"].textContent, 1);
+  assert.equal(ids["cnt-viewed"].textContent, 1);
+  assert.equal(b.style.display, "none");
+  assert.equal(a.style.display, "");
+  assert.equal(ids.shown.textContent, "2 jobs shown");
+  assert.equal(ids["no-match"].hidden, true);
+
+  // Filtering away the card that holds focus moves focus to the search box
+  // (WCAG 2.4.3) and shows the on-screen no-match message.
+  doc.activeElement = c.inner;
+  client.run("query = 'zzz'; applyFilter()");
+  assert.equal(doc.activeElement, ids.q);
+  assert.equal(ids.shown.textContent, "0 jobs shown");
+  assert.equal(ids["no-match"].hidden, false);
+  assert.equal(JSON.parse(store.get("jobFilters2")).query, "zzz", "filters saved");
+
+  // A source chip narrows to that board.
+  client.run("query = ''; setSource('djinni')");
+  assert.equal(ids.shown.textContent, "1 jobs shown");
+  assert.equal(c.style.display, "");
+  assert.equal(a.style.display, "none");
+});
 
 // After an online session the cache stays as a read mirror of the server, so
 // an offline reload shows the real statuses and notes.
@@ -86,6 +170,7 @@ test("online session mirrors server state to localStorage; offline reload keeps 
   await off.run("setStatus(card, 'viewed')");
   assert.equal(off.run(`entryOf(${JSON.stringify(U)}).note`), "no relocation", "a status change keeps the note");
   assert.deepEqual(JSON.parse(store.get("jobStatusDirty")), [U]);
+  assert.deepEqual(JSON.parse(store.get("jobStatusDirtyFields")), { [U]: ["status"] }, "only the edited field is replayed");
 });
 
 // The offline branch of initState must restore the dirty list saved by an
@@ -150,7 +235,9 @@ test("flash then markOffline still shows the offline badge", async () => {
 test("autoStatus never overrides closed; restoreFilters drops unknown statuses", async () => {
   const U2 = "https://example.com/jobs/2/", U3 = "https://example.com/jobs/3/";
   const store = new Map([["jobFilters2", JSON.stringify({ status: ["applied", "closed", "new"], src: [], query: "" })]]);
-  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  // The header's status buttons are what restoreFilters checks against.
+  const { doc } = fakeDom([]);
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...statusSel])"), JSON.stringify(["new"]));
   for (const [u, st] of [[U2, "closed"], [U3, "viewed"]]) await c.run(`patchEntry(${JSON.stringify(u)}, { status: ${JSON.stringify(st)} })`);
@@ -170,10 +257,65 @@ test("restoreFilters keeps only sources that still have a header chip", async ()
   const store = new Map([["jobFilters2", JSON.stringify({ status: ["new"], src: ["linkedin", "dou"], query: "" })]]);
   const c = await bootClient({
     fetch: () => Promise.reject(new Error("offline")), store,
-    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => (sel === ".src-seg button" ? chips : []) },
+    // One New DOU card: a chip with nothing in the selected tabs is dropped too (next test).
+    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({ ".src-seg button": chips, ".card": [domCard({ url: "https://a/1", source: "dou" })] })[sel] || [] },
   });
   await new Promise((r) => setTimeout(r, 0));   // let the boot IIFE finish (restoreFilters + applyFilter)
   assert.equal(c.run("JSON.stringify([...srcSel])"), JSON.stringify(["dou"]));
+});
+
+// A board's chip shows only while it has cards in the selected status tabs: in
+// the New view a board whose cards are all Viewed has no chip — unless it is
+// selected, so a pressed chip never vanishes under the user.
+test("source chips follow the status tabs: hidden with no cards there unless selected", async () => {
+  const chip = (src) => ({ dataset: { src }, hidden: false, classList: { toggle() {} }, setAttribute() {} });
+  const chips = [chip("all"), chip("dou"), chip("himalayas")];
+  const H = "https://h/1";
+  const store = new Map([
+    ["jobFilters2", JSON.stringify({ status: ["new"], src: [], query: "" })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [H]: { status: "viewed" } })],
+  ]);
+  const c = await bootClient({
+    fetch: () => Promise.reject(new Error("offline")), store,
+    document: { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({
+      ".src-seg button": chips,
+      ".filter-seg button": [chip("new"), chip("viewed")].map((b) => ({ ...b, dataset: { filter: b.dataset.src } })),
+      ".card": [domCard({ url: "https://d/1", source: "dou" }), domCard({ url: H, source: "himalayas" })],
+    })[sel] || [] },
+  });
+  await new Promise((r) => setImmediate(r));   // init() continues after `ready`
+  assert.deepEqual(chips.map((b) => b.hidden), [false, false, true], "New view: Himalayas has only a Viewed card");
+  c.run("setFilter('viewed')");   // New + Viewed
+  assert.deepEqual(chips.map((b) => b.hidden), [false, false, false]);
+  c.run("setFilter('viewed')");   // back to New only
+  assert.deepEqual(chips.map((b) => b.hidden), [false, false, true]);
+  c.run("srcSel.add('himalayas'); applyFilter()");   // a selected board keeps its chip even with nothing to show
+  assert.equal(chips[2].hidden, false);
+});
+
+// Deselecting such a chip from the keyboard hides it; focus must move to All
+// rather than drop to <body> (WCAG 2.4.3).
+test("a chip hidden while focused hands focus to All", async () => {
+  const doc = { activeElement: null };
+  const chip = (src) => ({ dataset: { src }, hidden: false, classList: { toggle() {} }, setAttribute() {}, focus() { doc.activeElement = this; } });
+  const chips = [chip("all"), chip("dou"), chip("himalayas")];
+  const H = "https://h/1";
+  const store = new Map([
+    ["jobFilters2", JSON.stringify({ status: ["new"], src: ["himalayas"], query: "" })],
+    ["jobStatus", JSON.stringify({ _meta: {}, [H]: { status: "viewed" } })],
+  ]);
+  Object.assign(doc, { querySelector: () => null, getElementById: () => null, querySelectorAll: (sel) => ({
+    ".src-seg button": chips,
+    ".filter-seg button": [{ dataset: { filter: "new" }, classList: { toggle() {} }, setAttribute() {} }, { dataset: { filter: "viewed" }, classList: { toggle() {} }, setAttribute() {} }],
+    ".card": [domCard({ url: "https://d/1", source: "dou" }), domCard({ url: H, source: "himalayas" })],
+  })[sel] || [] });
+  const c = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store, document: doc });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(chips[2].hidden, false, "selected: shown although its only card is Viewed");
+  chips[2].focus();
+  c.run("setSource('himalayas')");   // Space on the focused chip
+  assert.equal(chips[2].hidden, true);
+  assert.equal(doc.activeElement, chips[0], "focus moved to All");
 });
 
 // buildApplication neutralises heading-like lines in the letter with a
@@ -193,4 +335,76 @@ test("Copy letter strips the zero-width space the package uses to neutralise hea
   assert.deepEqual(copied, ["Dear team,\n# Not a heading\n## Action\nRegards"]);
   assert.doesNotMatch(copied[0], /​/);
   assert.equal(c.ctx.btn.nextElementSibling.textContent, "Copied");
+});
+
+test("a note still being typed is staged offline and sent with keepalive on pagehide", async (t) => {
+  // Saved only on blur, a note was lost to Cmd-W or a reload mid-typing.
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/9/";
+  const sent = [];
+  const store = new Map();
+  const c = await bootClient({ fetch: (p, o) => { if (o?.keepalive) sent.push(JSON.parse(o.body)); return fetch(`http://127.0.0.1:${port}${p}`, o); }, store });
+  c.ctx.card = fakeCard(U);
+  c.ctx.ta = { value: "  call back Friday  " };
+  c.run("noteInput(card, ta); flushNotes()");
+  assert.deepEqual(sent, [{ url: U, patch: { note: "call back Friday" } }]);
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), { [U]: "call back Friday" }, "staged, note only, for the next load in case the request never lands");
+  assert.ok(!JSON.parse(store.get("jobStatusDirty")).includes(U), "not dirty: a dirty url replays the whole entry");
+  assert.equal(JSON.parse(store.get("jobStatus"))[U].note, "call back Friday");
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(JSON.parse(readFileSync(statePath, "utf8"))[U].note, "call back Friday");
+  // Nothing pending afterwards: the debounce timer was cancelled with it.
+  assert.equal(c.run("pendingNotes.size"), 0);
+});
+
+test("a note sent at unload is re-sent note-only on the next load and cannot roll back a later status", async (t) => {
+  // The note landed, then closed-check set the job closed overnight. The old
+  // dirty-list replay pushed the mirrored { note, status: "viewed" } back.
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/11/";
+  const post = (body) => fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  await post({ url: U, patch: { status: "closed" } });
+  const store = new Map([
+    ["jobStatus", JSON.stringify({ _meta: {}, [U]: { status: "viewed", note: "call back" } })],
+    ["jobNoteOutbox", JSON.stringify({ [U]: "call back" })],
+  ]);
+  const c = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  assert.equal(c.run("online"), true);
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk[U].status, "closed", "the later status survives");
+  assert.equal(onDisk[U].note, "call back");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "outbox drained");
+});
+
+test("a note edited offline is replayed note-only and cannot roll back a status set meanwhile", async (t) => {
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/13/";
+  const store = new Map([["jobStatus", JSON.stringify({ _meta: {}, [U]: { status: "viewed" } })]]);
+  const off = await bootClient({ fetch: () => Promise.reject(new Error("offline")), store });
+  await off.run(`patchEntry(${JSON.stringify(U)}, { note: "call back" })`);
+  // closed-check marks it closed while the tab is offline.
+  await fetch(`http://127.0.0.1:${port}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: U, patch: { status: "closed" } }) });
+  const on = await bootClient({ fetch: (p, o) => fetch(`http://127.0.0.1:${port}${p}`, o), store });
+  assert.equal(on.run("online"), true);
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk[U].status, "closed", "the later status survives");
+  assert.equal(onDisk[U].note, "call back");
+});
+
+test("a note saved after an unload flush replaces the queued one in the outbox", async (t) => {
+  // bfcache: pagehide queued "old", the page came back and the note was edited
+  // again. Left queued, "old" was re-sent on the next load over the newer note.
+  const { port, statePath } = await startStateServer(t);
+  const U = "https://example.com/jobs/12/";
+  const store = new Map();
+  let keepalive;
+  const c = await bootClient({ fetch: (p, o) => { const r = fetch(`http://127.0.0.1:${port}${p}`, o); if (o?.keepalive) keepalive = r; return r; }, store });
+  c.ctx.card = fakeCard(U);
+  c.ctx.ta = { value: "old" };
+  c.run("noteInput(card, ta); flushNotes()");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), { [U]: "old" });
+  await keepalive;   // landed before the page came back, as with a real bfcache restore
+  await c.run("saveNote(card, 'newer')");
+  assert.deepEqual(JSON.parse(store.get("jobNoteOutbox")), {}, "the newer save dropped the queued note");
+  assert.equal(JSON.parse(readFileSync(statePath, "utf8"))[U].note, "newer");
 });

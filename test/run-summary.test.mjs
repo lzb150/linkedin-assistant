@@ -40,12 +40,23 @@ test("formatTable shows a row per source and the header", () => {
   recordFound(s, "jooble", 5);
   const out = formatTable(s);
   assert.match(out, /Run summary/);
-  assert.match(out, /found.*excl.*seen.*low.*NEW/);
+  assert.match(out, /found.*excl.*seen.*low.*bord.*NEW/);
   // The counts, not just the labels: asserting only that "dou" and "jooble"
   // appear passed a formatter printing every number as 0, or swapping columns.
   const row = (name) => out.split("\n").find((l) => l.trim().startsWith(name))?.trim().split(/\s+/).slice(1).map(Number);
-  assert.deepEqual(row("dou"), [12, 0, 0, 0, 1], "dou: found 12, one written");
-  assert.deepEqual(row("jooble"), [5, 0, 0, 0, 0], "jooble: found 5, nothing written");
+  assert.deepEqual(row("dou"), [12, 0, 0, 0, 0, 1], "dou: found 12, one written");
+  assert.deepEqual(row("jooble"), [5, 0, 0, 0, 0, 0], "jooble: found 5, nothing written");
+});
+
+test("formatRunBanner counts borderline packages but never names them", () => {
+  const w = [
+    { score: 40, llmScore: 85, label: "SDET @ Acme" },
+    { score: 38, llmScore: 62, label: "QA @ Beta", tier: "borderline" },
+    { score: 30, llmScore: null, label: "QA @ Gamma", tier: "borderline" },
+  ];
+  assert.equal(formatRunBanner(w), "1 new: SDET @ Acme (+2 borderline)");
+  assert.equal(formatRunBanner(w.slice(1)), "2 borderline", "borderline only: a count, no labels");
+  assert.equal(formatRunBanner(w.slice(1), ["⚠️ x"]), "⚠️ x · 2 borderline");
 });
 
 test("formatTable shows the merged line only when merged > 0", () => {

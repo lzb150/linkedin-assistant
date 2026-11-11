@@ -4,7 +4,7 @@ import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { splitCards, parseCard, fetchDjinni } from "../../lib/sources/djinni.mjs";
+import { splitCards, parseCard, fetchDjinni, publishedOf } from "../../lib/sources/djinni.mjs";
 import { extractDivByClass } from "../../lib/sources/html.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +78,8 @@ test("fetchDjinni reads several pages per search, stops at an empty page, and fe
   assert.match(lines.join("\n"), /Djinni search ok \(3 over 2 pages\)/);
   const detailUrls = urls.filter((u) => !u.includes("/jobs/?"));
   assert.equal(detailUrls.length, 2, "only the two unknown jobs get a detail fetch");
+  // The posting date comes from the detail page ("Published 9 March"), so only the enriched jobs carry one.
+  assert.deepEqual(jobs.map((j) => (j.posted || "").slice(4)), ["", "-03-08T22:00:00.000Z", "-03-08T22:00:00.000Z"]);
   assert.ok(!detailUrls.includes(known));
   assert.match(lines.join("\n"), /fetching 2 full description\(s\) \(1 already known — skipped\)/);
   const k = jobs.find((j) => j.url === known);
@@ -119,4 +121,105 @@ test("the title scan is bounded by the TAG, not by a character budget or the dis
 
   // 4) An unterminated tag ends the scan instead of looping.
   assert.equal(parseCard(card("<h2 class=")), null);
+});
+
+test("parseCard strips control characters and bidi overrides from title, company and location", () => {
+  const card = `<div id="job-item-1"><a href="/jobs/1-x/">x</a>`
+    + `<h2 class="job-item__position">QA‮Eng\u0007x</h2>`
+    + `<span class="small text-gray-800">Acme Corp</span>`
+    + `<div class="fw-medium d-flex flex-wrap">Remote\u0000 · Ukraine</div></div>`;
+  const job = parseCard(card);
+  assert.equal(job.title, "QA Eng x");
+  assert.equal(job.company, "Acme Corp");
+  assert.equal(job.location, "Remote · Ukraine");
+});
+
+test("fetchDjinni: a page whose cards split but none parse is a cut (markup drift), not the end of the results", async (t) => {
+  // Every card with its title tag renamed: parseCard returns null for all of them.
+  const drifted = `<html>${splitCards(listing).map((c) => c.replace(/job-item__position/g, "job-item__headline")).join("")}</html>`;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => drifted });
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1"] }, (l) => lines.push(l)), /all 1 Djinni search\(es\) failed/, "cut on page 1 of every search is the outage");
+  assert.match(lines.join("\n"), /Djinni search partial \(0 over 0 pages\).*no parsable cards/);
+});
+
+test("fetchDjinni throws when every search failed to load its first page (an outage, not a quiet run)", async (t) => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 503, text: async () => "" });
+  t.after(() => { globalThis.fetch = realFetch; });
+  await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1", "https://djinni.co/jobs/?a=2"] }, () => {}), /all 2 Djinni search\(es\) failed/);
+});
+
+test("fetchDjinni stops when a later page redirects to the unfiltered /jobs/ listing", async (t) => {
+  // Past a search's last page Djinni 302s to /jobs/ — every vacancy on the
+  // board — which was read as this search's page 2: recruiters, marketers…
+  const cards = splitCards(listing);
+  const page = (...blocks) => `<html>${blocks.join("")}</html>`;
+  const urls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    if (url.endsWith("page=2")) return { ok: false, status: 302, headers: { get: (h) => (h === "location" ? "/jobs/" : null) }, body: null };
+    if (url === "https://djinni.co/jobs/") return { ok: true, status: 200, text: async () => page(cards[2]) };
+    return { ok: true, status: 200, text: async () => page(cards[0], cards[1]) };
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  const jobs = await fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?all_keywords=SDET"], pages: 3, fullDescription: false }, (l) => lines.push(l));
+  assert.equal(jobs.length, 2, "page 1 only");
+  assert.ok(!urls.includes("https://djinni.co/jobs/"), "the all-jobs listing is never fetched");
+  assert.ok(!urls.some((u) => u.endsWith("page=3")), "no page after the end");
+  assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
+});
+
+test("parseCard sets no `posted`: the listing tooltip is the last update, which a bump re-stamps", () => {
+  assert.equal("posted" in parseCard(splitCards(listing)[0]), false);
+});
+
+test("publishedOf reads the posting date from the detail page, in Kyiv time, both languages", () => {
+  const uk = '<div id="job-publication-info" class="mb-1"><div><span class="font-weight-500">Опубліковано 1 жовтня</span><span class="middot"> · </span>Оновлено 30 жовтня</div>';
+  assert.equal(publishedOf(uk, Date.parse("2026-10-30T15:00:00Z")), "2026-09-30T21:00:00.000Z");   // 1 Oct 00:00 Kyiv, UTC+3
+  assert.equal(publishedOf(detail, Date.parse("2026-06-12T12:00:00Z")), "2026-03-08T22:00:00.000Z");   // "Published 9 March", UTC+2
+});
+
+test("publishedOf takes the latest year that is not in the future, or the one the page states", () => {
+  const page = (d) => `<div id="job-publication-info"><span class="font-weight-500">${d}</span>`;
+  assert.equal(publishedOf(page("Опубліковано 20 грудня"), Date.parse("2026-01-05T12:00:00Z")), "2025-12-19T22:00:00.000Z");
+  assert.equal(publishedOf(page("Published 9 March 2025"), Date.parse("2026-06-12T12:00:00Z")), "2025-03-08T22:00:00.000Z");
+});
+
+test("publishedOf is undefined without the publication block, an unknown month or an impossible day", () => {
+  const now = Date.parse("2026-10-30T15:00:00Z");
+  assert.equal(publishedOf("<p>Published 9 March</p>", now), undefined, "only the publication block counts");
+  assert.equal(publishedOf('<div id="job-publication-info"><span>Опубліковано 1 брюмера</span>', now), undefined);
+  assert.equal(publishedOf('<div id="job-publication-info"><span>Published 31 February</span>', now), undefined);
+});
+
+test("fetchDjinni follows a redirect on a search's first page: only a later page's redirect is the end", async (t) => {
+  // A first page that redirects (a renamed keyword, a canonical url) is still
+  // this search; reading it as the end would drop every job of it in silence.
+  const cards = splitCards(listing);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (url === "https://djinni.co/jobs/?keywords=SDET") return { ok: false, status: 301, headers: { get: (h) => (h === "location" ? "/jobs/?primary_keyword=SDET" : null) }, body: null };
+    if (url === "https://djinni.co/jobs/?primary_keyword=SDET") return { ok: true, status: 200, text: async () => `<html>${cards[0]}${cards[1]}</html>` };
+    return { ok: true, status: 200, text: async () => "<html></html>" };
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  const jobs = await fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?keywords=SDET"], pages: 1, fullDescription: false }, (l) => lines.push(l));
+  assert.equal(jobs.length, 2);
+  assert.match(lines.join("\n"), /Djinni search ok \(2 over 1 page\)/);
+});
+
+test("fetchDjinni reads a 200 without the search page's filter column as a cut, a real empty result as none", async (t) => {
+  const realFetch = globalThis.fetch;
+  let body = "<html><title>Just a moment...</title></html>";
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => body });
+  t.after(() => { globalThis.fetch = realFetch; });
+  await assert.rejects(fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1"] }, () => {}), /all 1 Djinni search\(es\) failed/);
+  body = '<html><div class="jobs-filter__set"></div></html>';
+  assert.deepEqual(await fetchDjinni({ enabled: true, searches: ["https://djinni.co/jobs/?a=1"] }, () => {}), []);
 });

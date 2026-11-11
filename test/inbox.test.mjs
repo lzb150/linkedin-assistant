@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadIdFrom, threadOutcome, threadOpened, unreadVerdict } from "../lib/inbox.mjs";
+import { threadIdFrom, messageKey, threadState, threadText, threadOutcome, threadOpened, unreadVerdict, listSettled } from "../lib/inbox.mjs";
 
 test("threadIdFrom: the /thread/<id> segment, query and hash never leak; url-less falls back to name + OLDEST bubble hash", () => {
   assert.equal(threadIdFrom("https://www.linkedin.com/messaging/thread/2-abc==/?x=1#y", "Anna", "hi"), "2-abc==");
@@ -24,11 +24,13 @@ test("threadOutcome: already seen → re-stamp; bubbles without job text → not
   assert.deepEqual(threadOutcome({ bubbleCount: 2, text: "We are hiring an SDET", extractFailed: false, alreadySeen: false, isJob: true }), { action: "process", markSeen: false });
 });
 
-test("threadOpened: with a card href only that thread's id counts; without one any url change does, and card 0 may keep the auto-opened url", () => {
-  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-abc/", before: "https://l/messaging/", index: 3 }), true);
-  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/", index: 0 }), false, "wrong thread — even for card 0");
-  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 0 }), true, "card 0: LinkedIn auto-opens it, so an unchanged url is expected");
-  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", index: 1 }), false, "card 1 with the previous thread still open");
+test("threadOpened: with a card href only that thread's id counts; without one a url change does, or a card already marked active", () => {
+  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-abc/", before: "https://l/messaging/" }), true);
+  assert.equal(threadOpened({ wantId: "2-abc", url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/" }), false, "wrong thread");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-new/", before: "https://l/messaging/" }), true, "the click navigated");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/" }), false, "the previous (or a lower auto-opened) thread is still open — even for the first card");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/?filter=unread", before: "https://l/messaging/?filter=unread" }), false, "a click that did nothing on the list page");
+  assert.equal(threadOpened({ wantId: undefined, url: "https://l/messaging/thread/2-xyz/", before: "https://l/messaging/thread/2-xyz/", wasActive: true }), true, "a card already marked active is the open thread");
 });
 
 test("unreadVerdict: cards count; an auto-opened thread the list dropped (decided by id, not count) adds one and is scanned first; empty state is an honest 0; no list or SCAN_ALL never counts", () => {
@@ -43,6 +45,11 @@ test("unreadVerdict: cards count; an auto-opened thread the list dropped (decide
   assert.deepEqual(unreadVerdict({ ...base, cards: 5, autoOpened: true, openListed: false, scanAll: true }), { unreadCount: 0, counted: false, drift: false, scanOpenFirst: false });
 });
 
+test("unreadVerdict: a single unread card is counted, so the badge is written for one message too", () => {
+  assert.deepEqual(unreadVerdict({ cards: 1, autoOpened: false, emptyState: false, listFound: true, scanAll: false }),
+    { unreadCount: 1, counted: true, drift: false, scanOpenFirst: false });
+});
+
 test("unreadVerdict: an omitted openListed is not silently treated as listed", () => {
   // The default used to be `true`, so a caller that forgot the field got
   // openDropped: false — the answer that skips the one thread opening it made
@@ -51,4 +58,74 @@ test("unreadVerdict: an omitted openListed is not silently treated as listed", (
   assert.equal(unreadVerdict({ ...base, openListed: true }).scanOpenFirst, false);
   assert.equal(unreadVerdict({ ...base, openListed: false }).scanOpenFirst, true);
   assert.equal(unreadVerdict(base).scanOpenFirst, true, "omitted behaves like not-listed, not like listed");
+});
+
+test("messageKey: a new reply in a known thread is a new key; the same newest bubble is the same key", () => {
+  const k = messageKey("2-abc==", "Hi, any news?");
+  assert.match(k, /^2-abc==#[0-9a-f]{12}$/);
+  assert.equal(k, messageKey("2-abc==", "Hi, any news?"));
+  assert.notEqual(k, messageKey("2-abc==", "Following up on the role"), "follow-up in an already-drafted thread");
+  assert.notEqual(k, "2-abc==", "legacy bare-id entries must not match");
+  assert.notEqual(k, messageKey("2-xyz==", "Hi, any news?"));
+  assert.equal(messageKey("2-abc==", undefined), messageKey("2-abc==", ""));
+});
+
+test("threadState: only THEIR messages identify the state; an empty follow-up still moves it; no incoming falls back to all", () => {
+  const theirs = { incoming: true, text: "We have a role" };
+  const mine = { incoming: false, text: "Thanks!" };
+  assert.deepEqual(threadState([theirs, mine]), { state: "1\nWe have a role", snippet: "We have a role" }, "your reply is not their newest message");
+  assert.deepEqual(threadState([theirs, mine]).state, threadState([theirs]).state, "replying does not change the state");
+  const image = threadState([theirs, { incoming: true, text: "" }]);
+  assert.notEqual(image.state, threadState([theirs]).state, "image-only follow-up");
+  assert.equal(image.snippet, "We have a role", "the snippet is the newest message with text");
+  assert.deepEqual(threadState([mine]), { state: "1\nThanks!", snippet: "Thanks!" }, "no incoming items (selector drift) → every item");
+  assert.deepEqual(threadState([]), { state: "0\n", snippet: "" });
+});
+
+test("listSettled: a rendered list container with text but no row is the empty state in any UI language; a skeleton keeps waiting; rows without the card class are drift", () => {
+  const S = { conversationList: ".list", conversationCard: "li.card", emptyUnread: "No unread messages" };
+  const el = (text, { li = false } = {}) => ({ innerText: text, querySelector: (sel) => (sel.split(", ").includes("li") && li ? {} : null) });
+  const dom = (lists, { card = false, thread = false } = {}) => ({
+    document: { querySelector: (sel) => (sel === S.conversationCard && card ? {} : null), querySelectorAll: () => lists },
+    location: { pathname: thread ? "/messaging/thread/2-abc/" : "/messaging/" },
+  });
+  assert.equal(listSettled(S, dom([el("")], { thread: true })), "thread", "an auto-opened thread before the list rendered");
+  assert.equal(listSettled({ ...S, ignoreThread: true }, dom([el("")], { thread: true })), null, "the follow-up wait looks past the url");
+  assert.equal(listSettled(S, dom([el("Jane · Hi")], { card: true, thread: true })), "thread", "the url wins while it counts");
+  assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })], { card: true })), "cards");
+  assert.equal(listSettled(S, dom([el("No unread messages")])), "empty", "the English text");
+  const uk = dom([el("Немає непрочитаних повідомлень")]);
+  assert.equal(listSettled(S, { ...uk, now: 0 }), null, "any other language: text, no row — not yet held");
+  assert.equal(listSettled(S, { ...uk, now: 2000 }), "empty", "held unchanged for 2 s: the empty state");
+  assert.equal(listSettled(S, dom([el("")])), null, "a blank container is still rendering");
+  assert.equal(listSettled(S, dom([el(" \n ")])), null, "whitespace-only (a skeleton) too");
+  assert.equal(listSettled(S, dom([el("Jane · Hi", { li: true })])), null, "rows without the card class: not the empty state (drift, badge kept)");
+  assert.equal(listSettled(S, dom([])), null, "no container at all");
+});
+
+test("listSettled: a loader is never the empty state, and text that changes restarts the 2 s hold — a placeholder read as empty skipped the unread scan", () => {
+  const S = { conversationList: ".list", conversationCard: "li.card", emptyUnread: "No unread messages" };
+  const el = (text, busy = false) => ({ innerText: text, querySelector: (sel) => (sel.includes("aria-busy") && busy ? {} : null) });
+  const at = (list, now) => listSettled(S, { document: { querySelector: () => null, querySelectorAll: () => [list] }, location: { pathname: "/messaging/" }, now });
+  const loading = el("Loading", true);
+  assert.equal(at(loading, 0), null);
+  assert.equal(at(loading, 5000), null, "a loader inside: never empty, however long it shows");
+  const flicker = el("Loading");
+  assert.equal(at(flicker, 0), null);
+  flicker.innerText = "Немає непрочитаних повідомлень";
+  assert.equal(at(flicker, 1500), null, "changed text restarts the hold");
+  assert.equal(at(flicker, 3000), null);
+  assert.equal(at(flicker, 3500), "empty", "unchanged for 2 s after the change");
+});
+
+test("threadText: only THEIR messages are scored and quoted — your own reply must not make a courtesy follow-up a job message", () => {
+  const items = [
+    { incoming: true, text: "We are hiring an SDET, Playwright + TypeScript" },
+    { incoming: false, text: "Attached my resume; rate $40/h; Playwright/TypeScript/Java" },
+    { incoming: true, text: "Thanks, I will get back to you" },
+  ];
+  assert.equal(threadText(items), "We are hiring an SDET, Playwright + TypeScript\nThanks, I will get back to you");
+  assert.equal(threadText(items.map((i) => ({ ...i, incoming: false }))), items.map((i) => i.text).join("\n"), "no incoming item at all (selector drift): every item");
+  assert.equal(threadText(Array.from({ length: 20 }, (_, n) => ({ incoming: true, text: `m${n}` }))).split("\n").length, 12, "their last 12");
+  assert.equal(threadText([{ incoming: true, text: "" }, { incoming: true, text: "x" }]), "x", "image-only messages add no line");
 });

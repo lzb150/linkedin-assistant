@@ -4,7 +4,7 @@
 # commit this script + jobs-app.swift + jobs.icns instead.
 #
 # After building, start it once:  open -a ./Jobs.app
-# Autostart at login via com.example.jobs-badge.plist.example (see README).
+# Autostart at login via com.example.jobs-badge.plist.example (see docs/inbox.md).
 set -euo pipefail
 
 # Bundle identifier. macOS keys notification permission, the Dock tile and
@@ -21,11 +21,18 @@ APP="$DIR/Jobs.app"
 
 echo "Building $APP …"
 
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# Build into a scratch bundle and swap it in only once it is signed. Deleting
+# Jobs.app first meant a swiftc/codesign failure (set -e) left a bundle with an
+# Info.plist and no executable — and once the old daemon was gone, the
+# jobs-badge KeepAlive agent re-ran a failing `open` every 10 s. Same volume as
+# the app, so the final mv is a rename.
+BUILD="$(mktemp -d "$DIR/.jobs-build.XXXXXX")"
+trap 'rm -rf "$BUILD"' EXIT
+NEW="$BUILD/Jobs.app"
+mkdir -p "$NEW/Contents/MacOS" "$NEW/Contents/Resources"
 
 # Unquoted heredoc so ${BUNDLE_ID} expands; the plist has no other $ or backtick.
-cat > "$APP/Contents/Info.plist" <<PLIST
+cat > "$NEW/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -43,9 +50,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Icon: jobs.icns.
+# Icon: jobs.icns, rendered from jobs-icon.svg (steps in its header comment).
+# After replacing it the Dock can keep drawing the old picture from its own
+# cache even though Finder shows the new one; clear that cache once:
+#   rm "$(getconf DARWIN_USER_CACHE_DIR)com.apple.dock.iconcache" && killall Dock
 if [[ -f "$DIR/jobs.icns" ]]; then
-  cp "$DIR/jobs.icns" "$APP/Contents/Resources/AppIcon.icns"
+  cp "$DIR/jobs.icns" "$NEW/Contents/Resources/AppIcon.icns"
   echo "  icon: copied jobs.icns"
 else
   echo "  icon: WARNING — jobs.icns missing, app will use a generic icon"
@@ -57,10 +67,14 @@ fi
 # version, so a bundle claiming 13.0 could refuse to launch on 13.0.
 xcrun swiftc -O -framework Cocoa \
   -target "$(uname -m)-apple-macos13.0" \
-  -o "$APP/Contents/MacOS/jobs" "$DIR/jobs-app.swift"
+  -o "$NEW/Contents/MacOS/jobs" "$DIR/jobs-app.swift"
 
 # Ad-hoc sign for a stable identity.
-codesign --force --sign - "$APP"
+codesign --force --sign - "$NEW"
+
+# Built and signed: only now replace the installed app.
+rm -rf "$APP"
+mv "$NEW" "$APP"
 
 # Register with LaunchServices so `open -a` recognizes it.
 LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"

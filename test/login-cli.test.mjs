@@ -4,9 +4,9 @@
 // instead of the "Nothing saved" line the script promises.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeProject, spawnScript } from "./helpers/e2e.mjs";
+import { makeProject, spawnScript, QUIET_BINS } from "./helpers/e2e.mjs";
 
-const quiet = { osascript: "#!/bin/sh\nexit 0\n", "notify-send": "#!/bin/sh\nexit 0\n" };
+const quiet = QUIET_BINS;
 
 // A context whose page rejects the way Playwright does once the window is gone.
 const closedMidLogin = `

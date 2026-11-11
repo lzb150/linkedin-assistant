@@ -79,7 +79,7 @@ function fakeProfilePage({ button, modalText }) {
     innerText: async () => modalText,
     locator: () => ({ first: () => ({ click: async () => calls.push("confirm") }) }),
   };
-  return { calls, goto: async () => {}, reload: async () => {}, waitForTimeout: async () => {}, locator: (sel) => ({ first: () => (sel.startsWith("button") ? btn : modal) }) };
+  return { calls, modal, goto: async () => {}, reload: async () => {}, waitForTimeout: async () => {}, locator: (sel) => ({ first: () => (sel.startsWith("button") ? btn : modal) }) };
 }
 
 test("bumpProfile: missing button → unverified, disabled → cooldown, unrelated modal → unverified without pressing it, bump modal → bumped", async () => {
@@ -92,4 +92,32 @@ test("bumpProfile: missing button → unverified, disabled → cooldown, unrelat
   assert.equal(await bumpProfile(bump), "bumped");
   assert.deepEqual(bump.calls, ["open", "confirm"]);
   assert.equal(await bumpProfile(fakeProfilePage({ button: "enabled" })), "unverified", "no modal and the button stays enabled — nothing registered");
+});
+
+test("bumpProfile: past the run deadline nothing is pressed", async () => {
+  const before = fakeProfilePage({ button: "enabled", modalText: "Bump my profile?" });
+  assert.equal(await bumpProfile(before, { aborted: true }), "aborted");
+  assert.deepEqual(before.calls, []);
+  // Aborted while the modal opens: the confirm button stays unpressed.
+  const signal = { aborted: false };
+  const during = fakeProfilePage({ button: "enabled", modalText: "Bump my profile?" });
+  const first = during.locator("button").first();
+  const open = first.click;
+  first.click = async () => { await open(); signal.aborted = true; };
+  during.locator = (sel) => ({ first: () => (sel.startsWith("button") ? first : during.modal) });
+  assert.equal(await bumpProfile(during, signal), "aborted");
+  assert.deepEqual(during.calls, ["open"]);
+});
+
+test("bumpProfile: a page closed at the run deadline before the confirm is 'aborted', not a dated bump", async () => {
+  // runScan closes the browser at the deadline: the modal wait then throws,
+  // which read as "no modal, the click alone did it" → "clicked" → lastBumpAt
+  // stamped for a bump nobody confirmed.
+  const signal = { aborted: false };
+  const page = fakeProfilePage({ button: "enabled", modalText: "Bump my profile?" });
+  const closed = async () => { signal.aborted = true; throw new Error("Target page, context or browser has been closed"); };
+  Object.assign(page.modal, { waitFor: closed });
+  Object.assign(page, { waitForTimeout: closed, reload: closed });
+  assert.equal(await bumpProfile(page, signal), "aborted");
+  assert.deepEqual(page.calls, ["open"]);
 });

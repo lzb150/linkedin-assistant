@@ -22,6 +22,19 @@ test("cardMatches: empty selections mean All", () => {
   assert.equal(core.cardMatches(baseCard, baseFilters), true);
 });
 
+test("cardMatches: an unseen borderline card answers to the borderline tab alone; a viewed one moves to Viewed", () => {
+  const b = { ...baseCard, status: "new", tier: "borderline" };
+  assert.equal(core.cardMatches(b, { ...baseFilters, statusSel: ["new", "viewed"] }), false, "hidden under the default tabs");
+  assert.equal(core.cardMatches(b, { ...baseFilters, statusSel: ["borderline"] }), true);
+  const seen = { ...b, status: "viewed" };
+  assert.equal(core.cardMatches(seen, { ...baseFilters, statusSel: ["borderline"] }), false, "Viewed takes it off the borderline tab");
+  assert.equal(core.cardMatches(seen, { ...baseFilters, statusSel: ["viewed"] }), true);
+  assert.equal(core.cardMatches({ ...b, status: "closed" }, { ...baseFilters, statusSel: ["borderline"] }), false, "closed leaves it too");
+  assert.equal(core.cardMatches({ ...baseCard, status: "new" }, { ...baseFilters, statusSel: ["borderline"] }), false, "a match never shows under the borderline tab");
+  assert.equal(core.cardMatches(b, { ...baseFilters, statusSel: [] }), true, "All shows everything");
+  assert.equal(core.cardMatches({ ...b, detailsOpen: true }, { ...baseFilters, statusSel: ["new"] }), true, "an open card never hides");
+});
+
 test("cardMatches: status multi-select, details-open override", () => {
   const filters = { ...baseFilters, statusSel: ["closed"] };
   assert.equal(core.cardMatches(baseCard, filters), false);
@@ -56,10 +69,27 @@ test("offlinePatches: dirty urls push full-override patches, deletions clear", (
     { url: "https://d/", patch: { status: "new", note: "" } },
   ]);
   assert.deepEqual(core.offlinePatches(local, []), []);
+  // Field-level: a note edited offline must not push the mirrored status back
+  // over one closed-check set meanwhile; a deletion clears only what was edited.
+  assert.deepEqual(core.offlinePatches(local, ["https://a/", "https://d/"], { "https://a/": ["note"], "https://d/": ["status"] }), [
+    { url: "https://a/", patch: { note: "hi" } },
+    { url: "https://d/", patch: { status: "new" } },
+  ]);
   // The clearing patch really empties an entry via the shared merge.
   assert.equal(core.mergeEntryLocal(server["https://d/"], core.entryToPatch(undefined)), null);
   // A status this build does not know (newer closed-check/dashboard) survives a
   // note edit through this client — locally and in the patch pushed on reconnect.
   assert.deepEqual(core.mergeEntryLocal({ status: "from-the-future" }, { note: "x" }), { status: "from-the-future", note: "x" });
   assert.deepEqual(core.entryToPatch({ status: "from-the-future", note: "x" }), { note: "x" }, "unknown status is left out, not pushed as new");
+});
+
+test("visitedUpTo: the newest package on the page, never now, never backwards", () => {
+  const page = ["2026-10-01T10:00:00.000Z", "2026-10-03T08:00:00.000Z", "garbage"];
+  assert.equal(core.visitedUpTo(page, "2026-10-02T00:00:00.000Z"), "2026-10-03T08:00:00.000Z");
+  assert.equal(core.visitedUpTo(page, "2026-10-05T00:00:00.000Z"), "2026-10-05T00:00:00.000Z", "an older page does not move it back");
+  assert.equal(core.visitedUpTo([], ""), new Date(0).toISOString(), "an empty first visit: every later package is new");
+  // A future `generated` (or a stored value from one) must not pin lastVisit.
+  const now = Date.parse("2026-10-04T00:00:00Z");
+  assert.equal(core.visitedUpTo([...page, "2027-01-01T00:00:00Z"], "2026-10-02T00:00:00.000Z", now), "2026-10-03T08:00:00.000Z");
+  assert.equal(core.visitedUpTo(page, "2027-01-01T00:00:00.000Z", now), "2026-10-03T08:00:00.000Z", "a stored future value heals");
 });

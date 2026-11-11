@@ -3,11 +3,11 @@
 import { readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { identityKey } from "./lib/dedup.mjs";
 import { writeTextAtomic } from "./lib/json-file.mjs";
-import { parseFrontmatter } from "./lib/frontmatter.mjs";
 import { readPackages } from "./lib/packages.mjs";
-import { detectLang } from "./lib/lang.mjs";
+import { packageItem, collapseItems, renderCard, sourceChips } from "./lib/dashboard-render.mjs";
+import { readJobsConfig, normalizeJobsConfig } from "./lib/jobs-config.mjs";
+import { candidateCountryList } from "./lib/filters.mjs";
 import { execFile } from "node:child_process";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -24,33 +24,11 @@ const clientJs = ["dashboard-client-core.cjs", "dashboard-client-dom.js"]
   .map((f) => readFileSync(join(__dir, "lib", f), "utf8"))
   .join("\n");
 if (/<\/script/i.test(clientJs)) throw new Error("dashboard client JS must not contain </script>");
-
-function parse(md) {
-  const fm = parseFrontmatter(md);
-  if (!fm) return null;
-  // Cover note. Prefer the explicit delimiters buildApplication writes: the
-  // letter is model output, and one that contained its own "## Action" used to
-  // truncate the card while the file kept the full text. The heading scan stays
-  // as the fallback so packages written before the delimiters still render.
-  // Anchored to a line start: a job TITLE of "## Cover note" sits in the H1 ("# ## Cover note — …") and must not match.
-  const delimited = md.match(/^<!--cover:start-->\n([\s\S]*?)\n<!--cover:end-->/m);
-  const cover = delimited ? delimited[1] : ((md.match(/^## Cover note[^\n]*\n([\s\S]*?)\n## Action/m) || [])[1] || "");
-  return { fm, cover: cover.trim() };
-}
-
-// Also escapes the apostrophe. Every interpolation site happens to use double
-// quotes today, so leaving ' alone was safe — but that is an invariant nothing
-// checks and one single-quoted attribute would break silently.
-const esc = (s) =>
-  (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-// Frontmatter urls come from scraped job postings — only ever link http(s),
-// so a hostile posting can't smuggle a javascript: url into an href.
-// Cyrillic text (titles / locations come from Ukrainian boards) gets its lang so screen readers switch voice;
-// the shared detector tells uk from ru, a blanket lang="uk" would misvoice a Russian title.
-const langAttr = (s) => { const l = detectLang(s); return l === "en" ? "" : ` lang="${l}"`; };
-
-const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
+// The skin lives next to the client script, inlined the same way (and refused
+// on a </style tag for the same reason). A plain .css file: editors highlight
+// it, and a palette change diffs on its own instead of inside this builder.
+const css = readFileSync(join(__dir, "lib", "dashboard.css"), "utf8");
+if (/<\/style/i.test(css)) throw new Error("dashboard CSS must not contain </style>");
 
 // The shared reader skips what cannot be read (a directory named x.md, a
 // permission error) with a warning instead of aborting the build. `raw` asks it
@@ -58,248 +36,45 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
 // read once instead of twice, and a package archived between the two reads can
 // no longer disappear underneath us.
 const warn = (f, e) => console.warn(`unreadable package skipped: ${f} (${e.message})`);
-const parsed = readPackages(APPS, { warn, raw: true })
-  .map(({ _raw }) => parse(_raw))
-  .filter(Boolean)
-  .map((x) => ({
-    ...x,
-    score: Number.isFinite(parseInt(x.fm.score, 10)) ? parseInt(x.fm.score, 10) : 0,
-    llm: /^\d+$/.test(x.fm.llm_score || "") ? parseInt(x.fm.llm_score, 10) : null,
-    generated: x.fm.generated || "",
-  }));
+const items = collapseItems(readPackages(APPS, { warn, raw: true }).map(packageItem));
+// Only the countries are read, for the "<country> listed" mark on remote-board
+// cards: candidateCountry plus alsoCountries, the list the gates use. A missing
+// or broken config is jobs.mjs's to report (normalizing here stays silent); here
+// it just means the default country.
+let candidateCountry;
+try { candidateCountry = normalizeJobsConfig(readJobsConfig(join(__dir, "jobs.config.json")), { log: () => {} }).candidateCountry; } catch {}
+const countries = candidateCountryList(candidateCountry);
+const llmInUse = items.some((it) => it.llm != null);
+const cards = items.map((it, i) => renderCard(it, i, { countries, llmInUse })).join("\n");
 
-// applications/ is append-only: historical runs left many packages for the same
-// vacancy (boards used to change a job's URL between runs when seen was URL-keyed).
-// Collapse to one card per identity (company+title), keeping the most recently
-// generated package so the dashboard reflects the latest data.
-const byIdentity = new Map();
-for (const it of parsed) {
-  const key = identityKey({ company: it.fm.company, title: it.fm.title, url: it.fm.url }); // url scopes blank companies
-  const prev = byIdentity.get(key);
-  if (!prev || (it.fm.generated || "") > (prev.fm.generated || "")) byIdentity.set(key, it);
-}
-const items = [...byIdentity.values()].sort(
-  (a, b) => (b.llm ?? -1) - (a.llm ?? -1) || b.score - a.score,
-);
-
-// Score band → CSS class (colours live in the theme tokens, see <style>).
-function scoreBand(s) {
-  if (s >= 40) return "hi";    // green
-  if (s >= 30) return "mid";   // amber
-  return "lo";                  // gray
-}
-
-// Everything per-source the page needs, keyed once: badge colour and chip
-// label used to be two object literals over the same three keys, so adding a
-// board meant editing both. Unknown/future sources fall back to gray with their
-// raw name. Colours are all ≥ 4.5:1 against white text (WCAG AA for the 11px badge).
-const SOURCES = {
-  linkedin: { color: "#0a66c2", label: "LinkedIn" },
-  dou: { color: "#c93c33", label: "DOU" },
-  djinni: { color: "#3d3bd4", label: "Djinni" },
-};
-// hasOwn: source is frontmatter text, "constructor" must not resolve.
-const sourceMeta = (source) => (Object.hasOwn(SOURCES, source) ? SOURCES[source] : null);
-function badge(source) {
-  return `<span class="src" style="background:${sourceMeta(source)?.color || "#6e7781"}">${esc(source)}</span>`;
-}
-
-// Source chips only for boards that actually have packages on disk: a disabled
-// board's chip disappears by itself once its last package is archived.
-const sourceChips = [...new Set(items.map((it) => it.fm.source || "dou"))].sort()
-  .map((src) => `<button data-src="${esc(src)}" aria-pressed="false" onclick="setSource(this.dataset.src)">${esc(sourceMeta(src)?.label || src)}</button>`)
-  .join("\n      ");
-
-const cards = items
-  .map((it, idx) => {
-    const f = it.fm;
-    const skills = (f.matched_skills || "")
-      .split(",").map((s) => s.trim()).filter(Boolean)
-      .map((s) => `<span class="chip">${esc(s)}</span>`).join("");
-    // Same vacancy on other boards (collected by dedupeJobs): "source|url, ...".
-    // Split only before the next "source|" so commas inside URLs survive.
-    const alt = (f.alt_links || "")
-      .split(/,\s*(?=[a-z]+\|)/).map((s) => s.trim()).filter(Boolean)
-      // A pair with no "|" is malformed (hand-edited frontmatter): indexOf
-      // returns -1, which used to label the link with the pair minus its last
-      // character and point it at the whole string. Drop it instead.
-      .filter((pair) => pair.includes("|"))
-      .map((pair) => {
-        const sep = pair.indexOf("|");
-        const src = pair.slice(0, sep), url = pair.slice(sep + 1);
-        return `<a class="alt" href="${esc(safeUrl(url))}" target="_blank" rel="noopener">${esc(src)} ↗</a>`;
-      }).join("");
-    const altRow = alt ? `<div class="alt-row">also on: ${alt}</div>` : "";
-    // The server keys state by http(s) url and 400s anything else: a card with
-    // a bad url renders read-only (no status buttons / note / auto-viewed).
-    const live = safeUrl(f.url) !== "#";
-    const auto = live ? ` onclick="autoStatus(this.closest('.card'),'viewed')"` : "";
-    // Every per-card control used to carry the same accessible name on every
-    // card — "New", "Viewed", "Copy letter", "Note", "Status", "Private note" —
-    // so a screen-reader user tabbing through could not tell which vacancy they
-    // were acting on (WCAG 2.4.6 / 4.1.2). `which` disambiguates them, and the
-    // article takes its own name from its heading.
-    const which = esc(`${f.title || "—"} at ${f.company || "—"}`);
-    return `
-<article class="card" aria-labelledby="t${idx}"${live ? ` data-url="${esc(f.url)}"` : ""} data-generated="${esc(f.generated || "")}" data-source="${esc(f.source || "dou")}" data-search="${esc(((f.title||"")+" "+(f.company||"")+" "+(f.matched_skills||"")).toLowerCase())}">
-  <div class="head">
-    <span class="score ${scoreBand(it.score)}"><span class="sr-only">keyword score </span>${it.score}</span>
-    <div class="titles">
-      <h2 id="t${idx}"${langAttr(f.title)}>${esc(f.title || "—")}<span class="sr-only card-status"></span></h2>
-      <div class="sub">${badge(f.source || "dou")} <strong>${esc(f.company || "—")}</strong> · <span${langAttr(f.location)}>${esc(f.location || "")}</span> · <span class="lang">${esc(f.cover_language || "")}</span>${f.salary ? ` · <span class="salary">${esc(f.salary)}</span>` : ""}</div>
-      ${it.llm != null ? `<div class="llm-row"><span class="llm"><span class="sr-only">LLM fit </span><span aria-hidden="true">🤖</span> ${it.llm}</span>${f.llm_suspect ? ` <span class="suspect" title="The posting contains text addressed to the screener, so this score may have been asked for">⚠ ${esc(f.llm_suspect)}</span>` : ""} <span class="llm-why">${esc(f.llm_why || "")}</span></div>` : ""}
-    </div>
-    <div class="actions">
-      <a class="apply" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener" aria-label="Open job: ${esc(f.title || "—")} at ${esc(f.company || "—")}"${auto}>Open job ↗</a>
-      ${live ? `<div class="status-seg" role="group" aria-label="Status — ${which}">
-        <button data-status="new" aria-pressed="false" aria-label="Mark New — ${which}" onclick="setStatus(this.closest('.card'),'new')">New</button>
-        <button data-status="viewed" aria-pressed="false" aria-label="Mark Viewed — ${which}" onclick="setStatus(this.closest('.card'),'viewed')">Viewed</button>
-      </div>` : ""}
-    </div>
-  </div>
-  <div class="skills">${skills}</div>
-  ${altRow}
-  <details${live ? ` ontoggle="if(this.open) autoStatus(this.closest('.card'),'viewed')"` : ""}>
-    <summary>Cover letter<span class="sr-only"> — ${which}</span></summary>
-    <pre id="cover${idx}" lang="${esc(f.cover_language || "en")}">${esc(it.cover)}</pre>
-    <button class="copy" onclick="copyCover(${idx}, this)">Copy letter<span class="sr-only"> — ${which}</span></button><span class="sr-only" role="status"></span>
-    <span class="resume"><span aria-hidden="true">📎</span> resume: ${esc(f.resume || "")}</span>
-  </details>
-  ${live ? `<details class="note-wrap">
-    <summary><span aria-hidden="true">📝</span> Note<span class="sr-only"> — ${which}</span> <span class="note-has" hidden>●<span class="sr-only"> has note</span></span></summary>
-    <textarea class="note" rows="3" maxlength="10000" aria-label="Private note — ${which}" placeholder="Private note (saved to disk)…" onblur="saveNote(this.closest('.card'), this.value)"></textarea>
-  </details>` : ""}
-</article>`;
-  })
-  .join("\n");
-
+// no-referrer: "Open job ↗" and the alt links would tell every board the
+// visit came from 127.0.0.1:7777 (http → https is not a downgrade).
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Jobs — ${items.length}</title>
 <script>try { var t = localStorage.getItem("jobTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" referrerpolicy="no-referrer" href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Tektur:wght@500;700&display=swap">
 <style>
-  /* Palette = GitHub Primer: light values are the ones this page always used, the
-     dark block is Primer's "dark default" (canvas #0d1117 / #161b22, border
-     #30363d, fg #e6edf3 / #8b949e, *-emphasis fills for buttons). Every text /
-     background pair was checked ≥ 4.5:1; white on each emphasis fill is 4.5+.
-     Theme: system preference by default via color-scheme + light-dark(); the header
-     toggle sets data-theme on <html> (persisted in localStorage) and pins color-scheme. */
-  :root {
-    font-family: -apple-system, system-ui, sans-serif;
-    color-scheme: light dark;   /* light-dark() follows the OS; the data-theme pins below win in both directions */
-    --bg: light-dark(#f6f8fa, #0d1117); --card: light-dark(#fff, #161b22); --card-muted: light-dark(#f6f8fa, #0d1117); --border: light-dark(#d0d7de, #30363d);
-    --text: light-dark(#1f2328, #e6edf3); --muted: light-dark(#57606a, #8b949e);
-    /* Injection badge. One colour cannot serve both themes here: the usual
-       amber #9a6700 measures 3.55:1 on the dark card and 3.89:1 on the muted
-       one. These two are 6.66-7.09:1 light and 6.85-7.50:1 dark. */
-    --warn-text: light-dark(#7d4e00, #d29922);
-    --header-bg: light-dark(#24292f, #010409); --header-text: light-dark(#fff, #e6edf3); --header-muted: light-dark(#cdd9e5, #c9d1d9); --header-border: light-dark(#57606a, #30363d); --header-hover: light-dark(#32383f, #21262d);
-    --input-bg: light-dark(#32383f, #0d1117); --placeholder: light-dark(#9aa5b1, #8b949e);
-    --btn-bg: light-dark(#fff, #21262d); --btn-text: light-dark(#57606a, #c9d1d9); --btn-hover: light-dark(#f3f4f6, #30363d);
-    --accent: light-dark(#0969da, #58a6ff); --accent-fill: light-dark(#0969da, #1f6feb); --focus: light-dark(#0969da, #58a6ff);
-    --success-fill: light-dark(#1f883d, #238636); --success-fill-hover: light-dark(#1a7f37, #1a7f37); --success-text: light-dark(#1a7f37, #3fb950);
-    --attention-fill: light-dark(#9a6700, #9e6a03); --attention-text: light-dark(#9a6700, #d29922);
-    --danger-fill: light-dark(#cf222e, #da3633); --danger-text: light-dark(#cf222e, #f85149);
-    --done-fill: light-dark(#8250df, #8957e5); --neutral-fill: light-dark(#6e7781, #6e7681); --closed-border: light-dark(#8c959f, #6e7681);
-    --chip-bg: light-dark(#eaf2ff, #0d2440); --chip-text: light-dark(#0a66c2, #79c0ff);
-    --score-hi: light-dark(#1a7f37, #238636); --score-mid: light-dark(#9a6700, #9e6a03); --score-lo: light-dark(#6e7781, #6e7681);
-  }
-  :root[data-theme="light"] { color-scheme: light; }
-  :root[data-theme="dark"] { color-scheme: dark; }
-  html { scroll-padding-top: 140px; }   /* sticky header: a card focused via Shift-Tab must not scroll under it; the header is 132 px at 641–730 px */
-  @media (max-width: 640px) { html { scroll-padding-top: 230px; } }   /* the header wraps to 170 px at 400 px and 223 px at 320 px */
-  body { margin: 0; background: var(--bg); color: var(--text); }
-  header { position: sticky; top: 0; background: var(--header-bg); color: var(--header-text); padding: 14px 20px; }
-  header h1 { margin: 0; font-size: 18px; }
-  header .meta { font-size: 13px; color: var(--header-muted); margin-top: 2px; }   /* a colour, not opacity: the offline/flash badges are appended inside this line */
-  main { max-width: 920px; margin: 18px auto; padding: 0 14px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-  .head { display: flex; align-items: flex-start; gap: 12px; }
-  .score { color: #fff; font-weight: 700; font-size: 15px; min-width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-  .score.hi { background: var(--score-hi); } .score.mid { background: var(--score-mid); } .score.lo { background: var(--score-lo); }
-  /* The LLM score of a posting that talked to the screener. Not an error state:
-     the package is still shown, the badge just says not to trust the number. */
-  .suspect { color: var(--warn-text); font-weight: 600; font-size: 12px; }
-  .titles { flex: 1; }
-  .titles h2 { margin: 0; font-size: 16px; }
-  .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
-  .llm-row { margin-top: 4px; font-size: 12px; }
-  .llm { background: var(--done-fill); color: #fff; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
-  .llm-why { color: var(--muted); font-style: italic; }
-  .src { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
-  .lang { text-transform: uppercase; font-size: 11px; color: var(--muted); }
-  .salary { color: var(--success-text); font-size: .8rem; white-space: nowrap; }
-  .actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
-  .apply { white-space: nowrap; text-align: center; background: var(--success-fill); color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
-  .apply:hover { background: var(--success-fill-hover); }
-  .status-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-  .status-seg button { flex: 1; background: var(--btn-bg); color: var(--btn-text); border: 0; border-left: 1px solid var(--border); padding: 6px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-  .status-seg button:first-child { border-left: 0; }
-  .status-seg button:hover { background: var(--btn-hover); }
-  .status-seg button.active[data-status="new"] { background: var(--neutral-fill); color: #fff; }
-  .status-seg button.active[data-status="viewed"] { background: var(--attention-fill); color: #fff; }
-  /* Muted background + heading (not whole-card opacity, which drops text
-     contrast below WCAG 4.5:1). */
-  .card.viewed { background: var(--card-muted); }
-  .card.viewed .titles h2 { color: var(--muted); }
-  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
-  .filter-seg, .src-seg { display: inline-flex; border: 1px solid var(--header-border); border-radius: 7px; overflow: hidden; }
-  .filter-seg button, .src-seg button, .theme { background: transparent; color: var(--header-muted); border: 0; border-left: 1px solid var(--header-border); padding: 6px 10px; font-size: 12px; cursor: pointer; }
-  .filter-seg button:first-child, .src-seg button:first-child { border-left: 0; }
-  .filter-seg button:hover, .src-seg button:hover, .theme:hover { background: var(--header-hover); }
-  .filter-seg button.active, .src-seg button.active { background: var(--accent-fill); color: #fff; }
-  .filter-seg .cnt { font-size: 11px; font-weight: 400; }   /* no opacity: 70% white on the active blue was 3.34:1 */
-  .theme { border: 1px solid var(--header-border); border-radius: 7px; margin-left: auto; }
-  .skills { margin: 10px 0 4px; }
-  .chip { display: inline-block; background: var(--chip-bg); color: var(--chip-text); font-size: 12px; padding: 2px 8px; border-radius: 12px; margin: 2px; }
-  details { margin-top: 6px; }
-  summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; }
-  pre { white-space: pre-wrap; background: var(--card-muted); border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-size: 13px; font-family: inherit; }
-  .copy { background: var(--accent-fill); color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
-  .resume { font-size: 12px; color: var(--muted); margin-left: 10px; overflow-wrap: anywhere; }   /* one unbreakable path token overran 320 px */
-  .alt-row { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
-  .alt { color: var(--accent); margin-right: 8px; }   /* underlined: colour alone (1.2:1 vs the muted row) is not a link cue */
-  .empty { text-align: center; color: var(--muted); padding: 40px; }
-  /* Board reported the vacancy inactive (closed-check.mjs): muted like viewed,
-     with a text cue. The cue below is CSS ::after, which never reaches the
-     accessibility tree — .card-status carries the same word in real DOM text so
-     a screen-reader user is not left with colour and a border as the only
-     signal. Both are kept: the ::after keeps the visual layout unchanged. */
-  .card.closed { background: var(--card-muted); border-left: 4px solid var(--closed-border); }
-  .card.closed .titles h2 { color: var(--muted); }
-  .card.closed .titles h2::after { content: " · closed"; color: var(--muted); font-weight: 400; font-size: 13px; }
-  .status-seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }   /* blue on white: 5.9:1 */
-  /* White ring on the coloured .active fills (≥4.8:1) and on the dark header segs (~15:1);
-     inset one extra px so it sits inside the fill rather than on the border. */
-  .status-seg button.active:focus-visible, .filter-seg button:focus-visible, .src-seg button:focus-visible, .theme:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
-  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .note-wrap summary { color: var(--muted); }
-  .note { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--muted); border-radius: 7px; resize: vertical; background: var(--card); color: var(--text); }
-  .note::placeholder { color: var(--muted); }   /* UA default #757575 is 3.8:1 on the dark card */
-  .note-has { color: var(--attention-text); }
-  .offline, .flash { background: var(--attention-fill); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
-  .card.fresh { box-shadow: inset 3px 0 0 var(--accent-fill); }
-  .ribbon { background: var(--accent-fill); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
-  #q { flex: 1; min-width: 160px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--header-muted); background: var(--input-bg); color: var(--header-text); font-size: 13px; }
-  #q::placeholder { color: var(--placeholder); }
-  @media (max-width: 640px) { .head { flex-wrap: wrap; } .actions { width: 100%; } }
-</style></head>
+${css}</style></head>
 <body>
 <header>
-  <h1><span aria-hidden="true">🎯</span> Matching jobs: ${items.length}</h1>
+  <h1><span class="glitch" data-text="Matching jobs">Matching jobs</span> <span class="count"><span aria-hidden="true">// </span>${items.length}</span></h1>
   <div class="meta" aria-live="polite">Updated: ${new Date().toLocaleString("en-US")} · sorted by relevance · nothing is sent automatically</div>
   <div class="toolbar">
     <div class="filter-seg" role="group" aria-label="Filter by status">
       <button data-filter="new" class="active" aria-pressed="true" onclick="setFilter('new')">New <span class="cnt" id="cnt-new">0</span></button>
       <button data-filter="viewed" class="active" aria-pressed="true" onclick="setFilter('viewed')">Viewed <span class="cnt" id="cnt-viewed">0</span></button>
+      ${items.some((it) => it.tier === "borderline") ? `<button data-filter="borderline" aria-pressed="false" onclick="setFilter('borderline')">Borderline <span class="cnt" id="cnt-borderline">0</span></button>` : ""}
     </div>
     <input id="q" type="search" aria-label="Search title, company or skills" placeholder="Search title / company / skills…" oninput="setQuery(this.value)" />
     <div class="src-seg" role="group" aria-label="Source">
       <button data-src="all" class="active" aria-pressed="true" onclick="setSource(this.dataset.src)">All</button>
-      ${sourceChips}
+      ${sourceChips(items)}
     </div>
     <span id="shown" class="sr-only" role="status"></span>
-    <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">🌙 Dark</button>
+    <button id="theme" class="theme" type="button" aria-pressed="false" aria-label="Dark theme" onclick="toggleTheme()">Dark</button>
   </div>
 </header>
 <main>

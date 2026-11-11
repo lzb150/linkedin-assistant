@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reply draft · linkedin-assistant</title>
+<!-- Source of docs/draft.png, rendered by render.mjs: a reply draft from lib/draft.mjs
+     shown in a Night City terminal. Dark in both colour schemes, like a terminal. -->
+<link rel="stylesheet" href="night-city.css">
+<style>
+  :root { color-scheme: dark; }
+  body { background: transparent; padding: 24px; }
+  .window {
+    position: relative; width: 952px; overflow: hidden; --city-base: #0b0a16; --accent: var(--cyan); --hot: var(--magenta);
+    border: 1px solid var(--hud-border); box-shadow: 0 0 40px color-mix(in srgb, var(--cyan) 12%, transparent);
+  }
+  .bar {
+    position: relative; z-index: 6; display: flex; align-items: center; gap: 14px; padding: 13px 20px;
+    background: #07060d; border-bottom: 1px solid var(--hud-border);
+    font: 600 13px/1 var(--font-mono); letter-spacing: .04em; color: var(--hud-text);
+  }
+  .bar::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta) 55%, transparent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--magenta) 60%, transparent);
+  }
+  .lights { display: flex; gap: 7px; }
+  .lights i { width: 11px; height: 11px; transform: rotate(45deg); box-shadow: 0 0 8px currentColor; background: currentColor; }
+  .bar .path b { color: var(--cyan); font-weight: 600; }
+  .bar .flag { margin-left: auto; padding: 5px 9px; color: var(--magenta); border: 1px solid var(--magenta); letter-spacing: .14em; text-transform: uppercase; font-size: 11px; text-shadow: 0 0 8px var(--magenta); }
+  pre {
+    position: relative; margin: 0; padding: 24px 28px 28px; white-space: pre-wrap;
+    font: 14.5px/1.72 var(--font-mono); color: var(--hud-text);
+  }
+  .fm { color: #6f6a94; }
+  .k { color: var(--cyan); }
+  .ok { color: #05ffa1; text-shadow: 0 0 8px color-mix(in srgb, #05ffa1 50%, transparent); }
+  .num { color: var(--yellow); }
+  .h1 { color: var(--yellow); font-weight: 700; text-shadow: 0 0 10px color-mix(in srgb, var(--yellow) 45%, transparent); }
+  .h2 { color: var(--magenta); font-weight: 700; text-shadow: 0 0 10px color-mix(in srgb, var(--magenta) 45%, transparent); }
+  .q { color: var(--hud-muted); }
+  .q b { color: var(--cyan); font-weight: 400; }
+  .box { color: var(--cyan); }
+  .muted { color: var(--hud-muted); }
+</style>
+</head>
+<body>
+<div class="window city hud">
+  <i class="scan"></i>
+  <div class="bar">
+    <span class="lights"><i style="color:var(--magenta)"></i><i style="color:var(--yellow)"></i><i style="color:var(--cyan)"></i></span>
+    <span class="path"><b>drafts/</b>2026-09-141126_relevant_Maryna_K_a71f3c.md</span>
+    <span class="flag">// not sent</span>
+  </div>
+<pre><span class="fm">---</span>
+<span class="k">thread:</span> Maryna K.
+<span class="k">url:</span> https://www.linkedin.com/messaging/thread/…
+<span class="k">generated:</span> 2026-09-14T11:26:04.511Z
+<span class="k">reply_language:</span> uk
+<span class="k">verdict:</span> <span class="ok">relevant</span>
+<span class="k">score:</span> <span class="num">34</span>
+<span class="k">matched_role:</span> automation qa
+<span class="k">matched_skills:</span> playwright, typescript, api testing, ci/cd
+<span class="k">penalties:</span> <span class="muted">—</span>
+<span class="k">attach_resume:</span> <span class="ok">YES</span> — ~/Documents/resume.pdf
+<span class="fm">---</span>
+
+<span class="h1"># Maryna K. — RELEVANT (score 34)</span>
+
+<span class="h2">## Their message</span>
+<span class="q"><b>&gt;</b> Привіт! Маємо віддалену позицію Senior Automation QA
+<b>&gt;</b> (Playwright + TypeScript, продуктова компанія, EU-клієнт).
+<b>&gt;</b> Підкажіть, чи цікаво було б поспілкуватися?</span>
+
+<span class="h2">## Suggested reply (review before sending)</span>
+Привіт, Марино!
+
+Дякую, що написали — виглядає як гарний збіг з моїм досвідом. Маю
+практичний досвід із playwright, typescript, api testing, ci/cd, і був
+би радий продовжити спілкування. Додаю резюме з деталями. Готовий до
+дзвінка у зручний для вас час.
+
+З повагою,
+Eugene Lazeba
+
+<span class="h2">## Action</span>
+<span class="box">- [ ]</span> Reviewed reply
+<span class="box">- [ ]</span> Attach resume: `~/Documents/resume.pdf`
+<span class="box">- [ ]</span> Sent manually on LinkedIn</pre>
+</div>
+</body>
+</html>

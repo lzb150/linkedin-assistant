@@ -1,8 +1,39 @@
-# Specifying your specialization
+<h1><img alt="Specifying your specialization" src="headers/specialization.png" width="960"></h1>
 
-How to turn a job title like **Senior Fullstack Developer** into config this
-assistant can hunt with. Nothing in the code knows your profession — it lives
-in four places.
+> **//** Part of [linkedin-assistant](../README.md). Swapping the chrome: how to turn a job title like **Senior Fullstack Developer** into config this assistant can hunt with.
+>
+> 🇺🇦 [Українською](specialization.uk.md)
+
+Nothing in the code knows your profession — it lives in four places.
+
+## Short version
+
+Nothing in the code knows you are a QA engineer — the profession lives
+entirely in config. To hunt, say, developer jobs instead:
+
+1. **Skill profile** — put your resume in `resume.txt` and run
+   `node make-skills.mjs`: it drafts `skills.json` from it with the same local
+   `claude` CLI the screener uses, including the Ukrainian spellings a local
+   board would list. Add `--print` to preview without writing, `--force` to
+   replace a file you already have; `--resume <file>`, `--out <file>` and
+   `--model <alias>` pick another input, output or `claude` model (an unknown
+   flag is rejected). Prefer to start from a preset or edit by
+   hand? `cp skills.developer.json.example skills.json` (a ready
+   TypeScript/Node profile), then tune `roles` / `skills` / `antiKeywords` /
+   `profile`. Either way, read the result once — it is the first gate every
+   vacancy passes. The `profile` block is the specialization phrase the
+   *fallback* cover letters use (LLM letters derive from your resume instead);
+   Cyrillic values sit in genitive position ("досвід в …").
+2. **Searches** — point `jobs.config.json` at the new field, e.g. DOU feed
+   `https://jobs.dou.ua/vacancies/feeds/?category=Node.js`, Djinni
+   `https://djinni.co/jobs/?primary_keyword=Node.js`, Himalayas `"Node.js developer"`, LinkedIn
+   `{ "keywords": "TypeScript Node.js developer", "location": "Ukraine", "remote": true }`;
+   turn the QA Telegram channel off or swap in one for your field.
+3. **Resume** — replace `resume.txt` (drives LLM scoring, the cover letters,
+   and `make-skills.mjs` above).
+4. **Attachment** — update `RESUME_PATH` in `run.sh`.
+
+The rest of this page is the full walkthrough.
 
 ## Where your specialization lives
 
@@ -40,7 +71,7 @@ A matched role adds a **+6** bonus, and with `requireRole: true` in
 
 ### 2. Skills — weighted keywords
 
-Derive these from your resume, not from job ads. Weight scale: **5** = core
+These are your chrome: derive them from your resume, not from job ads. Weight scale: **5** = core
 (you'd be hired for these), **3–4** = solid secondary, **1–2** = nice-to-have.
 Only the `maxSkills` (default 8) highest-weight matches count toward the
 score, so giving everything a 5 doesn't help — it just blurs ranking.
@@ -86,25 +117,30 @@ genitive position — they complete "досвід в …" / "опыт в …":
 
 ### 5. Searches — `jobs.config.json`
 
-Point **every** enabled source at the new field — there are three (`dou`,
-`djinni`, `linkedin`); a source left on the old
-searches keeps fetching the old profession. Copy real URLs from your
+Point **every** enabled source at the new field — there are five (`dou`,
+`djinni`, `himalayas`, `tgchannels`, `linkedin`); a source left on the old
+searches keeps fetching the old profession. A Telegram channel must post in the
+"Field: value" template `@remote_qa_jobs` uses (`Title`, `Company name`,
+`Location`, …); without one for your field, set `tgchannels.enabled: false`. Copy real URLs from your
 browser's filters — that keeps parameters valid:
 
 ```json
 "dou":      { "feeds": ["https://jobs.dou.ua/vacancies/feeds/?search=fullstack"] },
 "djinni":   { "searches": ["https://djinni.co/jobs/?primary_keyword=Fullstack"] },
+"himalayas": { "searches": ["Fullstack TypeScript", "Node.js developer"] },
+"tgchannels": { "enabled": false },
 "linkedin": { "searches": [{ "keywords": "Fullstack TypeScript React", "location": "Ukraine", "remote": true }] }
 ```
 
 The global `minScore` (18) is only a keyword pre-gate; the LLM gate
-(`llm.minScore`, 50) does the real screening.
+(`llm.minScore`, 70) does the real screening.
 
 ### 5b. Country — `candidateCountry`
 
 Where the candidate lives and works remotely from, in every spelling the boards
-use (`["Ukraine", "Україна"]` ships). Djinni's countries segment must name one
-of these or the whole world; the LLM gate scores a vacancy closed to that
+use (`["Ukraine", "Україна"]` ships). Djinni's countries segment and a Telegram
+post's `Location` must name one of these or the whole world; Himalayas searches are filtered by the first
+entry, so put the English name first; the LLM gate scores a vacancy closed to that
 country at most 10. Someone in Poland sets `["Poland", "Польща", "Країни ЄС"]`
 and moves `"Poland"`/`"Польща"` out of `excludeLocation`.
 
@@ -118,7 +154,7 @@ cover letters. All three files are gitignored.
 ## Seniority
 
 - `excludeTitle` in `jobs.config.json` drops titles containing
-  `junior` / `intern` / `internship` / `trainee` / `manual` before scoring —
+  `junior` / `intern` / `internship` / `trainee` / `manual` / `lead` before scoring —
   whole-word, title-only.
 - There is no "senior-only" positive filter: the score is skill-based, and
   senior titles already match your role entries by substring.
@@ -137,7 +173,7 @@ to your resume.
    `excludeTitle` still fits.
 3. `resume.txt` replaced; `RESUME_PATH` and `CANDIDATE_NAME` updated in
    `run.sh`.
-4. Verify: `node --test test/` (the suite runs on a frozen fixture profile,
-   so it stays green regardless of your `skills.json`), then one
-   `node jobs.mjs` run — the newest file in `applications/` should read
+4. Verify: `npm test` (the suite runs on a frozen fixture profile,
+   so it stays green regardless of your `skills.json`), then jack in
+   with one `node jobs.mjs` run — the newest file in `applications/` should read
    like your new specialization.

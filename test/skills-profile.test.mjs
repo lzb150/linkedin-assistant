@@ -149,3 +149,31 @@ test("maybe stays strictly looser than relevant, including at the bottom of the 
     assert.ok(th.maybe < th.relevant, `maybe(${th.maybe}) must be < relevant(${th.relevant})`);
   }
 });
+
+test("maybe floors at 1: a maybe of 0 would make every scored message a maybe", () => {
+  assert.deepEqual(normalizeProfile({ thresholds: { relevant: 8, maybe: 0 } }).thresholds, { relevant: 8, maybe: 1 });
+});
+
+test("normalizeProfile reports a clamped or unusable weight to `warn` (the hand-edited skills.json case)", () => {
+  const lines = [];
+  const p = normalizeProfile({ skills: { playwright: 10, cypress: true, api: 3 }, antiKeywords: { php: -50 } }, { warn: (m) => lines.push(m) });
+  assert.equal(p.skills.playwright, 5);
+  assert.ok(!("cypress" in p.skills), "a boolean is not a weight");
+  assert.equal(p.antiKeywords.php, -10);
+  assert.deepEqual(lines, [
+    "skills.playwright is 10, outside [1, 5] — using 5",
+    "skills.cypress is true, not a weight — dropped",
+    "antiKeywords.php is -50, outside [-10, -1] — using -10",
+  ]);
+  assert.doesNotThrow(() => normalizeProfile({ skills: { a: 99 } }), "no warn given: silent, as for model output");
+});
+
+test("normalizeProfile reports a one-letter or overlong term to `warn` instead of dropping it silently", () => {
+  const lines = [];
+  const p = normalizeProfile({ skills: { c: 5, go: 4, ["x".repeat(45)]: 2 }, antiKeywords: { r: 3 }, roles: ["q", "sdet"] }, { warn: (m) => lines.push(m) });
+  assert.deepEqual(Object.keys(p.skills).sort(), ["go", "x".repeat(40)]);
+  assert.match(lines.join("\n"), /skills: "c" is shorter than 2 characters — dropped/);
+  assert.match(lines.join("\n"), /antiKeywords: "r" is shorter/);
+  assert.match(lines.join("\n"), /roles: "q" is shorter/);
+  assert.match(lines.join("\n"), /skills: "x{45}" is longer than 40 characters/);
+});

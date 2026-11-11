@@ -4,7 +4,7 @@ import { assertLinear } from "../helpers/linear.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { parseRss } from "../../lib/sources/dou.mjs";
+import { parseRss, markRelisted } from "../../lib/sources/dou.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const fixture = readFileSync(join(__dir, "../fixtures/sources/dou-feed.xml"), "utf8");
@@ -118,7 +118,8 @@ test("fetchDou is on unless explicitly disabled (matches jobs.mjs)", async () =>
   try {
     assert.deepEqual(await fetchDou({ enabled: false, feeds: ["http://x/1"] }, () => {}), []);
     assert.equal(calls.length, 0, "disabled: no feed fetched");
-    await fetchDou({ feeds: ["http://x/1"] }, () => {});            // enabled absent → runs
+    // enabled absent → runs (and, its only feed failing, reports the outage)
+    await assert.rejects(fetchDou({ feeds: ["http://x/1"] }, () => {}), /all 1 DOU feed\(s\) failed/);
     assert.deepEqual(calls, ["http://x/1"]);
     assert.deepEqual(await fetchDou(undefined, () => {}), []);      // no `dou` section at all → no throw
   } finally { globalThis.fetch = realFetch; }
@@ -168,4 +169,48 @@ test("a location part whose digits are glued to letters survives the salary filt
   const item = (rest) => parseRss(`<rss><channel><item><title>QA \u0432 ${rest}</title><link>https://jobs.dou.ua/x/1/</link><description>d</description></item></channel></rss>`)[0];
   assert.match(item("Acme, \u041a\u0438\u0457\u0432, \u0411\u0426 101A").location, /101A/, "a building number is location, not pay");
   assert.doesNotMatch(item("Acme, \u041a\u0438\u0457\u0432, 20000").location, /20000/, "a bare figure is still dropped");
+});
+
+test("parseRss keeps the item's pubDate as an ISO `posted`", () => {
+  const [first] = parseRss(fixture);
+  assert.equal(first.posted, "2026-06-13T07:45:36.000Z");
+  assert.equal(parseRss(fixture.replace(/<pubDate>[^<]*<\/pubDate>/, "<pubDate>soon</pubDate>"))[0].posted, undefined, "an unparseable date is simply absent");
+});
+
+test("markRelisted moves the date of a vacancy DOU re-dated to `relisted`: a newer id with an earlier date proves it", () => {
+  // Live feed, 2026-10-31: 358291 (months old) dated 29 Oct beside 377545 dated 22 Oct. DOU's ids follow
+  // creation, so 358291 existed before 22 Oct and its 29 Oct is a re-publication; the page shows nothing else.
+  const job = (id, posted) => ({ url: `https://jobs.dou.ua/companies/x/vacancies/${id}/`, ...(posted ? { posted } : {}) });
+  const out = markRelisted([
+    job(358291, "2026-10-29T09:09:44.000Z"),
+    job(377545, "2026-10-22T10:03:00.000Z"),
+    job(378361, "2026-10-30T09:02:08.000Z"),
+    job(378086, "2026-10-28T08:37:26.000Z"),
+    job(377000),
+    { url: "https://jobs.dou.ua/no-id/", posted: "2026-10-30T00:00:00.000Z" },
+  ]);
+  assert.deepEqual(out.map((j) => [j.posted || "-", j.relisted || "-"]), [
+    ["-", "2026-10-29T09:09:44.000Z"],
+    ["2026-10-22T10:03:00.000Z", "-"],
+    ["2026-10-30T09:02:08.000Z", "-"],
+    ["2026-10-28T08:37:26.000Z", "-"],
+    ["-", "-"],
+    ["2026-10-30T00:00:00.000Z", "-"],
+  ]);
+});
+
+test("markRelisted leaves a date less than a day after a newer id's alone: created in the evening, published the next morning", () => {
+  const job = (id, posted) => ({ url: `https://jobs.dou.ua/companies/x/vacancies/${id}/`, posted });
+  const out = markRelisted([job(100, "2026-10-30T07:00:00.000Z"), job(101, "2026-10-29T20:00:00.000Z")]);
+  assert.deepEqual(out.map((j) => j.relisted), [undefined, undefined]);
+});
+
+test("fetchDou counts a 200 that is no feed (a block page) as a failed feed", async (t) => {
+  const { fetchDou } = await import("../../lib/sources/dou.mjs");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => "<html><title>Just a moment...</title></html>" });
+  t.after(() => { globalThis.fetch = realFetch; });
+  const lines = [];
+  await assert.rejects(fetchDou({ feeds: ["http://x/1"] }, (l) => lines.push(l)), /all 1 DOU feed\(s\) failed/);
+  assert.match(lines.join("\n"), /not a feed/);
 });

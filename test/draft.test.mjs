@@ -24,6 +24,17 @@ test("buildDraft collapses a newline in the name so it cannot inject a frontmatt
   assert.equal(markdown.match(/^verdict:/gm).length, 1);
 });
 
+test("buildDraft: a 'relevant' verdict greets them by first name, names the top five skills and attaches the resume", () => {
+  const thread = { name: "Anna Lee", url: "https://www.linkedin.com/messaging/thread/2-abc/", fullText: "We are hiring a QA,\ninterested?" };
+  const { markdown } = buildDraft(thread, { ...scored, matchedSkills: ["playwright", "typescript", "api", "ci/cd", "jenkins", "k6"] });
+  assert.match(markdown, /^url: https:\/\/www\.linkedin\.com\/messaging\/thread\/2-abc\/$/m);
+  assert.match(markdown, /^attach_resume: YES — \S/m);
+  assert.match(markdown, /^> We are hiring a QA,\n> interested\?$/m);
+  assert.match(markdown, /^Hi Anna,$/m);
+  assert.match(markdown, /experience with playwright, typescript, api, ci\/cd, jenkins, and/);
+  assert.match(markdown, /^- \[ \] Attach resume: `[^`]+`$/m);
+});
+
 test("buildDraft: a 'maybe' verdict asks for details instead of attaching the resume; ru/uk messages get a reply in their language", () => {
   const { markdown } = buildDraft({ name: "Anna Lee", fullText: "We are hiring a QA, interested?" }, { ...scored, verdict: "maybe" });
   assert.match(markdown, /Could you share a bit more about the role/);

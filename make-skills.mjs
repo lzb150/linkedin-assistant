@@ -26,9 +26,18 @@ const opt = (name, fallback) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : fallback;
 };
 
+const USAGE = "node make-skills.mjs [--resume resume.txt] [--out skills.json] [--model sonnet] [--force] [--print]";
 if (flag("help")) {
-  console.log("node make-skills.mjs [--resume resume.txt] [--out skills.json] [--model sonnet] [--force] [--print]");
+  console.log(USAGE);
   process.exit(0);
+}
+// A typo'd flag is not a no-op: `--prnt` used to be ignored, so the run wrote
+// skills.json instead of printing it.
+const KNOWN_FLAGS = new Set(["--resume", "--out", "--model", "--force", "--print", "--help"]);
+const unknown = argv.find((a) => a.startsWith("--") && !KNOWN_FLAGS.has(a));
+if (unknown) {
+  console.error(`✋ unknown option ${unknown}\n${USAGE}`);
+  process.exit(1);
 }
 
 // Relative paths are repo-relative; an absolute --resume/--out is used as given.

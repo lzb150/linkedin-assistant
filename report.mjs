@@ -2,7 +2,7 @@
 // Weekly digest: runs and new vacancies considered, packages per source, LLM verdicts,
 // and per-source yield for the last N days (default 7).
 //   node report.mjs              print to stdout
-//   node report.mjs --notify     also post a macOS notification (launchd job)
+//   node report.mjs --notify     also post a macOS banner and send the digest to Telegram (launchd job)
 //   REPORT_DAYS=14 node report.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { readPackages } from "./lib/packages.mjs";
@@ -11,16 +11,22 @@ import { normalizeHistory } from "./lib/source-health.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { notify } from "./lib/notify.mjs";
+import { queueTelegram, alertMessage } from "./lib/telegram.mjs";
 import { buildReport } from "./lib/report.mjs";
 import { readRunStats } from "./lib/run-stats.mjs";
+import { DAY_MS } from "./lib/local-day.mjs";
+import { heartbeat } from "./lib/heartbeat.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const envDays = Number(process.env.REPORT_DAYS);
 const days = Number.isFinite(envDays) && envDays > 0 ? envDays : 7;
 const now = new Date();
-const since = now.getTime() - days * 86400000;
+const since = now.getTime() - days * DAY_MS;
 
-const packages = readPackages(join(dir, "applications"));
+// archive/ too: closed-check moves a closed package there after 14 days, and
+// with a window longer than that the per-source and LLM lines came out lower
+// than "packages written", which counts every package of the window.
+const packages = [...readPackages(join(dir, "applications")), ...readPackages(join(dir, "applications", "archive"))];
 // jobs.mjs logs (run.sh: jobs_<date>.log, jobs_dou_<date>.log; jobs_full_ before 2026-09-11) touched inside the window.
 const logsDir = join(dir, "logs");
 const logText = (existsSync(logsDir) ? readdirSync(logsDir) : [])
@@ -43,4 +49,12 @@ const { text, notification } = buildReport({
   })()),
 });
 console.log(text);
-if (process.argv.includes("--notify")) notify("Weekly job report", notification);
+// The banner gets the one-liner (a macOS banner shows ~2 lines); the phone gets
+// the whole digest — it used to get the one-liner too, and the per-source
+// lines stayed in logs/report.out.log, the one place nobody looks on a Monday.
+if (process.argv.includes("--notify")) {
+  notify("Weekly job report", notification, { toTelegram: false });
+  queueTelegram(alertMessage("Weekly job report", text));
+  // Only the scheduled run counts as the weekly job finishing; a digest run by hand does not.
+  heartbeat(join(dir, "last-success.json"), "report", { log: console.error, alert: (m) => notify("Job assistant", m) });
+}

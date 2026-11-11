@@ -1,6 +1,9 @@
 import { test } from "node:test";
+import { createRequire } from "node:module";
 import assert from "node:assert/strict";
-import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom } from "../../lib/sources/linkedin-jobs.mjs";
+import { buildUrl, fetchLinkedInJobs, readCard, jobUrlFrom, isRelisted, ageDate } from "../../lib/sources/linkedin-jobs.mjs";
+
+const { ageLabel } = createRequire(import.meta.url)("../../lib/dashboard-client-core.cjs");
 
 test("buildUrl includes keywords and location and always sorts by date", () => {
   const url = buildUrl({ keywords: "QA Automation", location: "Ukraine" });
@@ -40,13 +43,19 @@ function fakePage(...rounds) {
     url: () => current,
     waitForURL: async (pred) => { calls.push("waitForURL"); current = "https://www.linkedin.com/jobs/search/?currentJobId=clicked"; if (typeof pred === "function") pred(new URL(current)); },
     goto: async () => { calls.push("goto"); },
+    $: async () => null,   // no /jobs/search-results/ card to re-find: the handle is clicked
     mouse: { wheel: async () => {} },
     $$: async () => (rounds[Math.min(round++, rounds.length - 1)]).map((c, i, all) => ({
       // readCard runs in-page via evaluate; the scroll helper is also an evaluate
       evaluate: async (fn) => (fn.name === "readCard" ? c : calls.push(`scroll:${i === all.length - 1 ? "last" : i}`)),
       click: async (opts) => { calls.push(`click:${opts?.timeout}`); },
     })),
-    locator: () => ({ first: () => ({ innerText: async (opts) => { calls.push(`desc:${opts?.timeout}`); return "  Job description  "; } }) }),
+    // The detail panel: its top card (location · age · applicants) and the description.
+    topCard: "Kyiv, Kyiv City, Ukraine · 1 week ago · 18 people clicked apply",
+    locator: (sel) => ({ first: () => ({ innerText: async (opts) => {
+      if (sel.includes("top-card")) { calls.push(`top:${opts?.timeout}`); return page.topCard; }
+      calls.push(`desc:${opts?.timeout}`); return "  Job description  ";
+    } }) }),
   };
   return page;
 }
@@ -132,6 +141,31 @@ test("fetchLinkedInJobs abandons a search at the deadline, keeps the cards gathe
   assert.equal(page.calls.filter((c) => c.startsWith("click")).length, clicksBefore, "the released loop stops instead of clicking the next card");
 });
 
+// The deadline check before the click is not enough: a loop that hangs IN the
+// click and is released once the next search has started reads its description
+// off that search's page. It must not be recorded.
+test("fetchLinkedInJobs drops a card whose hung click resolves after the deadline, during the next search", async () => {
+  let search = 0, release;
+  const page = fakePage([]);
+  page.goto = async () => {
+    search++;
+    if (search === 2 && release) { release(); for (let i = 0; i < 20; i++) await Promise.resolve(); }
+  };
+  page.$$ = async () => (search === 1
+    ? [{ title: "A", href: "/jobs/view/1/" }, { title: "B", href: "/jobs/view/2/" }]
+    : [{ title: "D", href: "/jobs/view/4/" }]
+  ).map((c) => ({
+    evaluate: async (fn) => (fn.name === "readCard" ? { company: "X", location: "Kyiv", ...c } : undefined),
+    click: async () => { if (search === 1 && c.title === "B") await new Promise((r) => { release = r; }); },
+  }));
+  page.locator = () => ({ first: () => ({ innerText: async () => `search ${search} description` }) });
+  const cfg = { maxResults: 5, searches: [{ keywords: "qa" }, { keywords: "sdet" }] };
+  const out = await fetchLinkedInJobs(page, cfg, () => {}, { sleep: async () => {}, searchTimeoutMs: 100 });
+  const titles = out.map((j) => j.title);
+  assert.ok(titles.includes("A") && titles.includes("D"), String(titles));
+  assert.ok(!titles.includes("B"), `B's description came from the next search's page: ${titles}`);
+});
+
 // Cards the caller already knows (seen store / excluded title) are returned
 // from their list fields without a click or description — 17–20 of ~30 cards
 // per production run, ~2.2 s each.
@@ -143,7 +177,8 @@ test("fetchLinkedInJobs skips the click for cards the skip() predicate knows, st
   const seen = [];
   const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "SDET", location: "Ukraine" }] }, () => {},
     { sleep: async () => {}, skip: (j) => { seen.push(j); return j.title === "Known SDET"; } });
-  assert.deepEqual(seen.map((j) => [j.title, j.company, j.url]), [["Known SDET", "Acme", "https://www.linkedin.com/jobs/view/1/"], ["New AQA", "Beta", "https://www.linkedin.com/jobs/view/2/"]], "predicate sees list fields + canonical url");
+  assert.deepEqual(seen.map((j) => [j.source, j.title, j.company, j.url]), [["linkedin", "Known SDET", "Acme", "https://www.linkedin.com/jobs/view/1/"], ["linkedin", "New AQA", "Beta", "https://www.linkedin.com/jobs/view/2/"]], "predicate sees source + list fields + canonical url: the repost check needs the board");
+  assert.deepEqual(seen.map((j) => j.location), ["Kyiv", "Ukraine"], "and the location — the card's, else the search's — so a job the location filter will drop is not opened");
   assert.equal(page.calls.filter((c) => c.startsWith("click")).length, 1, "only the unknown card is opened");
   assert.equal(jobs.length, 2, "known card is still returned so the caller can re-stamp it as seen");
   assert.equal(jobs[0].text, "Known SDET at Acme. Kyiv.", "no description for a skipped card");
@@ -159,7 +194,7 @@ test("readCard halves a doubled title and leaves a genuine title alone", () => {
     querySelector: (sel) => (sel === "t" ? { innerText: title, getAttribute: () => "/jobs/view/1/" } : sel === "c" ? { innerText: "Acme\nverified" } : null),
     querySelectorAll: () => [{ innerText: "Kyiv" }],
   });
-  assert.deepEqual(readCard(card("Middle Automation QA EngineerMiddle Automation QA Engineer"), SEL), { title: "Middle Automation QA Engineer", href: "/jobs/view/1/", company: "Acme", location: "Kyiv" });
+  assert.deepEqual(readCard(card("Middle Automation QA EngineerMiddle Automation QA Engineer"), SEL), { title: "Middle Automation QA Engineer", href: "/jobs/view/1/", company: "Acme", location: "Kyiv", posted: "" });
   assert.equal(readCard(card("QA QA"), SEL).title, "QA QA", "a real repeated word is not a doubled title (odd length with the space)");
   assert.equal(readCard(card("abab"), SEL).title, "ab", "even a short doubled string halves — LinkedIn never emits one this short");
   assert.equal(readCard(card(""), SEL).title, "");
@@ -174,6 +209,11 @@ test("jobUrlFrom keeps LinkedIn urls and drops an absolute href pointing anywher
   assert.equal(jobUrlFrom("https://evil.example/jobs/view/4/"), "", "off-site absolute href is refused");
   assert.equal(jobUrlFrom("https://notlinkedin.com/x"), "", "suffix must sit on a dot boundary");
   assert.equal(jobUrlFrom(""), "", "no href at all");
+  // Any href not starting with "http" was prefixed with the host, so a
+  // placeholder card became "https://www.linkedin.comjavascript:void(0)".
+  assert.equal(jobUrlFrom("javascript:void(0)"), "", "a relative href must be a path");
+  assert.equal(jobUrlFrom("mailto:jobs@example.com"), "");
+  assert.equal(jobUrlFrom("jobs/view/5/"), "", "no leading slash: not a path LinkedIn emits");
 });
 
 test("fetchLinkedInJobs scrubs control characters out of scraped card text and skips off-site cards", async () => {
@@ -195,4 +235,179 @@ test("fetchLinkedInJobs scrubs control characters out of scraped card text and s
     // oxlint-disable-next-line no-control-regex
     assert.doesNotMatch(v, /[\u0000-\u001f\u007f\u2028\u2029]/, "no line terminator survives into the log line");
   }
+});
+
+test("fetchLinkedInJobs leaves the description empty when the url never flips to the clicked job", async () => {
+  // The panel still shows the PREVIOUS job; reading it scored and drafted that
+  // job's text under this card. Empty text takes the gate's retry path instead.
+  const page = fakePage([{ title: "SDET", href: "/jobs/view/123/", company: "Acme", location: "Kyiv" }]);
+  page.waitForURL = async () => { throw new Error("Timeout 5000ms exceeded"); };
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "SDET", location: "Ukraine" }] }, () => {}, { sleep: async () => {} });
+  assert.equal(jobs.length, 1);
+  assert.match(jobs[0].text, /^SDET at Acme\. Kyiv\.?$/);
+  assert.ok(!page.calls.some((c) => c.startsWith("desc")), "the stale panel is never read");
+});
+
+test("fetchLinkedInJobs throws when every search errored with nothing gathered", async () => {
+  const page = fakePage([]);
+  page.goto = async () => { throw new Error("net::ERR_INTERNET_DISCONNECTED"); };
+  await assert.rejects(fetchLinkedInJobs(page, { searches: [{ keywords: "a" }, { keywords: "b" }] }, () => {}, { sleep: async () => {} }), /all 2 LinkedIn search\(es\) failed/);
+});
+
+// Since 2026-11-03 /jobs/search/ redirects to /jobs/search-results/: hashed class names, no
+// title link, so every search logged "found 0 cards" for two days. The card is found by the
+// job id in its componentkey; its <p>s are title, company, location.
+test("readCard reads a /jobs/search-results/ card by its componentkey and <p>s", () => {
+  const p = (innerText, hidden) => ({ innerText, querySelector: (s) => (hidden && s === "span[aria-hidden='true']" ? { innerText: hidden } : null) });
+  const card = (ps) => ({
+    getAttribute: (n) => (n === "componentkey" ? "job-card-component-ref-4485318694" : null),
+    querySelectorAll: (s) => (s === "p" ? ps : []),
+    querySelector: () => null,
+  });
+  const verified = card([p("Senior Automation QA Engineer (Verified job)\nSenior Automation QA Engineer", "Senior Automation QA Engineer "), p("Ciklum"), p("Ukraine (Remote)"), p("Viewed")]);
+  assert.deepEqual(readCard(verified, {}), { title: "Senior Automation QA Engineer", href: "/jobs/view/4485318694/", company: "Ciklum", location: "Ukraine (Remote)", posted: "" }, "the visible title, not the screen-reader copy");
+  assert.equal(readCard(card([p("Test Automation EngineerTest Automation Engineer"), p("Sii")]), {}).title, "Test Automation Engineer", "no aria-hidden span: the doubled text is halved");
+});
+
+// Live 2026-11-06 (30 cards): title, company and location are the <p>s of one box, insights and
+// statuses sit in other boxes. Taking the first three <p>s of the whole card would read a card
+// with no location <p> as located in "Viewed".
+test("readCard reads a /jobs/search-results/ card's location from the title's box, never a status", () => {
+  const cardEl = { getAttribute: (n) => (n === "componentkey" ? "job-card-component-ref-7" : null), querySelector: () => null };
+  const box = (texts) => {
+    const b = { parentElement: cardEl };
+    b.ps = texts.map((innerText) => ({ innerText, parentElement: b, querySelector: () => null }));
+    b.querySelectorAll = (s) => (s === "p" ? b.ps : []);
+    return b;
+  };
+  const lockup = box(["QA Engineer", "Acme"]);   // no location <p>
+  const status = box(["12 connections work here", "Viewed"]);
+  cardEl.querySelectorAll = (s) => (s === "p" ? [...lockup.ps, ...status.ps] : []);
+  assert.deepEqual(readCard(cardEl, {}), { title: "QA Engineer", href: "/jobs/view/7/", company: "Acme", location: "", posted: "" });
+});
+
+// The day is the machine's local one, so each test names its time zone.
+function inZone(t, zone) {
+  const tz = process.env.TZ;
+  process.env.TZ = zone;
+  t.after(() => { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; });
+}
+
+test("ageDate turns the top card's age into a date: the day for days and longer, the hour for hours", (t) => {
+  inZone(t, "UTC");
+  const now = Date.parse("2026-11-06T10:15:00Z");
+  assert.equal(ageDate("Ukraine · 6 days ago · 10 people clicked apply", now), "2026-10-31T00:00:00.000Z");
+  assert.equal(ageDate("Ukraine · Reposted 1 week ago · 3 people clicked apply", now), "2026-10-30T00:00:00.000Z");
+  assert.equal(ageDate("Ukraine · 1 month ago · 94 people clicked apply", now), "2026-10-07T00:00:00.000Z", "a month counts as 30 days, its lower bound");
+  assert.equal(ageDate("Kyiv · Reposted 19 hours ago · 25 people clicked apply", now), "2026-11-05T15:15:00.000Z");
+  assert.equal(ageDate("Ukraine · 59 people clicked apply", now), undefined);
+  assert.equal(ageDate("", now), undefined);
+});
+
+// The day was floored in UTC while ages are counted in local days: a card read
+// between midnight and 02:00 (03:00 in summer) Kyiv time was dated a day early,
+// and the package said "2 d ago" of a vacancy posted yesterday, for good.
+test("ageDate floors a day-granular age to the local day, the one the dashboard counts in", (t) => {
+  inZone(t, "Europe/Kyiv");
+  const now = Date.parse("2026-11-11T22:30:00Z");   // 00:30 on 12 November in Kyiv
+  assert.equal(ageDate("Ukraine · 1 day ago · 10 people clicked apply", now), "2026-11-10T22:00:00.000Z", "midnight of 11 November, Kyiv time");
+  assert.equal(ageLabel("posted", ageDate("Ukraine · 1 day ago", now), now), "posted 1 d ago");
+});
+
+// The new UI's cards carry no <time>: every LinkedIn job lost its posted date until the top card's
+// age filled it ("Ukraine · 6 days ago · …", live 2026-11-06).
+test("fetchLinkedInJobs dates a card with no <time> from its top card, as `relisted` when reposted", async (t) => {
+  inZone(t, "UTC");
+  const now = () => Date.parse("2026-11-06T10:15:00Z");
+  const card = { title: "QA", href: "/jobs/view/4485318694/", company: "Ciklum", location: "Ukraine (Remote)", posted: "" };
+  const page = fakePage([card]);
+  page.topCard = "Ukraine · 6 days ago · 10 people clicked apply";
+  const [job] = await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {}, now });
+  assert.equal(job.posted, "2026-10-31T00:00:00.000Z");
+  const reposted = fakePage([card]);
+  reposted.topCard = "Ukraine · Reposted 1 week ago · 3 people clicked apply";
+  const [again] = await fetchLinkedInJobs(reposted, { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {}, now });
+  assert.equal(again.relisted, "2026-10-30T00:00:00.000Z");
+  assert.equal("posted" in again, false);
+});
+
+// The new list re-renders on every click and detaches the other cards' handles: only the first
+// card per search got its description until the card was re-found by its job id.
+test("fetchLinkedInJobs clicks the card re-found by its job id, not the possibly detached handle", async () => {
+  const page = fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "" }]);
+  const found = [];
+  page.$ = async (sel) => { found.push(sel); return { click: async () => { page.calls.push("click:fresh"); } }; };
+  await fetchLinkedInJobs(page, { maxResults: 1, searches: [{ keywords: "x" }] }, () => {}, { sleep: async () => {} });
+  assert.deepEqual(found, ["[role='button'][componentkey='job-card-component-ref-1']"]);
+  assert.deepEqual(page.calls.filter((c) => c.startsWith("click")), ["click:fresh"]);
+});
+
+test("readCard reads the card's <time datetime> when LinkedIn renders one", () => {
+  const SEL = { title: "t", company: "c", location: "l" };
+  const card = {
+    querySelector: (sel) => (sel === "t" ? { innerText: "SDET", getAttribute: () => "/jobs/view/1/" } : sel === "time[datetime]" ? { getAttribute: () => "2026-10-27" } : null),
+    querySelectorAll: () => [],
+  };
+  assert.equal(readCard(card, SEL).posted, "2026-10-27");
+});
+
+test("isRelisted reads LinkedIn's 'Reposted' from the detail panel's top card", () => {
+  assert.equal(isRelisted("Kyiv, Kyiv City, Ukraine · Reposted 19 hours ago · 25 people clicked apply"), true);
+  assert.equal(isRelisted("Lviv, Lviv, Ukraine · 1 week ago · 18 people clicked apply"), false);
+  assert.equal(isRelisted(""), false);
+});
+
+test("fetchLinkedInJobs keeps a reposted card's date as `relisted`, never as `posted`", async () => {
+  // Live 2026-10-31: job 4469125989's card said "19 hours ago" (<time datetime="2026-10-30">), its
+  // panel "Reposted 19 hours ago"; LinkedIn shows the first posting date nowhere.
+  const card = { title: "QA", href: "/jobs/view/4469125989/", company: "Acme", location: "Kyiv", posted: "2026-10-30" };
+  const reposted = fakePage([card]);
+  reposted.topCard = "Kyiv, Kyiv City, Ukraine · Reposted 19 hours ago · 25 people clicked apply";
+  const [job] = await fetchLinkedInJobs(reposted, { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {} });
+  assert.equal(job.relisted, "2026-10-30T00:00:00.000Z");
+  assert.equal("posted" in job, false);
+  const [fresh] = await fetchLinkedInJobs(fakePage([card]), { maxResults: 1, searches: [{ keywords: "QA" }] }, () => {}, { sleep: async () => {} });
+  assert.equal(fresh.posted, "2026-10-30T00:00:00.000Z");
+  assert.equal("relisted" in fresh, false);
+});
+
+// LinkedIn answers a burst of searches with HTTP 429 and a blank page: 29 searches in 12 days
+// logged "found 0 cards" (the third or fourth of a run), which read as an empty result. Reproduced
+// live 2026-10-31: /jobs/search/ and voyager/api/graphql returned 429, and it cleared within ~65 s.
+const RATE_LIMITED = (page, statuses) => {
+  page.goto = async () => { page.calls.push("goto"); const s = statuses.shift() ?? 200; return { status: () => s }; };
+  return page;
+};
+
+test("fetchLinkedInJobs waits out a rate-limited (HTTP 429) search page and reads it on the retry", async () => {
+  const page = RATE_LIMITED(fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "Kyiv" }]), [429, 200]);
+  const slept = [], logs = [];
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "qa" }] }, (l) => logs.push(l), { sleep: async (ms) => { slept.push(ms); } });
+  assert.deepEqual(jobs.map((j) => j.title), ["A"], "the retry reads the cards");
+  assert.equal(page.calls.filter((c) => c === "goto").length, 2);
+  assert.ok(slept.includes(90_000), `waited the cooldown: ${slept}`);
+  assert.ok(logs.some((l) => /rate-limited \(HTTP 429\)/.test(l)), logs.join("\n"));
+});
+
+test("fetchLinkedInJobs fails a search still rate-limited after the wait instead of logging 0 cards", async () => {
+  const page = RATE_LIMITED(fakePage([{ title: "A", href: "/jobs/view/1/", company: "X", location: "Kyiv" }]), [429, 429, 200]);
+  const logs = [];
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 5, searches: [{ keywords: "qa" }, { keywords: "sdet" }] }, (l) => logs.push(l), { sleep: async () => {} });
+  assert.deepEqual(jobs.map((j) => j.title), ["A"], "the next search still runs");
+  assert.ok(logs.some((l) => /LinkedIn search error: .*429/.test(l)), logs.join("\n"));
+  assert.ok(!logs.some((l) => /found 0 cards/.test(l)), "a blank 429 page is not an empty result");
+});
+
+test("fetchLinkedInJobs keeps a description identical to the last card's when it is the same posting in another city, drops it for another posting", async () => {
+  // The stale-panel guard emptied every description equal to the previous
+  // card's — also the honest case of one vacancy listed once per city.
+  const page = fakePage([
+    { title: "SDET", href: "/jobs/view/1/", company: "Acme", location: "Kyiv" },
+    { title: "SDET", href: "/jobs/view/2/", company: "Acme", location: "Lviv" },
+    { title: "QA Lead", href: "/jobs/view/3/", company: "Beta", location: "Kyiv" },
+  ]);
+  const jobs = await fetchLinkedInJobs(page, { maxResults: 3, searches: [{ keywords: "SDET" }] }, () => {}, { sleep: async () => {} });
+  assert.match(jobs[0].text, /Job description$/);
+  assert.match(jobs[1].text, /Job description$/, "the same posting in another city keeps its text");
+  assert.doesNotMatch(jobs[2].text, /Job description/, "another posting showing the last one's text is a stale panel");
 });

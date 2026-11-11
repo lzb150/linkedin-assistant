@@ -54,6 +54,24 @@ test("dashboard.mjs: escaping, identity collapse, alt_links with commas, javascr
   // (d) a javascript: url is never an href; the card renders read-only (no data-url → no status/notes).
   assert.ok(!html.includes('href="javascript:'));
   assert.equal((html.match(/ data-url="/g) || []).length, 2, "only the http(s) cards are live");
+
+  // (e) the LLM is in use (Acme has a verdict), so the two cards without one are marked unverified.
+  assert.equal((html.match(/class="llm unverified"/g) || []).length, 2, "keyword-only cards carry the unverified badge");
+});
+
+test("dashboard.mjs: the listed mark follows candidateCountry from jobs.config.json", async (t) => {
+  const p = makeProject(t, {
+    scripts: ["dashboard.mjs"],
+    files: { "jobs.config.json": JSON.stringify({ candidateCountry: ["Poland", "Польща"] }) },
+    packages: {
+      "pl.md": fm({ source: "himalayas", title: "SDET", company: "Acme", url: "https://h.example/1", location: "Remote · Poland", generated: "2026-09-01T00:00:00Z", score: 40 }),
+      "ua.md": fm({ source: "himalayas", title: "QA", company: "Beta", url: "https://h.example/2", location: "Remote · Ukraine", generated: "2026-09-01T00:00:00Z", score: 40 }),
+    },
+  });
+  await runScript(p, "dashboard.mjs");
+  const html = p.read("applications", "index.html");
+  assert.equal((html.match(/class="listed"/g) || []).length, 1);
+  assert.match(html, /Poland listed/);
 });
 
 test("dashboard.mjs: an alt_links pair with no '|' is dropped instead of rendered mangled", async (t) => {
@@ -74,4 +92,20 @@ test("dashboard.mjs: an alt_links pair with no '|' is dropped instead of rendere
   // The split only breaks before "source|", so the malformed pair has to come
   // first to be a pair of its own — which is exactly when indexOf returns -1.
   assert.doesNotMatch(html, /brokenpairnopip/, "no truncated label, and no link built from the whole string");
+});
+
+test("dashboard.mjs: one header preference (Dark), re-applied before paint; fonts sent no referrer", async (t) => {
+  // The theme pin must be restored in <head>, before the body paints, or a
+  // reload with a pinned theme flashes the system one first.
+  const p = makeProject(t, { scripts: ["dashboard.mjs"], packages: {} });
+  await runScript(p, "dashboard.mjs");
+  const html = p.read("applications", "index.html");
+  const head = html.slice(0, html.indexOf("<style>"));
+  assert.match(head, /localStorage\.getItem\("jobTheme"\); if \(t\) document\.documentElement\.dataset\.theme = t;/);
+  assert.equal((html.match(/class="theme"/g) || []).length, 1, "Dark is the only header toggle");
+  assert.doesNotMatch(html, /jobGlow|toggleGlow|id="glow"/);
+  // Fonts are third-party: no referrer, so Google never sees the local dashboard url.
+  assert.match(head, /<link rel="stylesheet" referrerpolicy="no-referrer" href="https:\/\/fonts\.googleapis\.com\//);
+  // …and no board learns the dashboard's url from "Open job ↗" either.
+  assert.match(head, /<meta name="referrer" content="no-referrer">/);
 });

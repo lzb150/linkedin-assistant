@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Weekly digest (report.mjs), Mondays at 09:00: packages, LLM verdicts, pipeline, source yield.
-  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: README → "Schedule it (launchd)".
+  Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
 <dict>

@@ -1,0 +1,197 @@
+<h1><img alt="Налаштування" src="headers/setup.uk.png" width="960"></h1>
+
+> **//** Частина [linkedin-assistant](../README.uk.md). Встановити й підключитись один раз, перевірити запуск вручну, потім віддати розклад демонам launchd.
+>
+> 🇬🇧 [English version](setup.md)
+
+## Одноразове налаштування
+
+> **`// УВАГА` · Потрібен macOS** — розклад (launchd), сповіщення та Dock-застосунки
+> працюють лише на Mac. Node.js 20+.
+
+```bash
+cd ~/linkedin-assistant
+npm install                      # встановлює playwright
+npx playwright install chromium  # завантажує браузер
+
+cp ~/шлях/до/резюме.txt resume.txt   # звичайний текст; на ньому тримаються оцінка й листи
+node make-skills.mjs             # збирає skills.json — ЩО шукати
+$EDITOR jobs.config.json         # ДЕ шукати: фіди, пошуки, ваша країна
+
+node login.mjs                   # ВИ логінитесь вручну (з 2FA). Пароль ніде не зберігається.
+```
+
+**`resume.txt`** — єдиний файл, який застосунок не вигадає за вас. Вставте повний
+текст: `make-skills.mjs` читає його, щоб скласти профіль ключових слів, крізь який
+першим проходить кожна вакансія, а локальна LLM потім переоцінює за ним кожну
+знахідку. Хочете спершу подивитись — `node make-skills.mjs --print`; у будь-якому
+разі прочитайте результат один раз і підправте ваги.
+
+**`jobs.config.json`** у поставці налаштований на вакансії з автоматизації
+тестування. Це той крок, який ніхто за вас не зробить: це вибір дощок і формулювань
+запитів, а не факт, який можна витягти з резюме. Змініть фіди DOU, пошукові URL
+Djinni, запити Himalayas та LinkedIn і Telegram-канали на свою сферу й вкажіть `candidateCountry` — див.
+[Адаптація під іншу професію](specialization.uk.md).
+
+`login.mjs` відкриває справжній браузер, і ви підключаєтесь самі. Залогіньтесь повністю (з 2FA); він сам
+помітить вхід, збереже сесію у `.browser-profile/` і закриється. Без входу протягом
+6 хвилин він завершується, нічого не зберігши — просто запустіть ще раз. Щоб увійти
+ще й на Djinni: `node login.mjs djinni`.
+
+Далі перевірте, що все працює, перш ніж ставити на розклад:
+
+```bash
+node jobs.mjs        # один прохід по всіх увімкнених джерелах
+node dashboard.mjs   # зібрати applications/index.html і подивитись, що знайшлось
+```
+
+## Сповіщення на телефон (Telegram, необов'язково)
+
+Банери доходять до вас лише за Mac. Щоб отримувати ті самі сповіщення на
+телефон, підключіть власного Telegram-бота. Кожен новий пакет приходить окремим
+повідомленням з посиланням на вакансію, кожне нове повідомлення в LinkedIn — з
+посиланням на діалог, а також повідомлення Djinni, сесія, що закінчилась, чи
+зламане джерело.
+
+1. У Telegram відкрийте **@BotFather**, надішліть `/newbot` і виберіть назву.
+2. Напишіть новому боту будь-що (бот не може написати вам першим).
+3. Запустіть `node telegram-setup.mjs` і вставте токен від BotFather у запиті
+   (він не відображається; працює й `TELEGRAM_BOT_TOKEN`, а токен в аргументі
+   потрапив би в `ps` та історію оболонки). Він знайде ваш чат, надішле
+   тестове повідомлення і запише `telegram.json` (у .gitignore, читати можете
+   лише ви).
+
+Сповіщення стають у чергу в `telegram-outbox/`, а надсилає їх фоновий процес,
+тож Mac, який прокинувся ще без мережі, надішле їх за кілька хвилин, а не
+загубить. Те, що не вдалося надіслати за два дні, відкидається. Журнал —
+`logs/telegram_YYYYMMDD.log`; щоб вимкнути сповіщення, видаліть `telegram.json`.
+
+З Mac виходить лише текст сповіщень: назва вакансії, компанія і вердикт LLM, ім'я
+рекрутера і початок повідомлення. Більше нічого. Як і будь-який прогін,
+сповіщення працюють лише поки Mac не спить; щоб Mac на зарядці не засинав із
+закритою кришкою, див. [нижче](#mac-не-спить-із-закритою-кришкою-необовязково).
+
+## Розклад (launchd)
+
+Що й коли запускають демони:
+
+| Завдання           | Частота               |
+|--------------------|-----------------------|
+| Перевірка скриньки LinkedIn (`linkedin-assistant`)   | щогодини               |
+| Скринька Djinni + автобамп (`djinni-inbox`)           | щогодини               |
+| Пошук на DOU / Djinni / Himalayas / Telegram (`job-discovery-dou`) | щогодини |
+| Повний пошук із LinkedIn (`job-discovery-linkedin`)   | кожні 3 години (о :45) |
+| Дозапуск LinkedIn після DarkWake (`linkedin-catchup`) | кожні 15 хв (нічого не робить без маркера) |
+| Перевірка закритих + архів (`closed-check`)           | кожні 3 години, 08:30–20:30 (працює раз на день) |
+| Тижневий звіт (`jobs-report`)                         | понеділок 09:00        |
+| Нічна резервна копія (`backup`)                       | щодня 21:00            |
+| Демон бейджа в Dock (`jobs-badge`)                    | постійно (KeepAlive)   |
+| Сервер стану дашборда (`state-server`)               | постійно (KeepAlive)   |
+
+Обгортки запуску і launchd-агенти залежать від машини (абсолютні шляхи, ваше
+розташування резюме), тому постачаються як шаблони `*.example`. Скопіюйте
+кожен, заповніть свої значення — справжні копії лишаться локальними (вони у
+gitignore):
+
+```bash
+cp run.sh.example run.sh   # потім відредагуйте версію node + RESUME_PATH
+cp com.example.linkedin-assistant.plist.example com.you.linkedin-assistant.plist  # замініть YOUR_USERNAME **і** Label всередині
+cp com.you.linkedin-assistant.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.you.linkedin-assistant.plist
+```
+
+Зупинити: `launchctl unload ~/Library/LaunchAgents/com.you.linkedin-assistant.plist`.
+Пошук вакансій має власні шаблони: `com.example.job-discovery-dou.plist.example`
+і `com.example.job-discovery-linkedin.plist.example`; сервер стану дашборда —
+`com.example.state-server.plist.example` (постійно запущений, також вкажіть шлях до node).
+
+**LinkedIn і сплячий Mac.** Розклад, який Mac проспав, спрацьовує в наступному
+DarkWake — фоновому пробудженні на 5–10 с, — а на батареї `caffeinate -s` не
+тримає Mac, тож стрічка LinkedIn там ніколи не встигала завантажитись
+(`page.goto: Timeout 30000ms`, LinkedIn 0). Тепер `jobs.mjs` спершу питає
+`pmset`: у DarkWake на батареї він проганяє DOU, Djinni, Himalayas і Telegram, пише в лог
+`linkedin: deferred`, не рахує LinkedIn у моніторингу здоров'я джерел і
+створює маркер `linkedin-pending`. `com.example.linkedin-catchup.plist.example`
+(`LINKEDIN_CATCHUP=1 run.sh jobs.mjs`, кожні 15 хв) без маркера одразу
+виходить; з маркером і повністю прокинутим Mac він збирає лише LinkedIn і
+знімає маркер. Від мережі нічого не відкладається. Запуск LinkedIn, який
+застав профіль браузера або блокування запуску зайнятими (паралельний
+`check.mjs` чи `jobs.mjs`), лишає той самий маркер, тож LinkedIn повторюється
+протягом 15 хвилин, а не в наступному 3-годинному слоті.
+
+**Сторож.** Кожне завдання ставить позначку про чисте завершення в
+`last-success.json` (у gitignore) і дивиться на інші: завдання, яке давно не
+завершувалось за годинником *і* яке встигли обігнати достатньо інших завдань
+(тобто Mac не спав), дає один банер + сповіщення в Telegram — `check: no
+successful run for 14 h while 15 other runs finished — is its launchd job
+loaded?` — і нагадування через добу, якщо воно й далі лежить. Звичні причини:
+plist не завантажили після перевстановлення або шлях до node у `run.sh` вказує
+на версію, яку `nvm` уже видалив.
+Ідентифікатори завдань у цьому сповіщенні, за plist-ами: `jobs-dou` =
+`job-discovery-dou` (щогодинний запуск із `DOU_ONLY=1`, і лише він),
+`jobs-linkedin` = `job-discovery-linkedin` (повний запуск кожні 3 години;
+позначка ставиться незалежно від того, чи читався сам LinkedIn; агент
+надолуження теж ставить її, коли сканував), `check` = `linkedin-assistant`,
+`djinni-check` = `djinni-inbox`, `closed-check`, `report` = `jobs-report`,
+`backup`. Позначка ставиться лише після виконаної роботи: `check` і
+`djinni-check` — не при зайнятому профілі чи списку, що не завантажився,
+`jobs.mjs` — не тоді, коли впали всі джерела, які він пробував.
+
+## Резервна копія (і відновлення)
+
+Git тримає лише код. Пакети для відгуку, чернетки, усі файли стану,
+`jobs.config.json`, `skills.json`, `resume.txt`, `run.sh`, історія
+трафіку GitHub власника (`gh-traffic/`) і живі plist-и існують тільки на цьому диску, тож `backup.mjs` щоночі архівує їх
+(`com.example.backup.plist.example`, 21:00) в iCloud Drive —
+`~/Library/Mobile Documents/com~apple~CloudDocs/linkedin-assistant-backup/`, по
+одному `.tgz` на день, зберігаються 14 найновіших, менше 1 МБ кожен. `BACKUP_DIR`
+перенаправляє в інше місце (зовнішній диск, синхронізована тека); `BACKUP_KEEP`
+змінює кількість. Два профілі браузера не входять: 1,4 ГБ кешу Chromium, які
+відтворюють два запуски `node login.mjs`. `telegram.json` теж не входить — у ньому
+токен бота, якому не місце в хмарній теці; `node telegram-setup.mjs` запише його знову.
+
+Відновлення на новому Mac:
+
+```bash
+git clone git@github.com:lzb150/linkedin-assistant.git && cd linkedin-assistant
+npm ci && npx playwright install chromium
+tar -xzf ~/Library/Mobile\ Documents/com~apple~CloudDocs/linkedin-assistant-backup/linkedin-assistant-YYYY-MM-DD.tgz
+node login.mjs && node login.mjs djinni      # дві сесії в архіві відсутні
+node telegram-setup.mjs                      # лише якщо користуєтеся Telegram-сповіщеннями: токена в архіві немає
+./build-jobs.sh                              # Jobs.app
+cp com.*.plist ~/Library/LaunchAgents/ && for p in com.*.plist; do launchctl load ~/Library/LaunchAgents/$p; done
+```
+
+## Mac не спить із закритою кришкою (необов'язково)
+
+Прогони й сповіщення зупиняються, поки Mac спить, а MacBook засинає, щойно
+закривається кришка. Якщо Mac лишається вдома на зарядці, поки вас немає,
+LaunchDaemon `com.example.lid-awake.plist.example` не дасть йому заснути. Кожні
+10 секунд він перевіряє живлення:
+
+| Живлення | Що робить |
+|----------|-----------|
+| Зарядка  | `pmset -a disablesleep 1`: Mac не засинає, навіть із закритою кришкою. Екран усе одно гасне. |
+| Батарея  | `pmset -a disablesleep 0`: звичайний сон. Якщо кришка вже закрита — `pmset sleepnow`, щоб відключений від зарядки Mac не лишався ввімкненим у рюкзаку. |
+
+Це системна служба (вона запускає `pmset` від root), тож встановлення попросить
+пароль від Mac. Нічого редагувати не треба:
+
+```bash
+sudo install -m 644 -o root -g wheel com.example.lid-awake.plist.example /Library/LaunchDaemons/com.example.lid-awake.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.example.lid-awake.plist
+pmset -g | grep SleepDisabled   # 1, поки Mac на зарядці
+```
+
+Щоб видалити її й повернути звичайний сон:
+
+```bash
+sudo launchctl bootout system/com.example.lid-awake
+sudo rm /Library/LaunchDaemons/com.example.lid-awake.plist
+sudo pmset -a disablesleep 0
+```
+
+Варто знати:
+- На зарядці Mac не засинає й уночі, гасне лише екран.
+- Відключений від зарядки Mac із закритою кришкою ще до 10 секунд не спить.
+- Закритий Mac на зарядці тримайте на твердій поверхні, а не на ковдрі.

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isClosed, selectCandidates, planArchive, onBoardHost } from "../lib/closed.mjs";
+import { isClosed, selectCandidates, selectReprobes, planArchive, onBoardHost } from "../lib/closed.mjs";
 
 test("onBoardHost: only the board's own host (or a subdomain) is probed", () => {
   assert.equal(onBoardHost("dou", "https://jobs.dou.ua/companies/x/vacancies/1/"), true);
@@ -14,6 +14,14 @@ test("onBoardHost: only the board's own host (or a subdomain) is probed", () => 
   assert.equal(onBoardHost("jooble", "https://jooble.org/x"), false);
 });
 
+test("onBoardHost: a board on another port is another service, not the board", () => {
+  // Scheme + hostname let a redirect hop to https://djinni.co:8443/ through,
+  // although the apply-link check in tgchannels.mjs bans an explicit port.
+  assert.equal(onBoardHost("djinni", "https://djinni.co:8443/jobs/1-x/"), false);
+  assert.equal(onBoardHost("dou", "http://jobs.dou.ua:8080/x"), false);
+  assert.equal(onBoardHost("djinni", "https://djinni.co:443/jobs/1-x/"), true, "the default port written out is the same port");
+});
+
 test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not closed)", () => {
   assert.equal(isClosed({ source: "dou", status: 404, html: "" }), true);
   assert.equal(isClosed({ source: "djinni", status: 410, html: "" }), true);
@@ -22,13 +30,22 @@ test("isClosed: 404/410 is closed on any source; 5xx/network is unknown (not clo
 });
 
 test("isClosed: per-source inactive markers (observed on live pages, 2026-09)", () => {
-  assert.equal(isClosed({ source: "dou", status: 200, html: "<div class='b-vacancy'>… Вакансія неактивна …</div>" }), true);
-  assert.equal(isClosed({ source: "djinni", status: 200, html: "<p>Ця вакансія зараз неактивна.</p>" }), true);
-  assert.equal(isClosed({ source: "linkedin", status: 200, html: "…See who Forte Group has hired for this role No longer accepting applications Report this job…" }), true);
+  // The boards' own markup around the words (live closed pages, 2026-11-10).
+  const DOU = '<div class="l-vacancy __inactive" itemprop="description">\n<h1 class="g-h2">General QA Engineer (вакансія неактивна)</h1>';
+  const DJINNI = '<div class="alert alert-secondary" role="alert">\n      <div class="fw-medium">\n        Ця вакансія зараз неактивна.\n      </div>';
+  const LINKEDIN = '<figure class="closed-job closed-job__flavor topcard__flavor-row">\n<span class="closed-job__icon"></span>\n<figcaption class="closed-job__flavor--closed">No longer accepting applications</figcaption>';
+  assert.equal(isClosed({ source: "dou", status: 200, html: DOU }), true);
+  assert.equal(isClosed({ source: "djinni", status: 200, html: DJINNI }), true);
+  assert.equal(isClosed({ source: "linkedin", status: 200, html: LINKEDIN }), true);
+  // The same words in the employer's description are not the board speaking:
+  // a live vacancy quoting them was closed, hidden and archived.
+  assert.equal(isClosed({ source: "dou", status: 200, html: '<div class="l-vacancy" itemprop="description"><p>Попередня вакансія неактивна, відгукуйтесь на цю.</p></div>' }), false);
+  assert.equal(isClosed({ source: "djinni", status: 200, html: "<div class=\"job-post__description\"><p>Ця вакансія зараз неактивна на інших сайтах.</p></div>" }), false);
+  assert.equal(isClosed({ source: "linkedin", status: 200, html: "<div class=\"description__text\">No longer accepting applications by email — apply here.</div>" }), false);
   assert.equal(isClosed({ source: "linkedin", status: 200, html: "<title>Join now | LinkedIn</title> authwall" }), false, "an authwall page is unknown, not closed");
   // a DOU marker on a Djinni page (job text quoting it) must not count
-  assert.equal(isClosed({ source: "djinni", status: 200, html: "вакансія неактивна" }), false);
-  assert.equal(isClosed({ source: "jooble", status: 200, html: "Ця вакансія зараз неактивна." }), false, "unsupported source is never closed by marker");
+  assert.equal(isClosed({ source: "djinni", status: 200, html: DOU }), false);
+  assert.equal(isClosed({ source: "jooble", status: 200, html: DJINNI }), false, "unsupported source is never closed by marker");
 });
 
 const now = new Date("2026-09-07T12:00:00Z");
@@ -59,6 +76,16 @@ test("selectCandidates: dou/djinni/linkedin only, new/viewed only, re-checked at
   assert.deepEqual(selectCandidates({ packages, stateMap, checked, now, recheckDays: 3, maxPerRun: 2 }).length, 2, "cap applies after ordering");
 });
 
+test("selectCandidates: a url whose probe got no answer waits a day and sorts by that attempt, so it cannot starve the rest", () => {
+  const packages = [
+    { url: "https://jobs.dou.ua/v/1/", source: "dou" },      // tried 2 h ago → waits
+    { url: "https://jobs.dou.ua/v/2/", source: "dou" },      // tried 2 d ago → due, sorts after the never-probed
+    { url: "https://jobs.dou.ua/v/3/", source: "dou" },      // never probed
+  ];
+  const tried = { "https://jobs.dou.ua/v/1/": new Date(now.getTime() - 2 * 3600000).toISOString(), "https://jobs.dou.ua/v/2/": daysAgo(2) };
+  assert.deepEqual(selectCandidates({ packages, tried, now }).map((c) => c.url), ["https://jobs.dou.ua/v/3/", "https://jobs.dou.ua/v/2/"]);
+});
+
 test("planArchive: closed past the grace period and viewed untouched for viewedDays move to archive; recent, new and post-applied stay", () => {
   const packages = [
     { file: "old-closed.md", url: "https://jobs.dou.ua/v/1/" },
@@ -84,10 +111,43 @@ test("planArchive: closed past the grace period and viewed untouched for viewedD
   assert.deepEqual(planArchive({ packages, stateMap, now, closedDays: 14, viewedDays: 365 }), ["old-closed.md", "no-stamp.md"], "a long viewedDays keeps viewed cards");
 });
 
+test("planArchive: a borderline package ages out by its generated date, status or not", () => {
+  const now = new Date("2026-10-28T12:00:00Z");
+  const packages = [
+    { file: "old-border.md", url: "https://jobs.dou.ua/v/1/", tier: "borderline", generated: "2026-09-20T00:00:00Z" },
+    { file: "fresh-border.md", url: "https://jobs.dou.ua/v/2/", tier: "borderline", generated: "2026-10-20T00:00:00Z" },
+    { file: "old-border-viewed.md", url: "https://jobs.dou.ua/v/3/", tier: "borderline", generated: "2026-09-20T00:00:00Z" },
+    { file: "no-date-border.md", url: "https://jobs.dou.ua/v/4/", tier: "borderline" },
+    { file: "old-match-new.md", url: "https://jobs.dou.ua/v/5/", generated: "2026-09-01T00:00:00Z" },
+  ];
+  const stateMap = { "https://jobs.dou.ua/v/3/": { status: "viewed", updatedAt: "2026-10-27T00:00:00Z" } };
+  assert.deepEqual(planArchive({ packages, stateMap, now }), ["old-border.md", "old-border-viewed.md", "no-date-border.md"]);
+  assert.deepEqual(planArchive({ packages, stateMap, now, borderlineDays: 60 }), ["no-date-border.md"]);
+});
+
 // job-state.json is hand-editable and keeps unknown statuses verbatim; a status
 // that happens to name an Object.prototype member must not read as a cutoff.
 test("planArchive: a status inherited from Object.prototype is not a cutoff", () => {
   const packages = [{ file: "a.md", url: "https://dou.ua/1", source: "dou" }];
   const stateMap = { "https://dou.ua/1": { status: "toString" } };   // no updatedAt: the "old enough" path, where a function cutoff slips through
   assert.deepEqual(planArchive({ packages, stateMap }), []);
+});
+
+test("selectCandidates: a channel's package linking a board is probed as that board", () => {
+  const packages = [
+    { url: "https://djinni.co/jobs/830692-qa-automation-engineer/", source: "tgchannels" },
+    { url: "https://zerotaxjobs.com/jobs/automation-qa-engineer", source: "tgchannels" },
+  ];
+  assert.deepEqual(selectCandidates({ packages, now }), [{ url: packages[0].url, source: "djinni" }]);
+});
+
+// closed-check fires five times a day: a second look that got no answer (429,
+// 5xx, a timeout) was asked again on every run instead of the next day.
+test("selectReprobes: a second look that got no answer waits a day, like any unanswered probe", () => {
+  const url = "https://www.linkedin.com/jobs/view/1/";
+  const now = new Date("2026-11-11T12:00:00Z");
+  const base = { packages: [{ url, source: "linkedin" }], stateMap: { [url]: { status: "closed" } }, gone: { [url]: "2026-11-09T12:00:00Z" }, now };
+  assert.deepEqual(selectReprobes(base), [{ url, source: "linkedin", reprobe: true }], "closed on a 404 two days ago: due");
+  assert.deepEqual(selectReprobes({ ...base, tried: { [url]: "2026-11-11T09:00:00Z" } }), [], "unanswered three hours ago: not yet");
+  assert.equal(selectReprobes({ ...base, tried: { [url]: "2026-11-10T09:00:00Z" } }).length, 1, "unanswered more than a day ago: asked again");
 });
