@@ -254,3 +254,19 @@ test("closed-check: a url closed on a 404 is probed once more a day later and re
   assert.equal(state["https://example.com/archived/"]?.note, "call Olena back", "a note outlives its package");
   assert.deepEqual(p.json("closed-check-state.json")._gone, {}, "each closure gets one second look");
 });
+
+test("closed-check: in a DarkWake on battery nothing is probed or stamped, so the urls stay due", async (t) => {
+  // The Mac sleeps again under the probes there: 9 of 14 failed on 2026-11-11,
+  // and each failed url then waited a day.
+  let hits = 0;
+  const srv = createServer((_req, res) => { hits++; res.statusCode = 404; res.end("gone"); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const U = `http://127.0.0.1:${srv.address().port}/vacancies/5/`;
+  const pmset = `#!/bin/sh\ncase "$2" in systemstate) echo "Current System Capabilities are: CPU Network Disk" ;; batt) echo "Now drawing from 'Battery Power'" ;; esac\n`;
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "c.md": pkg({ url: U }) }, state: { _meta: {} }, bins: { ...quiet, pmset } });
+  assert.match(await runScript(p, "closed-check.mjs", hosts(U)), /DarkWake on battery — 1 url\(s\) left for the next run[\s\S]*0 closed, 0 probed/);
+  assert.equal(hits, 0);
+  const stamps = p.json("closed-check-state.json");
+  assert.ok(!Object.keys(stamps).includes(U) && !Object.keys(stamps._tried || {}).includes(U), "not checked, not tried");
+});

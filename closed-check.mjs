@@ -18,6 +18,7 @@ import { isClosed, selectCandidates, selectReprobes, planArchive, onBoardHost, M
 import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
 import { readPackages, archivePackages } from "./lib/packages.mjs";
 import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
+import { darkWakeOnBattery } from "./lib/wake.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
@@ -167,8 +168,19 @@ async function settleReprobe(url, source, status, html) {
   log(`  ↺ reopened [${status}] ${source}: ${p ? `${p.title} @ ${p.company}` : url} (the board answers again)`);
 }
 
+// A schedule the Mac slept through fires inside a DarkWake, and on battery
+// caffeinate does not hold it up (lib/wake.mjs): the Mac sleeps again under
+// the probes, each one fails, and a failed url waits a day (2026-11-11: 9 of
+// 14 lost, the run took 30 minutes). Asked before every probe, since the Mac
+// can fall asleep mid-run too; the urls left are simply still due, and the
+// plist fires several times a day, so the next run that finds the Mac awake
+// takes them.
 let probed = 0;
 for (const { url, source, reprobe } of todo) {
+  if (darkWakeOnBattery()) {
+    log(`closed-check: the Mac is in a DarkWake on battery — ${todo.length - probed} url(s) left for the next run`);
+    break;
+  }
   try {
     // Every redirect hop is re-checked against the board host, not just the
     // frontmatter url: an open redirect on a board would otherwise aim this
@@ -238,5 +250,5 @@ if (savedNow || wouldPrune) {
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
 if (mayPrune()) for (const m of [checked, tried, gone]) for (const u of Object.keys(m)) if (!live.has(u)) delete m[u];
 saveChecked();
-log(`closed-check: ${saved} closed, ${todo.length} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
+log(`closed-check: ${saved} closed, ${probed} probed, ${archived.size} package(s) archived (closed 14+ / viewed 30+ / borderline 30+ days), ${pruned} stale state entr${pruned === 1 ? "y" : "ies"} dropped`);
 stampHeartbeat(HEARTBEAT_FILE, "closed-check");

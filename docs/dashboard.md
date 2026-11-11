@@ -91,8 +91,9 @@ and the NEW-ribbon pulse.
 
 ![Light theme — the same neon hues, deepened for daylight](dashboard-light.png)
 
-**Closed-vacancy check (`closed-check.mjs`)** — a daily launchd job
-(`com.eugene.closed-check.plist`, ships as `.example`, 08:30) probes the DOU,
+**Closed-vacancy check (`closed-check.mjs`)** — a launchd job
+(`com.eugene.closed-check.plist`, ships as `.example`, every 3 hours from 08:30 to 20:30; it
+stops when the Mac is in a DarkWake on battery and the next run takes over) probes the DOU,
 Djinni and LinkedIn vacancies that are still **New** or **Viewed** (plain GET, one per
 second, each url at most every 3 days, 150 per run) and marks the ones the board
 reports inactive ("вакансія неактивна", LinkedIn's public "No longer accepting
