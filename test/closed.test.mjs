@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isClosed, selectCandidates, planArchive, onBoardHost } from "../lib/closed.mjs";
+import { isClosed, selectCandidates, selectReprobes, planArchive, onBoardHost } from "../lib/closed.mjs";
 
 test("onBoardHost: only the board's own host (or a subdomain) is probed", () => {
   assert.equal(onBoardHost("dou", "https://jobs.dou.ua/companies/x/vacancies/1/"), true);
@@ -139,4 +139,15 @@ test("selectCandidates: a channel's package linking a board is probed as that bo
     { url: "https://zerotaxjobs.com/jobs/automation-qa-engineer", source: "tgchannels" },
   ];
   assert.deepEqual(selectCandidates({ packages, now }), [{ url: packages[0].url, source: "djinni" }]);
+});
+
+// closed-check fires five times a day: a second look that got no answer (429,
+// 5xx, a timeout) was asked again on every run instead of the next day.
+test("selectReprobes: a second look that got no answer waits a day, like any unanswered probe", () => {
+  const url = "https://www.linkedin.com/jobs/view/1/";
+  const now = new Date("2026-11-11T12:00:00Z");
+  const base = { packages: [{ url, source: "linkedin" }], stateMap: { [url]: { status: "closed" } }, gone: { [url]: "2026-11-09T12:00:00Z" }, now };
+  assert.deepEqual(selectReprobes(base), [{ url, source: "linkedin", reprobe: true }], "closed on a 404 two days ago: due");
+  assert.deepEqual(selectReprobes({ ...base, tried: { [url]: "2026-11-11T09:00:00Z" } }), [], "unanswered three hours ago: not yet");
+  assert.equal(selectReprobes({ ...base, tried: { [url]: "2026-11-10T09:00:00Z" } }).length, 1, "unanswered more than a day ago: asked again");
 });

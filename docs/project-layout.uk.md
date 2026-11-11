@@ -16,7 +16,7 @@
 ├── status.mjs         перевірка стану на один екран (`npm run status`)
 ├── make-skills.mjs    згенерувати skills.json з resume.txt (одноразове налаштування)
 ├── telegram-setup.mjs одноразове налаштування необов'язкових сповіщень у Telegram → telegram.json
-├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (щоденне launchd-завдання)
+├── closed-check.mjs   позначити вакансії DOU/Djinni/LinkedIn, які дошка вважає неактивними, як Closed (launchd-завдання, кожні 3 години вдень)
 ├── backup.mjs         нічний .tgz пакетів, чернеток, стану і конфігу в iCloud Drive (launchd-завдання)
 ├── open-dashboard.sh  помічник кліку в Dock: перегенерувати → відкрити браузер
 ├── lib/               логіка (оцінювання, склейка, шаблони, джерела DOU/Djinni/Himalayas/Telegram/LinkedIn)

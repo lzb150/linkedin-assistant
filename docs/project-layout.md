@@ -16,7 +16,7 @@
 ├── status.mjs         one-screen health check (`npm run status`)
 ├── make-skills.mjs    generate skills.json from resume.txt (one-time setup)
 ├── telegram-setup.mjs one-time setup of the optional Telegram alerts → telegram.json
-├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (daily launchd job)
+├── closed-check.mjs   mark DOU/Djinni/LinkedIn vacancies the board reports inactive as Closed (launchd job, every 3 hours by day)
 ├── backup.mjs         nightly .tgz of packages, drafts, state and config into iCloud Drive (launchd job)
 ├── open-dashboard.sh  Dock-click helper: regenerate → open browser
 ├── lib/               logic (scoring, dedup, templates, DOU/Djinni/Himalayas/Telegram/LinkedIn sources)

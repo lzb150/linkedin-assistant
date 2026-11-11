@@ -78,7 +78,7 @@ Viewed tabs; a selected chip always stays) narrow the list to a single board. Ca
 ago", from the package's `posted`) and, in the hazard colour, **reposted ×N**
 when the board closed an earlier listing of the same vacancy and listed it
 again (see [Job discovery](job-discovery.md)). Viewed cards you have not touched for 30 days are archived by the
-daily closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
+closed-check run (see "Closed-vacancy check (`closed-check.mjs`)" below).
 
 ![The Djinni chip and a search query narrowing the list](filters.png)
 

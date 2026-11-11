@@ -1,5 +1,5 @@
 // closed-check.mjs
-// Daily: probe New/Viewed DOU, Djinni and LinkedIn vacancies and mark the ones the board
+// Every 3 hours by day (a url at most every 3 days): probe New/Viewed DOU, Djinni and LinkedIn vacancies and mark the ones the board
 // reports inactive as status "closed" in job-state.json, so they leave the
 // dashboard's New and Viewed views. Plain GETs, one per second.
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
@@ -108,7 +108,7 @@ const stateAtStart = await readLive("skipping closed-vacancy check");
 
 const todo = [
   ...selectCandidates({ packages, stateMap: stateAtStart, checked, tried }),   // 150 per run, each url at most every 3 days
-  ...selectReprobes({ packages, stateMap: stateAtStart, gone }),               // the second look at a 404 closure
+  ...selectReprobes({ packages, stateMap: stateAtStart, gone, tried }),               // the second look at a 404 closure
 ];
 log(`closed-check: probing ${todo.length} of ${packages.length} package url(s)`);
 const byUrl = new Map(packages.map((p) => [p.url, p]));
