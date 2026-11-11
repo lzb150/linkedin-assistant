@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Closed-vacancy check (closed-check.mjs), daily at 08:30: marks New/Viewed vacancies the board
-  reports inactive as "closed".
+  Closed-vacancy check (closed-check.mjs), every 3 hours from 08:30 to 20:30: marks New/Viewed
+  vacancies the board reports inactive as "closed". A url is probed at most every 3 days, so only
+  the first run of the day that finds the Mac awake does the work; the others find nothing due.
   Replace YOUR_USERNAME (launchd needs absolute paths). Install/uninstall: docs/setup.md → "Schedule it (launchd)".
 -->
 <plist version="1.0">
@@ -15,7 +16,13 @@
     <string>closed-check.mjs</string>
   </array>
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+  <array>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
   <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/closed-check.out.log</string>
   <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/linkedin-assistant/logs/closed-check.err.log</string>
 </dict>

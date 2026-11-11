@@ -81,7 +81,7 @@ What the daemons run, and when:
 | DOU / Djinni / Himalayas / Telegram discovery (`job-discovery-dou`) | hourly |
 | Full discovery incl. LinkedIn (`job-discovery-linkedin`) | every 3 hours (at :45) |
 | LinkedIn catch-up after a DarkWake (`linkedin-catchup`) | every 15 min (no-op unless pending) |
-| Closed-vacancy check + archive (`closed-check`)  | daily 08:30            |
+| Closed-vacancy check + archive (`closed-check`)  | every 3 hours, 08:30–20:30 (works once a day) |
 | Weekly report (`jobs-report`)                    | Monday 09:00           |
 | Nightly backup (`backup`)                        | daily 21:00            |
 | Dock badge daemon (`jobs-badge`)                 | always on (KeepAlive)  |

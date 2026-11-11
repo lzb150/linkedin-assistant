@@ -82,7 +82,7 @@ node dashboard.mjs   # зібрати applications/index.html і подивит�
 | Пошук на DOU / Djinni / Himalayas / Telegram (`job-discovery-dou`) | щогодини |
 | Повний пошук із LinkedIn (`job-discovery-linkedin`)   | кожні 3 години (о :45) |
 | Дозапуск LinkedIn після DarkWake (`linkedin-catchup`) | кожні 15 хв (нічого не робить без маркера) |
-| Перевірка закритих + архів (`closed-check`)           | щодня 08:30            |
+| Перевірка закритих + архів (`closed-check`)           | кожні 3 години, 08:30–20:30 (працює раз на день) |
 | Тижневий звіт (`jobs-report`)                         | понеділок 09:00        |
 | Нічна резервна копія (`backup`)                       | щодня 21:00            |
 | Демон бейджа в Dock (`jobs-badge`)                    | постійно (KeepAlive)   |
