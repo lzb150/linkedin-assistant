@@ -16,7 +16,7 @@ import { writeJsonAtomic, readJson } from "./lib/json-file.mjs";
 import { log, stampHeartbeat } from "./lib/notify.mjs";
 import { isClosed, selectCandidates, selectReprobes, planArchive, onBoardHost, MARKER_LANG } from "./lib/closed.mjs";
 import { bodyText, discardBody, fetchFollow } from "./lib/sources/html.mjs";
-import { readPackages, archivePackages } from "./lib/packages.mjs";
+import { readPackages, archivePackages, markClosed } from "./lib/packages.mjs";
 import { acquireRunLockOrExit } from "./lib/run-lock.mjs";
 import { darkWakeOnBattery } from "./lib/wake.mjs";
 
@@ -215,7 +215,16 @@ for (const { url, patch } of closing) stateMap = mergeEntry(stateMap, url, patch
 // Archive BEFORE pruning, and prune by what actually moved: a package whose
 // rename failed is still in applications/ and needs its state entry, or it
 // reappears as New on the dashboard.
-const archived = new Set(archivePackages(APPS, planArchive({ packages, stateMap }), { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ / borderline 30+ days
+const toArchive = planArchive({ packages, stateMap });
+// A package archived as closed says so itself: its state entry is pruned below,
+// and jobs.mjs reads `closed:` in archive/ to know a later re-listing as a repost.
+for (const p of packages) {
+  const e = stateMap[p.url];
+  if (!toArchive.includes(p.file) || e?.status !== "closed") continue;
+  try { markClosed(APPS, p.file, e.updatedAt || new Date().toISOString()); }
+  catch (err) { log(`  · could not mark ${p.file} closed: ${err.message}`); }
+}
+const archived = new Set(archivePackages(APPS, toArchive, { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ / borderline 30+ days
 // State entries for urls with no live package (archived now or earlier, pruned,
 // or never had one) are dropped — if untouched for a day: a package jobs.mjs
 // wrote during the probe, already clicked on the dashboard, is not in our

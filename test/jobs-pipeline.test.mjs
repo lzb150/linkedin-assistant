@@ -7,8 +7,9 @@
 import { test } from "node:test";
 import { createServer } from "node:http";
 import assert from "node:assert/strict";
-import { readdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { runScript, waitFor, pkg, startBotApi } from "./helpers/e2e.mjs";
+import { readdirSync, existsSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { join } from "node:path";
+import { runScript, waitFor, pkg, startBotApi, ROOT } from "./helpers/e2e.mjs";
 import { rss, AQA, FEED, serveFeed, setupProject, runJobs, mdFiles, claudeCalls, ACME } from "./helpers/jobs-pipeline.mjs";
 
 test("jobs.mjs end-to-end: feed → gates → package → seen → health → dashboard → notification", async (t) => {
@@ -250,4 +251,50 @@ test("jobs.mjs: a same-board re-listing of a closed package under a new url is j
   assert.match(out3, /Considered 0 new/, "seen again under its identity, like any judged vacancy");
   assert.doesNotMatch(out3, /repost ×/);
   assert.equal(mdFiles(p).length, 2);
+});
+
+// closed-check with no state server and no board to probe (jobs.dou.ua is off its host list here).
+const NO_PROBE = { STATE_SERVER: "http://127.0.0.1:1", CLOSED_HOSTS: JSON.stringify({ dou: "127.0.0.1:1" }) };
+
+// closed-check archives a closed package after 14 days and drops its state
+// entry, so jobs.mjs no longer saw the closed prior: the re-listing read as
+// "seen" under its identity key and never surfaced. The archived package
+// carries `closed:` now, and the repost lookup reads applications/archive/ too.
+test("jobs.mjs: a re-listing that arrives after closed-check archived the closed package is still a repost", async (t) => {
+  const again = { ...ACME, link: "https://jobs.dou.ua/companies/acme/vacancies/9/" };
+  let feed = rss([ACME]);
+  const p = setupProject(t, await serveFeed(t, () => feed));
+  copyFileSync(join(ROOT, "closed-check.mjs"), p.path("closed-check.mjs"));
+  assert.match(await runJobs(p), /wrote 1 application package/);
+  const [first] = mdFiles(p);
+  // Closed 20 days ago: today's closed-check run moves the package to archive/ and prunes the entry.
+  writeFileSync(p.path("job-state.json"), JSON.stringify({ [ACME.link]: { status: "closed", updatedAt: new Date(Date.now() - 20 * 86400000).toISOString() } }));
+  assert.match(await runScript(p, "closed-check.mjs", NO_PROBE), /1 package\(s\) archived/);
+  assert.deepEqual(mdFiles(p), [], "the closed package left applications/");
+  assert.match(p.read("applications", "archive", first), /^closed: \d{4}-\d{2}-\d{2}T/m, "archived as closed, and says so");
+  assert.equal(p.json("job-state.json")[ACME.link], undefined, "its state entry went with it");
+  feed = rss([again]);
+  const out = await runJobs(p);
+  assert.match(out, /· repost ×1 of closed \S+\.md: dou: Senior SDET \(Playwright\)/);
+  assert.match(out, /✓ MATCH \[\d+ \/ llm 85\] dou: Senior SDET \(Playwright\) @ Acme \(repost ×1\)/);
+  assert.equal(mdFiles(p).length, 1, "one new package, for the re-listing");
+  // Judged once: the next run knows the new url.
+  assert.doesNotMatch(await runJobs(p), /repost ×/);
+  assert.equal(mdFiles(p).length, 1);
+});
+
+// A package archived for any other reason (Viewed and untouched for 30 days) says
+// nothing about the board: a new url for the same vacancy is not a repost of it.
+test("jobs.mjs: an archived package that was not closed makes no repost", async (t) => {
+  const again = { ...ACME, link: "https://jobs.dou.ua/companies/acme/vacancies/9/" };
+  let feed = rss([ACME]);
+  const p = setupProject(t, await serveFeed(t, () => feed));
+  copyFileSync(join(ROOT, "closed-check.mjs"), p.path("closed-check.mjs"));
+  await runJobs(p);
+  writeFileSync(p.path("job-state.json"), JSON.stringify({ [ACME.link]: { status: "viewed", updatedAt: new Date(Date.now() - 40 * 86400000).toISOString() } }));
+  assert.match(await runScript(p, "closed-check.mjs", NO_PROBE), /1 package\(s\) archived/);
+  feed = rss([again]);
+  const out = await runJobs(p);
+  assert.doesNotMatch(out, /repost ×/);
+  assert.match(out, /Considered 0 new/);
 });
