@@ -166,6 +166,12 @@ const excludedByTitle = titleExcluder(excludeList(config.excludeTitle));
 // Built before gathering: knownJob below asks it about reposts.
 const packageIndex = new Map();
 const packageLinks = new Map();
+// One package into packageIndex under its canonical key; `extra` marks an archived one.
+function indexPackage(fm, extra = {}) {
+  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
+  if (!packageIndex.has(key)) packageIndex.set(key, []);
+  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "", generated: fm.generated || "", reposts: Number(fm.reposts) || 0, ...extra });
+}
 for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable package skipped: ${f} (${e?.message})`) })) {
   // "—" is the blank-company placeholder; canonicalKey scopes those by url,
   // so pass the url along instead of filtering on a truthy company.
@@ -177,9 +183,7 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
   // A list per key: two same-source reqs can share one, and keeping only the
   // last one read lost the other's url — the same-url guard below then missed it.
   if (!fm.title) continue;
-  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
-  if (!packageIndex.has(key)) packageIndex.set(key, []);
-  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "", generated: fm.generated || "", reposts: Number(fm.reposts) || 0 });
+  indexPackage(fm);
   // By link too: a channel's repost of this vacancy carries a title of its own.
   const link = linkKey(fm.url);
   if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
@@ -207,11 +211,9 @@ try {
 // as the board kept listing it. They carry `closed:` (lib/packages.mjs
 // markClosed) and are marked `archived`, so the package gates never call a
 // vacancy "packaged" or a dup of a file that is no longer in applications/.
-for (const fm of readPackages(join(APPS, "archive"))) {
+for (const fm of readPackages(join(APPS, "archive"), { warn: (f, e) => log(`  · unreadable archived package skipped: ${f} (${e?.message})`) })) {
   if (!fm.closed || !fm.title) continue;
-  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
-  if (!packageIndex.has(key)) packageIndex.set(key, []);
-  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "", generated: fm.generated || "", reposts: Number(fm.reposts) || 0, archived: true });
+  indexPackage(fm, { archived: true });
   closedFiles.add(fm.file);
 }
 

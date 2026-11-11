@@ -82,7 +82,7 @@ async function serverRead() {
 async function serverPatch(url, patch) {
   const res = await fetch(`${STATE_SERVER}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, patch }), signal: AbortSignal.timeout(5000) });
   await discardBody(res);
-  if (!res.ok) throw new Error(`POST /state ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(`POST /state ${res.status}`), { status: res.status });
 }
 const direct = (e) => { viaServer = false; log(`  · state server went away (${e.message}) — writing job-state.json directly`); };
 // The store as it is NOW: the server's copy while it is up, else the file.
@@ -95,9 +95,21 @@ async function readLive(reason) {
 // the fresh `map` and written once.
 async function save(map, edits) {
   if (!edits.length) return;
-  if (viaServer) { try { for (const { url, patch } of edits) await serverPatch(url, patch); return; } catch (e) { direct(e); } }
+  if (viaServer) { try { return await saveViaServer(edits); } catch (e) { direct(e); } }
   for (const { url, patch } of edits) map = mergeEntry(map, url, patch);
   writeStore(STATE, map);
+}
+// One POST per edit. A 4xx is the server refusing THAT edit (a legacy key that
+// is no http url), not the server being gone: it is skipped and counted. Read
+// as an outage, it flipped the run to writing the file directly, over whatever
+// the server had saved meanwhile. Anything else throws, for the direct path.
+async function saveViaServer(edits) {
+  let rejected = 0;
+  for (const { url, patch } of edits) {
+    try { await serverPatch(url, patch); }
+    catch (e) { if (!(e.status >= 400 && e.status < 500)) throw e; rejected++; }
+  }
+  if (rejected) log(`  · state server rejected ${rejected} edit(s) — left as they are`);
 }
 const CLOSE = { status: "closed" };
 // The dashboard's own clearing patch: an entry with neither status nor note
@@ -216,15 +228,18 @@ for (const { url, patch } of closing) stateMap = mergeEntry(stateMap, url, patch
 // rename failed is still in applications/ and needs its state entry, or it
 // reappears as New on the dashboard.
 const toArchive = planArchive({ packages, stateMap });
-// A package archived as closed says so itself: its state entry is pruned below,
-// and jobs.mjs reads `closed:` in archive/ to know a later re-listing as a repost.
-for (const p of packages) {
-  const e = stateMap[p.url];
-  if (!toArchive.includes(p.file) || e?.status !== "closed") continue;
-  try { markClosed(APPS, p.file, e.updatedAt || new Date().toISOString()); }
-  catch (err) { log(`  · could not mark ${p.file} closed: ${err.message}`); }
-}
+// Which of them are archived as closed, and since when (the state entry is pruned below).
+const closedAt = new Map(packages.filter((p) => stateMap[p.url]?.status === "closed").map((p) => [p.file, stateMap[p.url].updatedAt || new Date().toISOString()]));
 const archived = new Set(archivePackages(APPS, toArchive, { warn: (f, e) => log(`  · could not archive ${f}, keeping it: ${e.message}`) }));   // closed 14+ / viewed 30+ / borderline 30+ days
+// A package archived as closed says so itself: jobs.mjs reads `closed:` in
+// archive/ to know a later re-listing as a repost. Written after the move, in
+// archive/: a package whose rename failed stays in applications/ unmarked (it
+// may yet be clicked back to Viewed), and nothing else writes a file there.
+for (const file of archived) {
+  if (!closedAt.has(file)) continue;
+  try { markClosed(join(APPS, "archive"), file, closedAt.get(file)); }
+  catch (err) { log(`  · could not mark ${file} closed: ${err.message}`); }
+}
 // State entries for urls with no live package (archived now or earlier, pruned,
 // or never had one) are dropped — if untouched for a day: a package jobs.mjs
 // wrote during the probe, already clicked on the dashboard, is not in our

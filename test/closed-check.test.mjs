@@ -4,8 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { makeProject, pkg, spawnScript, runScript, QUIET_BINS } from "./helpers/e2e.mjs";
+import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { makeProject, pkg, spawnScript, runScript, startStateServer, QUIET_BINS } from "./helpers/e2e.mjs";
 
 // A board that reports every vacancy gone.
 async function server404(t) {
@@ -281,4 +281,33 @@ test("closed-check: in a DarkWake on battery nothing is probed or stamped, so th
   assert.equal(hits, 0);
   const stamps = p.json("closed-check-state.json");
   assert.ok(!Object.keys(stamps).includes(U) && !Object.keys(stamps._tried || {}).includes(U), "not checked, not tried");
+});
+
+// Any failed POST used to read as "the state server went away": one edit the
+// server refuses (a legacy key that is no http url) flipped the run to writing
+// job-state.json directly, over whatever the server had saved meanwhile.
+test("closed-check: an edit the state server rejects is skipped; the run does not fall back to writing the file", async (t) => {
+  const old = new Date(Date.now() - 40 * 86400000).toISOString();
+  const live = "https://example.com/v/1/";
+  const srv = await startStateServer(t);
+  writeFileSync(srv.statePath, JSON.stringify({ _meta: {}, "legacy-key": { status: "closed", updatedAt: old }, "https://example.com/gone/": { status: "closed", updatedAt: old } }));
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "live.md": pkg({ url: live }) }, state: { _meta: {} }, bins: quiet });
+  const out = await runScript(p, "closed-check.mjs", { STATE_SERVER: srv.base });
+  assert.doesNotMatch(out, /went away/);
+  assert.match(out, /state server rejected 1 edit\(s\)/);
+  assert.equal(p.read("job-state.json"), JSON.stringify({ _meta: {} }), "the file is still the server's alone");
+  const store = JSON.parse(readFileSync(srv.statePath, "utf8"));
+  assert.deepEqual(Object.keys(store).sort(), ["_meta", "legacy-key"], "the edit the server accepts went through; the refused one stays");
+});
+
+// `closed:` was written before the move. A package whose rename failed stayed
+// in applications/ carrying it; clicked back to Viewed and archived weeks
+// later, it read as a closed prior and made a repost of a vacancy never closed.
+test("closed-check: a package that could not be archived is not marked closed", async (t) => {
+  const old = new Date(Date.now() - 40 * 86400000).toISOString();
+  const gone = "https://example.com/v/8/";
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "gone.md": pkg({ url: gone }) }, state: { _meta: {}, [gone]: { status: "closed", updatedAt: old } }, bins: quiet });
+  mkdirSync(p.path("applications", "archive", "gone.md"), { recursive: true });   // a file cannot be renamed onto a directory
+  assert.match(await runScript(p, "closed-check.mjs", OFF), /could not archive gone\.md, keeping it/);
+  assert.doesNotMatch(p.read("applications", "gone.md"), /^closed:/m);
 });
