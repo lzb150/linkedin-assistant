@@ -108,6 +108,18 @@ test("closed-check: with no concurrent edit the closure is recorded", async (t) 
   assert.equal(p.json("job-state.json")[U].status, "closed");
 });
 
+// The second look reads a store entry updated more than a minute after the
+// `_gone` stamp as the owner's click and leaves the card closed. Only the
+// mid-run flush re-dated the stamp to the save: a closure saved by the final
+// write kept its probe time, so on a slow run a wrong 404 was never reopened.
+test("closed-check: a 404 closure saved at the end of the run is dated at the save, not at the probe", async (t) => {
+  const U = `${await server404(t)}/vacancies/3/`;
+  const p = makeProject(t, { scripts: ["closed-check.mjs"], packages: { "c.md": pkg({ url: U }) }, state: { _meta: {} }, bins: quiet });
+  await runScript(p, "closed-check.mjs", hosts(U));
+  const gone = Date.parse(p.json("closed-check-state.json")._gone[U]);
+  assert.ok(gone >= Date.parse(p.json("job-state.json")[U].updatedAt), "the stamp is not older than the closure it stands for");
+});
+
 // Archiving a package must take its job-state entry along, and entries whose
 // package is gone for any other reason are dropped too (once a day old — a
 // package written and clicked during the probe must survive) — but never when

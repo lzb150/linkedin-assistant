@@ -254,6 +254,10 @@ if (savedNow || wouldPrune) {
   const edits = pending.filter((u) => closable(out, u)).map((url) => ({ url, patch: CLOSE }));
   if (mayPrune()) for (const url of Object.keys(out)) if (prunable(out, url)) { edits.push({ url, patch: CLEAR }); pruned++; }
   await save(out, edits);
+  // Dated at the save, as flush() does: settleReprobe reads a store entry
+  // updated more than a minute after this stamp as the owner's click.
+  const at = new Date().toISOString();
+  for (const { url, patch } of edits) if (patch === CLOSE && gone[url]) gone[url] = at;
 }
 // Check stamps AFTER the store: a crash between the two must lose a re-probe, not a closure.
 // Forget stamps for urls that no longer have a package (pruned) so the file stays bounded.
