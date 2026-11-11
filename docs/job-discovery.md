@@ -54,6 +54,8 @@ back with a visible browser.
   package carries `reposts: N` and `reposted_from`, the dashboard and the
   Telegram alert say **reposted ×N**. Only the board that closed it counts;
   the same url is still the same listing, another board is still a dup.
+  A closed package archived after 14 days still counts: it is archived with
+  `closed: <date>` in its frontmatter, which the repost lookup reads.
 - **Posted date** — a package's `posted` is the first posting date, when the
   board states one: DOU's `pubDate`, the "Published" date on Djinni's vacancy
   page (its listing tooltip is the last update, which a bump re-stamps), a

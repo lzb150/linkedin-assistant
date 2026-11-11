@@ -201,6 +201,19 @@ try {
   const closedUrls = new Set(Object.entries(state).filter(([, e]) => e?.status === "closed").map(([u]) => u));
   for (const list of packageIndex.values()) for (const p of list) if (closedUrls.has(p.url)) closedFiles.add(p.file);
 } catch (e) { log(`  · job-state.json unreadable (${e.message}) — no repost detection this run`); }
+// Closed packages closed-check has archived (14 days after the closure) still
+// count as closed priors: their state entry is gone and nothing else reads
+// archive/, so a vacancy re-listed after that was buried as "seen" for as long
+// as the board kept listing it. They carry `closed:` (lib/packages.mjs
+// markClosed) and are marked `archived`, so the package gates never call a
+// vacancy "packaged" or a dup of a file that is no longer in applications/.
+for (const fm of readPackages(join(APPS, "archive"))) {
+  if (!fm.closed || !fm.title) continue;
+  const key = canonicalKey({ company: fm.company, title: fm.title, url: fm.url });
+  if (!packageIndex.has(key)) packageIndex.set(key, []);
+  packageIndex.get(key).push({ file: fm.file, source: fm.source || "", url: fm.url || "", generated: fm.generated || "", reposts: Number(fm.reposts) || 0, archived: true });
+  closedFiles.add(fm.file);
+}
 
 // Known before it is opened: already in the seen store (either key spelling) or
 // excluded by title. LinkedIn skips the click + 1.8 s and Djinni the detail-page
