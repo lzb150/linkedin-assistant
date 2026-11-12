@@ -152,9 +152,12 @@ function closures(map, urls) {
 // every closure found so far.
 async function flush() {
   const map = await readLive("closed-check: store unreadable mid-run — closures not saved");
-  const edits = closures(map, pending.splice(0));
-  saved += edits.length;
+  const edits = closures(map, pending);
   await save(map, edits);
+  // Emptied only once saved: a failed write leaves them for the next flush
+  // and the final replay. (Nothing is pushed meanwhile: the probe loop awaits us.)
+  pending.length = 0;
+  saved += edits.length;
   // Dated now, not at the probe: settleReprobe reads a store entry updated more
   // than a minute after this stamp as the owner's click, and on a slow run the
   // save came later than that — the closure then never reopened.
@@ -169,9 +172,13 @@ async function flush() {
 const REOPEN = { status: "new" };
 async function settleReprobe(url, source, status, html) {
   if (status !== 200 && status !== 404 && status !== 410) return;   // no answer: asked again tomorrow
-  const closedAt = Date.parse(gone[url] || "");
+  if (!isClosed({ source, status, html })) await reopen(url, source, status, Date.parse(gone[url] || ""));
+  // Settled only once the reopen is in the store: dropped before the write, a
+  // failed save lost the second look for good and the live vacancy stayed
+  // Closed. A throw leaves `gone[url]`, and the url is asked again tomorrow.
   delete gone[url];
-  if (isClosed({ source, status, html })) return;
+}
+async function reopen(url, source, status, closedAt) {
   const map = await readLive("closed-check: store unreadable mid-run — reopening skipped");
   const e = map[url];
   if (e?.status !== "closed" || Date.parse(e.updatedAt || "") > closedAt + 60_000) return;
@@ -215,7 +222,12 @@ for (const { url, source, reprobe } of todo) {
   // Politeness pause after EVERY probe, failed ones too (a `continue` in the
   // catch used to skip it and hammer a board during a network blip).
   await sleep(1000);
-  if (++probed % 25 === 0) await flush();
+  // A failed mid-run save must not end the run: the check stamps and the
+  // closures found so far would go with it. They stay in `pending` instead.
+  if (++probed % 25 === 0) {
+    try { await flush(); }
+    catch (e) { log(`  · mid-run save failed (${e.message}) — closures kept for the next save`); }
+  }
 }
 // Decided now, written below together with the prune: planArchive and the
 // prune count want the store as it will be once the closures are in.
