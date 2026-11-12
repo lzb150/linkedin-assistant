@@ -338,3 +338,13 @@ test("extractJSON prefers the block that carries the verdict over an aside befor
   assert.deepEqual(extractJSON('Note {"note": "x"} then {"score": 80, "why": "fit"}'), { score: 80, why: "fit" });
   assert.deepEqual(extractJSON('only {"note": "x"} here'), { note: "x" }, "no verdict: the first block, as before");
 });
+
+test("llmJSON retries JSON that `accept` refuses, like prose", async () => {
+  const replies = ['{"note":"strong fit"}', '{"score":80}'];
+  const exec = (_c, _a, _o, cb) => { cb(null, replies.shift(), ""); return { stdin: { on() {}, end() {} } }; };
+  const lines = [];
+  const res = await llmJSON("p", { exec, log: (...a) => lines.push(a.join(" ")), retryDelayMs: 0, accept: (r) => typeof r.score === "number" });
+  assert.deepEqual(res, { score: 80 });
+  assert.equal(replies.length, 0, "the second call was made");
+  assert.ok(lines.some((l) => /JSON without a usable answer/.test(l)), "the refused reply is logged");
+});

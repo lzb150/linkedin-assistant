@@ -121,3 +121,11 @@ test("buildReport shows the average time per judged match from the run stats, an
   const quiet = buildReport({ now, days: 7, packages: [], runStats: [{ at: "2026-09-06T01:00:00Z", considered: 1 }] });
   assert.doesNotMatch(quiet.text, /matches judged/);
 });
+
+test("countRunStats counts a second LLM failure (the keyword-only package line) too", () => {
+  const text = [
+    "2026-09-06T01:00:02Z   · llm failed for: Foo — deferred, next run",
+    "2026-09-06T04:00:02Z   · llm failed again for: Foo — keyword-only package",
+  ].join("\n");
+  assert.equal(countRunStats(text).failed, 2);
+});
