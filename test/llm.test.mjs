@@ -113,6 +113,14 @@ test("llmJSON resolves null when the CLI errors (missing binary, timeout) and lo
   const exit = Object.assign(new Error("Command failed"), { code: 1 });
   assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(exit, "", "Not logged in\nrun claude login"), log, retryDelayMs: 0 }), null);
   assert.match(lines.at(-1), /exit 1.*Not logged in run claude login/);
+
+  // 2026-11-13..16: the unknown-tool warnings filled the logged stderr slice and
+  // the real error sat in stdout, so three days of failures showed no cause.
+  const warnings = ["MultiEdit", "NotebookRead", "SlashCommand", "LS"]
+    .map((t) => `Permission deny rule "${t}" matches no known tool — check for typos.`).join("\n");
+  const denied = "Your organization has disabled Claude subscription access for Claude Code";
+  assert.equal(await llmJSON("p", { exec: (_c, _a, _o, cb) => cb(exit, `${denied}\n`, warnings), log, retryDelayMs: 0 }), null);
+  assert.equal(lines.at(-1), `llm failed: exit 1: ${denied}`);
 });
 
 test("llmJSON retries once: a transient failure then JSON → the JSON; two failures → null, both logged", async () => {
