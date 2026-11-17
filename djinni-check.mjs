@@ -131,14 +131,13 @@ function bannerFresh(threads, bucketEmpty) {
 async function bumpIfDue(page, signal) {
   try {
     const bumpState = readBumpState(BUMP_STATE_FILE);
-    if (dueForCheck(bumpState) && !signal?.aborted) {
-      const outcome = await bumpProfile(page, signal);
-      if (outcome === "aborted") return;   // nothing was pressed: the next run checks again
-      writeJsonAtomic(BUMP_STATE_FILE, nextBumpState(bumpState, outcome));
-      log(`bump: ${outcome}`);
-      if (outcome === "bumped") notify("Djinni", "Profile bumped — back to the top of search results.");
-      if (outcome === "unverified" || outcome === "clicked") notify("Djinni assistant", "Bump attempt could not be verified — check djinni.co/my/profile/ manually.");
-    }
+    if (!dueForCheck(bumpState) || signal?.aborted) return;
+    const result = await bumpProfile(page, signal);
+    if (result === "aborted") return;   // nothing was pressed: the next run checks again
+    writeJsonAtomic(BUMP_STATE_FILE, nextBumpState(bumpState, result));
+    log(`bump: ${result}`);
+    if (result === "bumped") notify("Djinni", "Profile bumped — back to the top of search results.");
+    if (result === "unverified" || result === "clicked") notify("Djinni assistant", "Bump attempt could not be verified — check djinni.co/my/profile/ manually.");
   } catch (e) { log("bump failed:", e?.message); }
 }
 

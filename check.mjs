@@ -29,8 +29,8 @@ import { log, notify, ensureJobsApp, stampHeartbeat } from "./lib/notify.mjs";
 const __dir = dirname(fileURLToPath(import.meta.url));
 const PROFILE = join(__dir, ".browser-profile");
 const DRAFTS = join(__dir, "drafts");
-mkdirSync(DRAFTS, { recursive: true, mode: 0o700 });
-chmodSync(DRAFTS, 0o700);   // the mode above only applies when the directory is created // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
+mkdirSync(DRAFTS, { recursive: true, mode: 0o700 });   // fresh clone has no drafts/ yet; drafts quote recruiter messages — owner-only
+chmodSync(DRAFTS, 0o700);   // the mode above only applies when the directory is created
 const SEEN_FILE = join(__dir, "seen.json");
 const STATE_FILE = join(__dir, "notify-state.json");
 const HEARTBEAT_FILE = join(__dir, "last-success.json");
