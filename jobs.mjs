@@ -185,14 +185,13 @@ for (const fm of readPackages(APPS, { warn: (f, e) => log(`  · unreadable packa
   if (!fm.title) continue;
   indexPackage(fm);
   // By link too: a channel's repost of this vacancy carries a title of its own.
-  const link = linkKey(fm.url);
-  if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
   // And by the other boards' links it already lists ("source|url, source|url",
   // split as the dashboard's altRow does): a repost of one of those under its
   // own title was judged, and packaged, a second time.
-  for (const pair of String(fm.alt_links || "").split(/,\s*(?=[a-z]+\|)/)) {
-    const alt = linkKey(pair.slice(pair.indexOf("|") + 1).trim());
-    if (alt && !packageLinks.has(alt)) packageLinks.set(alt, fm.file);
+  const altUrls = String(fm.alt_links || "").split(/,\s*(?=[a-z]+\|)/).map((pair) => pair.slice(pair.indexOf("|") + 1).trim());
+  for (const url of [fm.url, ...altUrls]) {
+    const link = linkKey(url);
+    if (link && !packageLinks.has(link)) packageLinks.set(link, fm.file);
   }
 }
 // Packages whose vacancy the board reported inactive (closed-check.mjs): a
@@ -411,6 +410,20 @@ function titleOnlyNo(job, id, gate) {
   if (!first) stamp(job, id);
   return first;
 }
+// A further copy of an identity already matched this run (`first`): one LLM
+// call for both. The copy with a description is the one worth judging: a
+// title-only first copy would be judged on its title alone, twice, and never read.
+function judgeOnce(first, job, g) {
+  if (first.retry && !g.retry) {
+    // What dedupeJobs folded into the first copy goes with the judged one:
+    // dropped, those links never reached the package and the folded
+    // identities were not stamped, so the next run judged them again.
+    for (const k of ["altLinks", "mergedIds", "mergedKeys", "mergedTitles"]) if (first.job[k]?.length) job[k] = [...(job[k] || []), ...first.job[k]];
+    Object.assign(first, { job, scored: g.scored, retry: false });
+  }
+  log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
+  recordOutcome(summary, job.source, "seen");
+}
 for (const job of jobs) {
   const g = keywordGate(job, {
     seen, packageIndex, packageLinks, closedFiles, excludedByTitle,
@@ -443,21 +456,8 @@ for (const job of jobs) {
       log(`  · skip [${g.scored.score}${g.scored.matchedRole ? "" : " no-role"}] ${job.source}: ${job.title}${g.retry ? " (no description — will retry)" : ""}`);
       break;
     case "match":
-      if (matchedIds.has(id)) {   // no stamp: the judged copy's outcome stamps (or defers) the identity for both
-        const first = matchedIds.get(id);
-        // The copy with a description is the one worth judging: a title-only
-        // first copy would be judged on its title alone, twice, and never read.
-        if (first.retry && !g.retry) {
-          // What dedupeJobs folded into the first copy goes with the judged one:
-          // dropped, those links never reached the package and the folded
-          // identities were not stamped, so the next run judged them again.
-          for (const k of ["altLinks", "mergedIds", "mergedKeys", "mergedTitles"]) if (first.job[k]?.length) job[k] = [...(job[k] || []), ...first.job[k]];
-          Object.assign(first, { job, scored: g.scored, retry: false });
-        }
-        log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
-        recordOutcome(summary, job.source, "seen");
-        continue;
-      }
+      // No stamp: the judged copy's outcome stamps (or defers) the identity for both.
+      if (matchedIds.has(id)) { judgeOnce(matchedIds.get(id), job, g); continue; }
       matchedIds.set(id, { id, job, scored: g.scored, retry: g.retry });
       matches.push(matchedIds.get(id));
       continue;
