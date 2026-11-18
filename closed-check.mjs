@@ -5,7 +5,8 @@
 //   node closed-check.mjs             probe (up to 150 urls, each at most every 3 days)
 // Packages closed for 14+ days, Viewed packages left untouched for 30+ days and
 // borderline packages generated 30+ days ago are moved to applications/archive/,
-// which nothing reads — keeps the dashboard small. Their job-state entries go
+// which the dashboard and this checker skip (jobs.mjs reads it for closed priors,
+// report.mjs for digest counts) — keeps the dashboard small. Their job-state entries go
 // with them (an entry without a live package is dead weight: 493 of 713 were).
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

@@ -205,8 +205,8 @@ try {
   for (const list of packageIndex.values()) for (const p of list) if (closedUrls.has(p.url)) closedFiles.add(p.file);
 } catch (e) { log(`  · job-state.json unreadable (${e.message}) — no repost detection this run`); }
 // Closed packages closed-check has archived (14 days after the closure) still
-// count as closed priors: their state entry is gone and nothing else reads
-// archive/, so a vacancy re-listed after that was buried as "seen" for as long
+// count as closed priors: their state entry is gone and no other reader here
+// looks in archive/, so a vacancy re-listed after that was buried as "seen" for as long
 // as the board kept listing it. They carry `closed:` (lib/packages.mjs
 // markClosed) and are marked `archived`, so the package gates never call a
 // vacancy "packaged" or a dup of a file that is no longer in applications/.
