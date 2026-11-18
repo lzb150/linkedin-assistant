@@ -101,8 +101,9 @@ applications") as **Closed**. Closed cards leave the
 New and Viewed views (with both tabs deselected they show a muted " // closed" cue) and are never
 auto-reopened by clicking them. Closed packages are moved to
 `applications/archive/` after a 14-day grace period, Viewed packages you have not
-touched for 30 days go the same way, and nothing reads that folder. `run.sh`
-deletes archived packages older than 180 days. It never posts a banner — closures show up as the muted
+touched for 30 days go the same way. The dashboard skips that folder; `jobs.mjs`
+reads it for closed priors (repost detection) and `report.mjs` for its counts.
+`run.sh` deletes archived packages older than 180 days. It never posts a banner — closures show up as the muted
 " // closed" cue on the dashboard. While the state server answers, closures and
 prunes go through it (`POST /state`, the same payload a dashboard click sends),
 so a click landing mid-run is never overwritten; with the server down the
