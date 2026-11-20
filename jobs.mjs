@@ -415,14 +415,21 @@ function titleOnlyNo(job, id, gate) {
 // title-only first copy would be judged on its title alone, twice, and never read.
 function judgeOnce(first, job, g) {
   if (first.retry && !g.retry) {
-    // What dedupeJobs folded into the first copy goes with the judged one:
-    // dropped, those links never reached the package and the folded
-    // identities were not stamped, so the next run judged them again.
-    for (const k of ["altLinks", "mergedIds", "mergedKeys", "mergedTitles"]) if (first.job[k]?.length) job[k] = [...(job[k] || []), ...first.job[k]];
+    carryCopy(first.job, job);
     Object.assign(first, { job, scored: g.scored, retry: false });
-  }
+  } else carryCopy(job, first.job);
   log(`  · same vacancy as a match above, judged once: ${job.source}: ${job.title}`);
   recordOutcome(summary, job.source, "seen");
+}
+// What the copy that is not judged carries goes with the judged one, either
+// way round: the copies dedupeJobs folded into it, and its own repost:<link>
+// marker (stamped with the judged copy's keys). Dropped, those links never
+// reached the package and those keys were not stamped, so the next run judged
+// them again — a second paid LLM call.
+function carryCopy(from, into) {
+  for (const k of ["altLinks", "mergedIds", "mergedKeys", "mergedTitles"]) if (from[k]?.length) into[k] = [...(into[k] || []), ...from[k]];
+  const rk = from.repost && marker.repost(from);
+  if (rk) into.mergedIds = [...(into.mergedIds || []), rk];
 }
 for (const job of jobs) {
   const g = keywordGate(job, {
