@@ -321,3 +321,12 @@ test("isoDate refuses what Date.parse only guesses at", () => {
   assert.equal(isoDate("2026-11-09T10:00:00+02:00", now), "2026-11-09T08:00:00.000Z");
   assert.equal(isoDate("Mon, 09 Nov 2026 10:45:36 +0200", now), "2026-11-09T08:45:36.000Z");
 });
+
+test("isoDate refuses an RFC 2822 date naming a day the month does not have", () => {
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  // Date.parse rolls these over (31 Feb → 3 Mar), as it did the ISO "2026-02-31".
+  for (const v of ["Fri, 31 Feb 2026 10:00:00 +0200", "31 Apr 2026 08:00:00 GMT", "Thu, 00 Jan 2026 10:00:00 +0200", "29 Feb 2026 10:00:00 GMT"]) assert.equal(isoDate(v, now), undefined, v);
+  assert.equal(isoDate("Sat, 29 Feb 2025 10:00:00 GMT", now), undefined, "2025 is no leap year");
+  assert.equal(isoDate("Thu, 29 Feb 2024 10:00:00 GMT", now), "2024-02-29T10:00:00.000Z", "2024 is");
+  assert.equal(isoDate("30 Apr 2026 08:00:00 GMT", now), "2026-04-30T08:00:00.000Z");
+});

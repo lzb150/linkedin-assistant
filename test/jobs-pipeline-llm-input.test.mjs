@@ -3,8 +3,9 @@
 // the fake `claude` live in test/helpers/jobs-pipeline.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, chmodSync } from "node:fs";
-import { runScript } from "./helpers/e2e.mjs";
+import { readdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { runScript, pkg } from "./helpers/e2e.mjs";
 import { rss, AQA, serveFeed, setupProject, runJobs, mdFiles, claudeCalls, ACME, BETA } from "./helpers/jobs-pipeline.mjs";
 
 test("jobs.mjs: a card without a description is retried, not buried as seen", async (t) => {
@@ -55,6 +56,63 @@ test("jobs.mjs: two same-source copies of one vacancy under different urls cost 
   assert.equal(claudeCalls(p), 1, "judged once");
   assert.equal(mdFiles(p).length, 1, "one package");
   assert.match(out, /same vacancy as a match above, judged once/);
+});
+
+// Three DOU listings of one vacancy (one per city) stay three records, and two
+// channel posts of it, each spelling the company its own way, fold into the
+// first two round-robin. judgeOnce carried a copy's folds only when it swapped
+// in a described copy, so the second listing's post was dropped with it.
+async function foldedCopies(t, company, title) {
+  const posts = ["Labs", "Systems"].map((suffix, i) => `<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="remote_qa_jobs/${11 + i}">` +
+    `<div class="tgme_widget_message_text js-message_text"><b>Company name</b>: ${company} ${suffix}<br/><b>Title</b>: ${title}<br/>` +
+    `<b>Job description</b>: ${AQA}<br/><b>Location</b>: Ukraine<br/><b>Anywhere</b>: No<br/><b>Remote</b>: Yes</div></div></div>`);
+  const srv = createServer((_req, res) => { res.setHeader("content-type", "text/html"); res.end(`<section class="tgme_channel_history">${posts.join("")}</section>`); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  t.after(() => srv.close());
+  const listing = (n) => ({ title: `${title} в ${company}, Львів`, link: `https://jobs.dou.ua/companies/${company.toLowerCase()}/vacancies/${n}/`, desc: AQA });
+  let feed = rss([listing(1), listing(2), listing(3)]);
+  const p = setupProject(t, await serveFeed(t, () => feed));
+  const cfg = JSON.parse(readFileSync(p.path("jobs.config.json"), "utf8"));
+  cfg.tgchannels = { enabled: true, channels: ["@remote_qa_jobs"] };
+  writeFileSync(p.path("jobs.config.json"), JSON.stringify(cfg));
+  const run = () => runScript(p, "jobs.mjs", { DOU_ONLY: "1", CANDIDATE_NAME: "Eugene", RESUME_PATH: "/x/resume.pdf", TGCHANNELS_BASE: `http://127.0.0.1:${srv.address().port}/s/` });
+  // A later run meets the posts without the DOU listings (the feed moved on).
+  const postsAlone = () => { feed = rss([]); return run(); };
+  return { p, run, postsAlone };
+}
+
+test("jobs.mjs: a dropped vacancy's copies are stamped seen, the posts folded into every listing too", async (t) => {
+  const { p, run, postsAlone } = await foldedCopies(t, "LowFit", "SDET Automation Engineer");
+  assert.match(await run(), /· skip \[\d+ \/ llm 20\] dou: SDET Automation Engineer @ LowFit/);
+  assert.equal(claudeCalls(p), 1, "three listings and two posts, judged once");
+  const out = await postsAlone();
+  assert.match(out, /Considered 0 new/, "both posts seen, not judged again");
+  assert.equal(claudeCalls(p), 1, "no second paid call");
+});
+
+test("jobs.mjs: a packaged vacancy lists the posts folded into every listing judged with it", async (t) => {
+  const { p, run } = await foldedCopies(t, "Acme", "Senior SDET (Playwright)");
+  assert.match(await run(), /✓ MATCH \[\d+ \/ llm 85\] dou: Senior SDET \(Playwright\) @ Acme/);
+  const [file, ...more] = mdFiles(p);
+  assert.deepEqual(more, [], "one package");
+  const md = p.read("applications", file);
+  for (const post of [11, 12]) assert.match(md, new RegExp(`^alt_links: .*t\\.me/remote_qa_jobs/${post}\\b`, "m"), `post ${post} reaches the package`);
+});
+
+test("jobs.mjs: every listing of a dropped repost is marked judged, not only the one the LLM read", async (t) => {
+  // A closed vacancy re-listed under two new urls (two cities) is judged once,
+  // but only the judged listing's repost:<link> marker was stamped: the next
+  // run read the other one as a fresh repost and paid the LLM for it again.
+  const closed = "https://jobs.dou.ua/companies/lowfit/vacancies/1/";
+  const listing = (n) => ({ title: "SDET Automation Engineer в LowFit, Львів", link: `https://jobs.dou.ua/companies/lowfit/vacancies/${n}/`, desc: AQA });
+  const p = setupProject(t, await serveFeed(t, () => rss([listing(8), listing(9)])), { packages: { "old.md": pkg({ title: "SDET Automation Engineer", company: "LowFit", url: closed }) } });
+  writeFileSync(p.path("job-state.json"), JSON.stringify({ [closed]: { status: "closed", updatedAt: new Date().toISOString() } }));
+  const out = await runJobs(p);
+  assert.match(out, /· repost ×1 of closed old\.md: dou: SDET Automation Engineer/);
+  assert.match(out, /· skip \[\d+ \/ llm 20\] dou: SDET Automation Engineer @ LowFit/);
+  assert.equal(claudeCalls(p), 1, "two listings, judged once");
+  assert.match(await runJobs(p), /Considered 0 new/, "both listings seen next run");
+  assert.equal(claudeCalls(p), 1, "no second paid call");
 });
 
 test("jobs.mjs: a second title-only borderline whose package cannot be written stays unseen", async (t) => {
